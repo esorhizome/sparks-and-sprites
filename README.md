@@ -34,6 +34,7 @@ Checked against **Godot 4.7 · Unity 6.3 LTS · Unreal 5.8 · the web (2026)**. 
 | 08 | [Free & legal sources](chapters/08-free-and-legal-sources.md) | Where assets come from, and what each license asks |
 | 09 | [Web export & browsers](chapters/09-web-export-and-browsers.md) | The six real failure modes, and testing Safari without a Mac |
 | 10 | [If you freeze up](chapters/10-if-you-freeze-up.md) | The four-step un-freezing protocol |
+| 11 | [three.js & Babylon.js](chapters/11-three-and-babylon.md) | 3D, 2D, and every hybrid in the browser — plus Node.js disentangled |
 
 ## The cheatsheets
 
@@ -47,6 +48,7 @@ One-page quick references for the days you just need the answer:
 - [Backgrounds](cheatsheets/backgrounds.md) — the five background patterns
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
+- [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes
 
 ## Licensing of this repo
 

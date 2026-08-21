@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>three.js planet · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/11-three-and-babylon.md">chapter 11</a></p>
+<h1>three.js — a planet from noise and light</h1>
+<p class="lesson">Real 3D in ~60 lines: a sphere whose vertices are pushed outward by noise (mountains from arithmetic), one light, a starfield, slow rotation. This is the exact skeleton of the planet-exploration demos on reddit. The three.js library (r185, MIT, free) loads from a CDN — no installs, and no Node.js anywhere.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">// scene = container, camera = viewpoint, renderer = painter
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, W / H, 0.1, 100);
+camera.position.z = 4.2;
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(W, H, false);
+scene.background = new THREE.Color(0x191527);
+
+// THE PLANET: take a sphere, push each vertex outward by noise
+const geo = new THREE.IcosahedronGeometry(1.5, 5);
+const pos = geo.attributes.position;
+const v = new THREE.Vector3();
+for (let i = 0; i < pos.count; i++) {
+  v.fromBufferAttribute(pos, i);
+  // "noise" from summed sines — mountains from arithmetic
+  const n = 0.5 * Math.sin(v.x * 3.1) * Math.sin(v.y * 2.7)
+          + 0.5 * Math.sin(v.y * 5.3 + v.z * 4.1);
+  v.multiplyScalar(1 + n * 0.08);        // 0.08 = mountain height
+  pos.setXYZ(i, v.x, v.y, v.z);
+}
+geo.computeVertexNormals();              // recalc lighting after the push
+const planet = new THREE.Mesh(
+  geo,
+  new THREE.MeshStandardMaterial({ color: 0x5a63c8, flatShading: true })
+);
+scene.add(planet);
+
+// LIGHTS: one sun + faint fill so the dark side isn't black
+const sun = new THREE.DirectionalLight(0xfff4e0, 2.5);
+sun.position.set(4, 2, 3);
+scene.add(sun, new THREE.AmbientLight(0x334, 2));
+
+// STARFIELD: chapter 04's starfield, as 3D points
+const starGeo = new THREE.BufferGeometry();
+const stars = [];
+for (let i = 0; i < 400; i++) {
+  stars.push(rand(-40, 40), rand(-40, 40), rand(-40, -8));
+}
+starGeo.setAttribute("position",
+  new THREE.Float32BufferAttribute(stars, 3));
+scene.add(new THREE.Points(starGeo,
+  new THREE.PointsMaterial({ color: 0xe6e3f2, size: 0.12 })));
+
+// slow, stately rotation (chapter 05 would approve)
+onFrame((dt) => {
+  planet.rotation.y += dt * 0.15;
+  renderer.render(scene, camera);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary" disabled>▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint" id="status">Loading three.js from the CDN… the Run button wakes up when it arrives. (This page needs internet for that one file.)</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> mountain height <code>0.08</code> → <code>0.25</code> (jagged asteroid) or <code>0.0</code> (billiard-smooth) · the noise frequencies (3.1, 2.7, 5.3, 4.1) — lower = continents, higher = gravel · planet colour to <code>0x8fa98f</code> for a mossy world · rotation <code>0.15</code> → <code>2.0</code> and feel "stately" become "frantic" · star count 400 → 4000.</div>
+<p class="hint"><b>The 3D twist on things you know:</b> the starfield is chapter 04's, the calm rotation is chapter 05's stately recipe, and a fresnel rim-glow atmosphere would be chapter 06's halo wrapped around the sphere. <b>In Babylon:</b> the same scene is <code>CreateIcoSphere</code> + vertex displacement + <code>PointsCloudSystem</code> — see the <a href="babylon-scene.html">Babylon demo</a>. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/11-three-and-babylon.md">Chapter 11</a> maps both.</p>
+</div>
+
+<script type="module">
+import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.185.1/build/three.module.min.js";
+(function () {
+  "use strict";
+  var codeBox = document.getElementById("code");
+  var runBtn = document.getElementById("run");
+  var stopBtn = document.getElementById("stop");
+  var resetBtn = document.getElementById("reset");
+  var errBox = document.getElementById("err");
+  var status = document.getElementById("status");
+  var initialCode = codeBox.value;
+  var raf = null;
+
+  status.textContent = "three.js r185 loaded. Press ▶ Run — nothing moves until you do.";
+  runBtn.disabled = false;
+
+  function stop() { if (raf) cancelAnimationFrame(raf); raf = null; }
+
+  function freshCanvas() {
+    // replace the canvas each run: simplest reliable way to retire the old
+    // WebGL context when the code is re-run with a new renderer
+    var old = document.getElementById("cv");
+    var neu = old.cloneNode(false);
+    old.parentNode.replaceChild(neu, old);
+    return neu;
+  }
+
+  function run() {
+    stop();
+    errBox.textContent = "";
+    var canvas = freshCanvas();
+    var W = canvas.clientWidth, H = canvas.clientHeight;
+    canvas.width = W; canvas.height = H;
+    var frameFn = null;
+    function onFrame(f) { frameFn = f; }
+    function rand(a, b) { return a + Math.random() * (b - a); }
+    try {
+      var user = new Function("THREE", "canvas", "W", "H", "onFrame", "rand", codeBox.value);
+      user(THREE, canvas, W, H, onFrame, rand);
+    } catch (e) {
+      errBox.textContent = "The code hit a snag (totally fixable): " + e.message;
+      return;
+    }
+    if (frameFn) {
+      var last = null, t0 = null;
+      var step = function (ts) {
+        if (last === null) { last = ts; t0 = ts; }
+        var dt = Math.min(0.05, (ts - last) / 1000);
+        last = ts;
+        try { frameFn(dt, (ts - t0) / 1000); }
+        catch (e) { errBox.textContent = "Snag mid-frame: " + e.message; stop(); return; }
+        if ((ts - t0) / 1000 < 60) { raf = requestAnimationFrame(step); } else { raf = null; }
+      };
+      raf = requestAnimationFrame(step);
+    }
+  }
+
+  runBtn.addEventListener("click", run);
+  stopBtn.addEventListener("click", stop);
+  resetBtn.addEventListener("click", function () {
+    stop(); codeBox.value = initialCode; errBox.textContent = "";
+  });
+})();
+</script>
+</body>
+</html>

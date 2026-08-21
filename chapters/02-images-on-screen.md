@@ -107,7 +107,7 @@ Sprite-sheet frames (many images packed into one) use the 9-argument form of `dr
 ## Web — PixiJS & three.js (when you want an engine's speed)
 
 - [PixiJS](https://pixijs.com/) (free, MIT license) — "sprites, but GPU-fast": thousands of moving images in a browser.
-- [three.js](https://threejs.org/) (free, MIT) — full 3D, with a friendly `THREE.Sprite` for billboard images.
+- [three.js](https://threejs.org/) (free, MIT) — full 3D, with a friendly `THREE.Sprite` for billboard images. Three.js (and its batteries-included sibling Babylon.js) get a whole chapter of their own: [chapter 11](11-three-and-babylon.md).
 - [Phaser](https://phaser.io/) (free, MIT) — a complete game framework in the same family.
 
 ```js
