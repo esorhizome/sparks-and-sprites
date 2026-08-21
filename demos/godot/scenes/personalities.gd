@@ -42,7 +42,7 @@ func pos_for(u: float) -> Vector2:
 			return Vector2(u, 0)
 		"robot":        # 7 quantised steps + tiny servo settle
 			var steps := 7.0
-			var s := floor(u * steps) / steps
+			var s := floorf(u * steps) / steps
 			var f := fmod(u * steps, 1.0)
 			var settle := sin(f / 0.3 * PI * 3.0) * exp(-f * 10.0) * 0.015 if f < 0.3 else 0.0
 			return Vector2(s + settle, 0)
