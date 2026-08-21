@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Additive glow · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">chapter 03</a></p>
+<h1>Additive blending — light that adds up</h1>
+<p class="lesson">Blend mode = the rule for how colours mix with what's behind them. <b>Additive</b> means overlaps get <em>brighter</em> — the universal "this is made of light" mode behind every glow, aura, and lamp in 2D games. Here, three orbiting light-blobs cross paths.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let mode = "lighter";   // ← additive. change to "source-over"
+                        //   (normal) and see the light die.
+
+function blob(x, y, radius, color) {
+  const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  g.addColorStop(0, color);
+  g.addColorStop(1, "rgba(0,0,0,0)");   // soft edge → glow
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, 7);
+  ctx.fill();
+}
+
+onFrame((dt, t) => {
+  ctx.clearRect(0, 0, W, H);
+
+  // dark ground so the light has something to matter against
+  ctx.fillStyle = "#191527";
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.globalCompositeOperation = mode;
+
+  const cx = W / 2, cy = H / 2, R = Math.min(W, H) * 0.22;
+  // slow orbits (0.15 Hz — calm on purpose)
+  blob(cx + Math.cos(t * 0.9) * R,       cy + Math.sin(t * 0.9) * R,       90, "rgba(122,132,236,0.8)");
+  blob(cx + Math.cos(t * 0.7 + 2.1) * R, cy + Math.sin(t * 0.7 + 2.1) * R, 90, "rgba(214,168,120,0.8)");
+  blob(cx + Math.cos(t * 0.5 + 4.2) * R, cy + Math.sin(t * 0.5 + 4.2) * R, 90, "rgba(157,190,157,0.8)");
+
+  ctx.globalCompositeOperation = "source-over";
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Watch where two blobs overlap: the crossing is <em>brighter than either</em>. That's additive. Change <code>mode</code> to <code>"source-over"</code>, re-run, and the crossings go flat — one word, whole different physics of light.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> radius 90 → 200 (floodlights) · the alpha values 0.8 → 0.3 (candlelight) · make one blob follow the pointer with <code>canvas.onpointermove</code> — a torch you carry.</div>
+<p class="hint"><b>In Godot:</b> CanvasItemMaterial → Blend Mode → <em>Add</em> on any soft blob sprite (the <code>glow</code> scene shows it, plus WorldEnvironment bloom). <b>In Unity:</b> an additive material on a soft sprite; for screen-wide glow, URP Bloom + HDR emission. <b>In Unreal:</b> material Blend Mode → Additive; bloom is on by default. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">Chapter 03</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

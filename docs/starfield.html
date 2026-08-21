@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Starfield · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">chapter 04</a></p>
+<h1>Starfield — sparks at one-tenth speed, no gravity</h1>
+<p class="lesson">Ambience is a particle system slowed down: N tiny dots, slow drift, wrap at the edges, gentle alpha pulse. Change one texture and one gravity number and this same code is snow, dust motes, or fireflies.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">const COUNT = 90;
+const DRIFT = 6;          // pixels per second. gentle on purpose.
+const stars = [];
+for (let i = 0; i < COUNT; i++) {
+  stars.push({
+    x: rand(0, W), y: rand(0, H),
+    vx: rand(-DRIFT, DRIFT), vy: rand(-DRIFT, DRIFT) - 2,
+    size: rand(0.6, 2.2),
+    phase: rand(0, 6.28)     // each star twinkles on its own clock
+  });
+}
+
+onFrame((dt, t) => {
+  ctx.fillStyle = "#191527";        // night ground
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#E6E3F2";
+  for (const s of stars) {
+    s.x += s.vx * dt;  s.y += s.vy * dt;
+    // wrap: leave one edge, reappear at the other
+    if (s.x < 0) s.x += W;  if (s.x > W) s.x -= W;
+    if (s.y < 0) s.y += H;  if (s.y > H) s.y -= H;
+    // slow twinkle: 0.4 Hz sine on each star's own phase
+    ctx.globalAlpha = 0.35 + 0.35 * Math.sin(t * 2.5 + s.phase);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.size, 0, 7);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Deliberately calm: 6 px/s drift, 0.4 Hz twinkle. Low-frequency motion soothes; high-frequency jitter exhausts. This is a design stance, not a limitation.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> to make it <b>snow</b>: <code>vy: rand(8, 20)</code>, white, size up · <b>fireflies</b>: warm colour <code>"#D6A878"</code>, COUNT 15, bigger twinkle range · <b>dust motes</b>: COUNT 30, DRIFT 3, alpha max 0.25 · a "warp" starfield: multiply both velocities by 40 and watch calm become momentum.</div>
+<p class="hint"><b>In Godot / Unity / Unreal:</b> a continuous emitter at 2–8 particles/sec, long lifetime, tiny size, slow drift — the same five numbers in each engine's particle panel. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06 (ambient atmosphere)</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

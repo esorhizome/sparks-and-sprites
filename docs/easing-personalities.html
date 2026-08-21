@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Movement personalities · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/05-movement-and-personality.md">chapter 05</a></p>
+<h1>Movement personalities — one dot, eight souls</h1>
+<p class="lesson">Personality is not what moves — it's the <em>shape of the speed</em>. Edit the <code>personality</code> string on the first line (human, superhuman, alien, excited, sad, emotionless, robot, stately), press Run, and watch the same journey change species.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let personality = "human";   // ← edit me, then press Run
+
+// Each personality maps u (journey progress 0→1)
+// to {x: 0→1 across, y: vertical detour}.
+const P = {
+  human(u){        // ease both ends + gentle bob
+    const e = u < .5 ? 4*u*u*u : 1 - Math.pow(-2*u+2, 3)/2;
+    return { x: e, y: Math.sin(u*Math.PI*2.2)*0.06 };
+  },
+  superhuman(u){   // anticipation pull-back, then t^4 snap
+    if (u < 0.25) return { x: -0.05*(u/0.25), y: 0 };
+    if (u < 0.45) { const t=(u-.25)/.2; return { x: -0.05+1.05*t*t*t*t, y: 0 }; }
+    return { x: 1, y: 0 };
+  },
+  alien(u){        // drift + abrupt reorientation, unsynced sines
+    let y = 0.35*Math.sin(u*6.28) + 0.25*Math.sin(u*6.28*1.618+2);
+    if (Math.floor(u*5) % 2 === 1) y = -y*0.6;
+    return { x: Math.min(1, u + 0.06*Math.sin(u*13)), y: y*0.5 };
+  },
+  excited(u){      // springy overshoot with bounces
+    const e = 1 - Math.pow(2, -8*u) * Math.cos(u*14);
+    return { x: Math.min(1.06, e), y: -Math.abs(Math.sin(u*12))*0.22*(1-u) };
+  },
+  sad(u){          // hesitate... then droop through a sagging arc
+    if (u < 0.22) return { x: 0, y: 0.05 };
+    const t = (u-0.22)/0.78, e = 1 - Math.pow(1-t, 2.6);
+    return { x: e, y: 0.05 + Math.sin(t*Math.PI)*0.28 };
+  },
+  emotionless(u){  // pure linear. that's the whole recipe.
+    return { x: u, y: 0 };
+  },
+  robot(u){        // 7 quantised steps + tiny servo settle
+    const steps=7, s=Math.floor(u*steps)/steps, f=(u*steps)%1;
+    const settle = f<0.3 ? Math.sin(f/0.3*Math.PI*3)*Math.exp(-f*10)*0.015 : 0;
+    return { x: s+settle, y: 0 };
+  },
+  stately(u){      // long sine ease + wide unhurried arc
+    const e = -(Math.cos(Math.PI*u)-1)/2;
+    return { x: e, y: -Math.sin(u*Math.PI)*0.42 };
+  }
+};
+const dur = { human:2, superhuman:2.2, alien:3.4, excited:2.4,
+              sad:3.6, emotionless:2.4, robot:3, stately:4.2 };
+
+const pad=40, midY=H*0.55, amp=H*0.3, trail=[];
+onFrame((dt, t) => {
+  const u = Math.min(1, t / dur[personality]);
+  const p = P[personality](u);
+  trail.push(p); if (trail.length > 120) trail.shift();
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = "#88888855"; ctx.setLineDash([2,5]);
+  ctx.beginPath(); ctx.moveTo(pad,midY); ctx.lineTo(W-pad,midY);
+  ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#5A63C8";
+  trail.forEach((q, i) => {           // fading breadcrumb trail
+    ctx.globalAlpha = 0.05 + 0.1*(i/trail.length);
+    ctx.beginPath();
+    ctx.arc(pad+q.x*(W-2*pad), midY+q.y*amp, 4, 0, 7); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(pad+p.x*(W-2*pad), midY+p.y*amp, 9, 0, 7); ctx.fill();
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The breadcrumb trail is the personality made visible: evenly spaced crumbs = constant speed (emotionless); bunched-then-spread = acceleration; a sagging path = sorrow.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> in <code>excited</code>, change <code>-8</code> (damping) to <code>-3</code> — more bounces, more mania · in <code>robot</code>, change <code>steps=7</code> to <code>3</code> · in <code>stately</code>, double the duration in <code>dur</code> and feel the extra dignity · invent a ninth personality by copying any entry and breaking one rule.</div>
+<p class="hint"><b>In Godot:</b> the <code>personalities</code> scene in the repo's Godot project runs these same recipes with the built-in Tween. <b>In Unity:</b> DOTween's <code>SetEase</code> covers half of these; the spring and quantise recipes drop into <code>Update()</code>. <b>In Unreal:</b> Timeline curves — drawing these shapes by hand in the curve editor is drawing the personality. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/05-movement-and-personality.md">Chapter 05</a> has all of it.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

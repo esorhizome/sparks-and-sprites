@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sound blips · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/07-sound-effects.md">chapter 07</a></p>
+<h1>Sound blips — synthesized from nothing</h1>
+<p class="lesson">No audio files anywhere on this page. Each sound is an oscillator (a tone generator), a pitch decision, and a fade-out envelope — the audio equivalent of procedural art. Press <b>▶ Load code</b>, then play the three sounds. Note the pitch randomization: press the same button repeatedly and no two plays match.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">// One reusable voice: frequency, how it slides, how long it lives.
+function tone({ freq = 440, slideTo = null, type = "square",
+                dur = 0.15, vol = 0.2 }) {
+  const t0 = ac.currentTime;
+  const osc = ac.createOscillator();   // the tone generator
+  const gain = ac.createGain();        // the volume knob
+  osc.type = type;                     // square = chiptune voice
+  osc.frequency.setValueAtTime(freq, t0);
+  if (slideTo !== null) {              // pitch slide = laser physics
+    osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+  }
+  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.exponentialRampToValueAtTime(0.001, t0 + dur); // fade = no click
+  osc.connect(gain).connect(ac.destination);
+  osc.start(t0);
+  osc.stop(t0 + dur);
+}
+
+// the one-line trick that makes repeats organic:
+function humanize(f) { return f * (0.92 + Math.random() * 0.16); }
+
+sounds.coin = () => {                  // two quick rising notes
+  tone({ freq: humanize(988),  dur: 0.08 });
+  setTimeout(() => tone({ freq: humanize(1319), dur: 0.18 }), 80);
+};
+
+sounds.laser = () => {                 // one steep downward slide
+  tone({ freq: humanize(1400), slideTo: 120,
+         type: "sawtooth", dur: 0.25, vol: 0.15 });
+};
+
+sounds.hit = () => {                   // low, dull, quick
+  tone({ freq: humanize(160), slideTo: 55,
+         type: "triangle", dur: 0.2, vol: 0.35 });
+};</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Load code</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <div class="row" style="margin-top:0">
+      <button id="coin" disabled>🪙 coin</button>
+      <button id="laser" disabled>✦ laser</button>
+      <button id="hit" disabled>◉ hit</button>
+    </div>
+    <p class="hint" id="status">Buttons wake up after you press ▶ Load code. (Browsers only allow sound after a click — that rule is why every web game has a "click to start" screen.)</p>
+    <p class="hint">Coin = two rising notes. Laser = one steep downward pitch slide. Hit = low + dull + fast. Most retro sound design is combinations of exactly these three moves.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> the coin's second note 1319 → 1760 (happier) · laser <code>slideTo</code> 120 → 30 (heavier weapon) · <code>type</code> values — "square", "sawtooth", "triangle", "sine" are four different instruments for free · widen <code>humanize</code>'s range (0.92/0.16 → 0.8/0.4) until it sounds drunk, then pull back.</div>
+<p class="hint"><b>In Godot:</b> the <code>sound_blips</code> scene in the repo synthesizes this same trio with <code>AudioStreamGenerator</code>. <b>In Unity:</b> implement <code>OnAudioFilterRead</code> and fill the sample array — same sine arithmetic. <b>In Unreal:</b> MetaSounds: oscillator → envelope → output, three nodes. Or skip synthesis and use <a href="https://sfxr.me/">sfxr.me</a> / <a href="https://sfbgames.itch.io/chiptone">ChipTone</a> to generate .wav files free. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/07-sound-effects.md">Chapter 07</a>.</p>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  var codeBox = document.getElementById("code");
+  var runBtn = document.getElementById("run");
+  var resetBtn = document.getElementById("reset");
+  var errBox = document.getElementById("err");
+  var status = document.getElementById("status");
+  var initialCode = codeBox.value;
+  var ac = null;
+  var sounds = {};
+  var btns = ["coin", "laser", "hit"].map(function (id) {
+    var b = document.getElementById(id);
+    b.addEventListener("click", function () {
+      if (sounds[id]) {
+        try { sounds[id](); } catch (e) { errBox.textContent = "Snag mid-sound: " + e.message; }
+      }
+    });
+    return b;
+  });
+
+  runBtn.addEventListener("click", function () {
+    errBox.textContent = "";
+    if (!ac) ac = new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === "suspended") ac.resume();
+    sounds = {};
+    try {
+      var user = new Function("ac", "sounds", codeBox.value);
+      user(ac, sounds);
+      btns.forEach(function (b) { b.disabled = false; });
+      status.textContent = "Loaded. Play the sounds — press each a few times and hear the pitch randomization at work.";
+    } catch (e) {
+      errBox.textContent = "The code hit a snag (totally fixable): " + e.message;
+    }
+  });
+
+  resetBtn.addEventListener("click", function () {
+    codeBox.value = initialCode;
+    errBox.textContent = "";
+  });
+})();
+</script>
+</body>
+</html>

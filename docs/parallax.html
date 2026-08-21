@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parallax · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">chapter 04</a></p>
+<h1>Parallax — depth from three multiplications</h1>
+<p class="lesson">Far things move slower than near things. That's the whole law: <code>layer.x = camera.x × factor</code>, one factor per layer. Press Run, then <b>move your pointer across the canvas</b> — you are the camera.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">// three generated silhouette layers (no image files)
+function makeLayer(color, jag, base) {
+  const pts = [];
+  for (let x = 0; x <= 40; x++) {
+    pts.push(base + Math.sin(x * 0.7 + jag) * jag * 8
+                  + Math.sin(x * 1.9 + jag * 3) * jag * 4);
+  }
+  return { color, pts };
+}
+const far  = makeLayer("#8A8FD0", 1.0, H * 0.45);
+const mid  = makeLayer("#5A63C8", 1.6, H * 0.60);
+const near = makeLayer("#3A3F8F", 2.4, H * 0.78);
+
+let camera = 0;
+canvas.onpointermove = (e) => {
+  const r = canvas.getBoundingClientRect();
+  camera = (e.clientX - r.left - W / 2) * 2;   // pointer = camera
+};
+
+function drawLayer(layer, factor) {
+  const offset = -camera * factor;             // ← THE parallax line
+  ctx.fillStyle = layer.color;
+  ctx.beginPath();
+  ctx.moveTo(-200, H);
+  layer.pts.forEach((y, i) => {
+    ctx.lineTo(offset % 60 + (i - 5) * 60, y); // wraps as it scrolls
+  });
+  ctx.lineTo(W + 200, H);
+  ctx.closePath();
+  ctx.fill();
+}
+
+onFrame(() => {
+  ctx.clearRect(0, 0, W, H);
+  drawLayer(far,  0.2);   // mountains barely move
+  drawLayer(mid,  0.5);   // hills follow politely
+  drawLayer(near, 0.9);   // foreground rushes past
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Move your pointer left and right. The three factors (0.2 / 0.5 / 0.9) are the entire depth illusion.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> set all three factors to 0.5 — depth vanishes instantly (the best proof of why it worked) · swap the factors (far 0.9, near 0.2) for an unsettling "wrong world" · add a fourth layer.</div>
+<p class="hint"><b>In Godot:</b> the <code>parallax</code> scene uses <code>Parallax2D</code> nodes with <code>scroll_scale</code> = these exact factors. <b>In Unity:</b> the three multiplications go in <code>LateUpdate()</code>, one per layer transform. <b>In Unreal (2D):</b> same arithmetic driven by the camera position. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>
