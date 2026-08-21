@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trails · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Trails — the don't-clear-the-canvas trick</h1>
+<p class="lesson">Normally you wipe the canvas every frame. Instead, paint a <em>translucent</em> rectangle over the old frame: everything that moves leaves a fading smear, automatically. Three lines, a whole aesthetic.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let fade = 0.08;   // ← the entire effect. 1.0 = no trail,
+                   //   0.02 = long ghostly ribbons.
+
+// paint the ground once so the first frames have a base
+ctx.fillStyle = "#191527";
+ctx.fillRect(0, 0, W, H);
+
+onFrame((dt, t) => {
+  // instead of clearRect: a translucent wipe
+  ctx.fillStyle = "rgba(25, 21, 39, " + fade + ")";
+  ctx.fillRect(0, 0, W, H);
+
+  // two orbiting dots — a calm figure-eight-ish weave
+  const cx = W / 2, cy = H / 2;
+  const x1 = cx + Math.cos(t * 1.1) * W * 0.28;
+  const y1 = cy + Math.sin(t * 2.2) * H * 0.28;
+  const x2 = cx + Math.cos(t * 1.1 + Math.PI) * W * 0.28;
+  const y2 = cy + Math.sin(t * 2.2 + Math.PI) * H * 0.28;
+
+  ctx.fillStyle = "#9BA3F0";
+  ctx.beginPath(); ctx.arc(x1, y1, 7, 0, 7); ctx.fill();
+  ctx.fillStyle = "#D6A878";
+  ctx.beginPath(); ctx.arc(x2, y2, 7, 0, 7); ctx.fill();
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The trail length is just how slowly the old frames get painted over. Fast fade reads as <em>speed</em>; slow fade reads as <em>haunting</em>.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> <code>fade</code> 0.08 → 0.5 (crisp comet) → 0.015 (long ghosts) · the two frequencies <code>1.1 / 2.2</code> → <code>1.0 / 1.618</code> — an alien pair that never quite repeats · dot count: add a third.</div>
+<p class="hint"><b>In Godot:</b> the structured version is <code>Line2D</code> fed the last N positions each frame (fading width/alpha along its length). <b>In Unity:</b> the <code>TrailRenderer</code> component — add it to anything that moves, zero code, then shape its Width curve. <b>In Unreal:</b> a Niagara ribbon emitter. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

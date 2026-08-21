@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dissolve · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">chapter 03</a></p>
+<h1>Dissolve — the noise-threshold trick</h1>
+<p class="lesson">Compare a noise value (smooth randomness) per pixel against a sliding threshold; hide pixels below it; paint a hot rim just above it. Slide the threshold 0→1 and the shape burns away. This is the "hello world" of shader confidence — here it runs per-pixel in plain JavaScript so you can read every step.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">const S = 96;                       // low-res grid, scaled up (fast + chunky)
+// per-cell smooth-ish noise (summed sines — noise's home recipe)
+function noiseAt(x, y) {
+  return 0.5
+    + 0.25 * Math.sin(x * 0.35 + Math.sin(y * 0.2))
+    + 0.25 * Math.sin(y * 0.3 + Math.sin(x * 0.17) * 2);
+}
+// the "sprite": a filled circle mask
+function inSprite(x, y) {
+  return Math.hypot(x - S/2, y - S/2) < S * 0.38;
+}
+
+const cell = Math.min(W, H) / S;
+const ox = (W - S * cell) / 2, oy = (H - S * cell) / 2;
+
+onFrame((dt, t) => {
+  const threshold = (Math.sin(t * 0.6) + 1) / 2;  // slides 0→1→0 forever
+  ctx.clearRect(0, 0, W, H);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      if (!inSprite(x, y)) continue;
+      const n = noiseAt(x, y);
+      // ---- the whole dissolve shader, as ifs ----
+      if (n < threshold) continue;                 // dissolved: gone
+      if (n < threshold + 0.06) {
+        ctx.fillStyle = "#D6A878";                 // hot rim
+      } else {
+        ctx.fillStyle = "#5A63C8";                 // intact sprite
+      }
+      // -------------------------------------------
+      ctx.fillRect(ox + x * cell, oy + y * cell, cell + 0.5, cell + 0.5);
+    }
+  }
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The circle endlessly burns away and re-forms. In a real shader, the two <code>if</code>s are the same two lines — the GPU just runs them on millions of pixels at once.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> rim width 0.06 → 0.2 (wide molten edge) · rim colour to white-hot <code>"#FFFFFF"</code> · the noise frequencies (0.35/0.3) → 1.5 for a fizzy, TV-static dissolve · <code>t * 0.6</code> → <code>t * 3</code> for a snappy teleport.</div>
+<p class="hint"><b>In Godot:</b> the 3-line shader version lives in the repo (<code>demos/godot/shaders/dissolve.gdshader</code>) with a demo scene. <b>In Unity:</b> Shader Graph — noise texture → Step vs a slider → Alpha Clip; four nodes, then animate the slider from code. <b>In Unreal:</b> the identical graph in the Material editor with a Timeline driving the scalar. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">Chapter 03</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flame · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Flame — rising, shrinking, fading, adding</h1>
+<p class="lesson">Fire = particles that rise, shrink, fade from yellow to orange to nothing, wobble sideways, and use <em>additive</em> blending (overlaps get brighter, because fire is made of light). Each of those five words is one line below.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">const parts = [];
+const baseX = W / 2, baseY = H * 0.8;
+
+onFrame((dt, t) => {
+  // spawn ~4 particles per frame at the base
+  for (let i = 0; i < 4; i++) {
+    parts.push({
+      x: baseX + rand(-10, 10), y: baseY,
+      vx: rand(-8, 8),
+      vy: rand(-90, -50),               // rise
+      life: rand(0.4, 0.9), maxLife: 0.9,
+      size: rand(6, 12)
+    });
+  }
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.globalCompositeOperation = "lighter";   // ADDITIVE: light adds up
+
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i];
+    p.life -= dt;
+    if (p.life <= 0) { parts.splice(i, 1); continue; }
+    const u = p.life / p.maxLife;       // 1 = newborn, 0 = dying
+    p.x += (p.vx + Math.sin(t * 6 + p.y * 0.05) * 18) * dt;  // wobble
+    p.y += p.vy * dt;
+    // colour ramp: newborn = pale yellow, dying = deep orange
+    const r = 255, g = Math.floor(120 + 135 * u), b = Math.floor(40 * u);
+    ctx.fillStyle = "rgba(" + r + "," + g + "," + b + "," + (0.16 * u) + ")";
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * u, 0, 7);      // shrink as it dies
+    ctx.fill();
+  }
+  ctx.globalCompositeOperation = "source-over"; // back to normal
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Soft, warm, and endlessly hypnotic — from ~35 lines with no images. Change the numbers and the fire changes species.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> rise speed <code>rand(-90,-50)</code> → <code>rand(-30,-15)</code> for lazy smoke-fire · the colour line: swap red/green for a blue-green ghost flame (r = 40*u, g = 180, b = 255) · wobble strength 18 → 60 for wind · spawn count 4 → 1 for a candle. <b>Delete the "lighter" line</b> and see how much additive blending was doing.</div>
+<p class="hint"><b>In Godot:</b> the <code>flame</code> scene configures GPUParticles2D with these same choices, commented. <b>In Unity:</b> Particle System — Start Speed up, Lifetime 0.7, Color-over-Lifetime yellow→orange→transparent, Size-over-Lifetime shrinking, additive material. Retune each and you've <em>made</em> fire, not copied it. <b>In Unreal:</b> Niagara's Fountain template already contains every module named here — same retune. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

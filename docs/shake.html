@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screen shake · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Screen shake — the kind version</h1>
+<p class="lesson">The good recipe: keep a <b>trauma</b> value 0–1 that decays every frame; camera offset = smooth noise × trauma². Noise (not random jumps) keeps it smooth; the square makes small hits whisper and big hits roar; decay ends it quickly. Press Run, then <b>click the canvas</b> to add impacts.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let trauma = 0;
+const DECAY = 1.4;        // how fast calm returns (per second)
+const MAX_OFFSET = 14;    // px at full trauma. deliberately modest.
+
+canvas.onclick = () => {
+  trauma = Math.min(1, trauma + 0.45);   // impacts ADD, never set
+};
+
+// smooth noise from summed sines (no random jumps = no nausea)
+function noise(t, seed) {
+  return Math.sin(t * 11 + seed) * 0.6 + Math.sin(t * 17 + seed * 3) * 0.4;
+}
+
+onFrame((dt, t) => {
+  trauma = Math.max(0, trauma - DECAY * dt);
+  const shake = trauma * trauma;               // ← the square
+  const dx = noise(t, 1) * MAX_OFFSET * shake;
+  const dy = noise(t, 2) * MAX_OFFSET * shake;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.save();
+  ctx.translate(dx, dy);                       // shake the CAMERA, not things
+
+  // a little scene to be shaken
+  ctx.fillStyle = "#3A3F8F";
+  ctx.fillRect(-20, H * 0.7, W + 40, H);       // ground
+  ctx.fillStyle = "#5A63C8";
+  ctx.fillRect(W/2 - 30, H * 0.7 - 60, 60, 60);// a house-ish box
+  ctx.fillStyle = "#D6A878";
+  ctx.beginPath(); ctx.arc(W * 0.8, H * 0.22, 26, 0, 7); ctx.fill(); // sun
+
+  ctx.restore();
+
+  // trauma meter, so you can SEE the decay
+  ctx.fillStyle = "#88888844";
+  ctx.fillRect(16, 16, 120, 8);
+  ctx.fillStyle = "#D6A878";
+  ctx.fillRect(16, 16, 120 * trauma, 8);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Click once: a polite nudge. Click four times fast: a real quake — because trauma <em>adds up</em> and the square amplifies the top end. The bar shows calm returning.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> remove the square (<code>const shake = trauma;</code>) — feel how small hits get too loud · <code>MAX_OFFSET</code> 14 → 40 (then please come back down) · <code>DECAY</code> 1.4 → 0.3 for a long aftershock. <b>Accessibility stance:</b> keep amplitude modest, keep frequency low, and ship a "reduce shake" toggle — calm defaults cost nothing.</div>
+<p class="hint"><b>In Godot:</b> apply dx/dy to <code>Camera2D.offset</code>, driving noise from <code>FastNoiseLite</code>. <b>In Unity:</b> same recipe on the camera transform in <code>LateUpdate()</code> (or Cinemachine's impulse system, which implements exactly this). <b>In Unreal:</b> a <code>CameraShakeBase</code> class — its oscillation fields are these numbers with different names. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

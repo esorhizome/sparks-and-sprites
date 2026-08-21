@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Infinite scroll · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">chapter 04</a></p>
+<h1>Infinite scroll — one tile, endless world</h1>
+<p class="lesson">Make a seamless tile repeat, then slide the <em>reading position</em> (in shaders: the UV offset) by time. The tile below is generated in code, then scrolled forever at two speeds for instant cheap depth.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">// generate one seamless 80x80 "cloudy" tile in code
+function makeTile(hue) {
+  const t = document.createElement("canvas");
+  t.width = t.height = 80;
+  const g = t.getContext("2d");
+  for (let i = 0; i < 26; i++) {
+    // seamless trick: draw each blob 4 times, wrapped
+    const x = Math.random() * 80, y = Math.random() * 80;
+    const rr = 8 + Math.random() * 14;
+    g.fillStyle = "hsla(" + hue + ", 45%, 70%, 0.16)";
+    [[0,0],[80,0],[0,80],[80,80]].forEach(([ox, oy]) => {
+      g.beginPath();
+      g.arc((x + ox) % 160 - 40, (y + oy) % 160 - 40, rr, 0, 7);
+      g.fill();
+    });
+  }
+  return t;
+}
+const skyTile  = makeTile(235);   // periwinkle clouds
+const mistTile = makeTile(270);   // violet mist
+
+const sky  = ctx.createPattern(skyTile,  "repeat");
+const mist = ctx.createPattern(mistTile, "repeat");
+
+function scrollLayer(pattern, speed, t) {
+  const offset = (t * speed) % 80;      // ← the UV slide
+  ctx.save();
+  ctx.translate(-offset, 0);            // move the reading position…
+  ctx.fillStyle = pattern;
+  ctx.fillRect(0, 0, W + 80, H);        // …draw one tile extra
+  ctx.restore();
+}
+
+onFrame((dt, t) => {
+  ctx.clearRect(0, 0, W, H);
+  scrollLayer(sky,  12, t);   // slow = far
+  scrollLayer(mist, 40, t);   // fast = near
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The <code>% 80</code> is the secret: after one tile-width, the offset resets and no one can tell. That's the whole "infinite."</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> speeds 12/40 → 40/12 (near becomes far) · vertical scrolling: <code>translate(0, -offset)</code> and <code>fillRect(0, 0, W, H + 80)</code> · hues 235/270 → 10/30 for drifting embers-sky.</div>
+<p class="hint"><b>In Godot:</b> a one-line shader — <code>UV += vec2(TIME * 0.03, 0.0);</code> (import the texture with <em>Repeat</em> on; see the <code>scroll_uv</code> scene + shader in the repo). <b>In Unity:</b> <code>material.mainTextureOffset += new Vector2(speed * Time.deltaTime, 0);</code>. <b>In Unreal:</b> the material <em>Panner</em> node exists precisely for this. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

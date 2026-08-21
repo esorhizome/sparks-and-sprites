@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sprite basics · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/02-images-on-screen.md">chapter 02</a></p>
+<h1>Sprite basics — load, attach, place</h1>
+<p class="lesson">This demo even <em>generates</em> its image from code (two loops, one colour decision per pixel), so you can see there's no magic hiding in an asset file. Then it places that image several times with different position, scale, and alpha (transparency).</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">// STEP 0 — generate a tiny "creature" image in code
+// (normally you'd load a PNG; this proves images are just pixels)
+const size = 16;
+const art = document.createElement("canvas");
+art.width = size; art.height = size;
+const a = art.getContext("2d");
+for (let y = 0; y < size; y++) {
+  for (let x = 0; x < size; x++) {
+    const inBody = Math.hypot(x - 8, y - 9) < 6;   // round body
+    const inEye  = (x === 6 || x === 10) && y === 8;
+    if (inEye)      { a.fillStyle = "#2B2440"; }
+    else if (inBody){ a.fillStyle = "#5A63C8"; }
+    else continue;                                  // transparent pixel
+    a.fillRect(x, y, 1, 1);
+  }
+}
+
+// STEP 1..3 — load is done (art), now attach+place by drawing
+ctx.imageSmoothingEnabled = false;   // keep pixels crisp
+
+// place it — (image, x, y, width, height)
+ctx.drawImage(art, 40, 60, 64, 64);
+
+// same image, bigger
+ctx.drawImage(art, 150, 40, 128, 128);
+
+// same image, half-transparent (alpha = 0.4)
+ctx.globalAlpha = 0.4;
+ctx.drawImage(art, 320, 90, 96, 96);
+ctx.globalAlpha = 1.0;
+
+// a little crowd — placement is just numbers in a loop
+for (let i = 0; i < 5; i++) {
+  ctx.drawImage(art, 60 + i * 55, 220 + Math.sin(i) * 18, 40, 40);
+}</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The same 16×16 image, placed four ways. "Moving a sprite" = changing those x, y numbers. That's the whole secret.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> the eye positions (lines with <code>inEye</code>) · the body colour · the crowd loop count from 5 to 12 · the <code>Math.sin(i) * 18</code> wobble to 50. Every change is one number, and Reset always brings the original back.</div>
+<p class="hint"><b>In Godot:</b> this is <code>Sprite2D.new()</code> + <code>add_child()</code> (see the <code>sprite_basics</code> scene in the repo's Godot project). <b>In Unity:</b> <code>AddComponent&lt;SpriteRenderer&gt;()</code> + <code>transform.position</code>. <b>In Unreal:</b> a UMG Image widget or PaperSprite. Same recipe, different accents — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/02-images-on-screen.md">chapter 02 shows all four</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

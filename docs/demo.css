@@ -1,0 +1,61 @@
+/* Sparks & Sprites — shared demo styles */
+:root{
+  --paper:#F6F5FB; --panel:#FDFCFF; --panel2:#EEEDF7; --ink:#2B2440; --soft:#5A5372;
+  --accent:#5A63C8; --accent-soft:#DDE0F6; --line:#D8D5E8; --code:#F0EFF8;
+  --good:#5F7A5F; --warn:#9A6B3F;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#191527; --panel:#211C33; --panel2:#2A2440; --ink:#E6E3F2; --soft:#A9A3C4;
+    --accent:#9BA3F0; --accent-soft:#332E52; --line:#3A3355; --code:#232038;
+    --good:#9DBE9D; --warn:#D6A878;
+  }
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif;
+  font-size:17px; line-height:1.6;
+}
+.wrap{max-width:980px; margin:0 auto; padding:1.5rem 1.2rem 4rem}
+h1{font-size:1.7rem; margin:.4rem 0 .2rem}
+h1 a{color:inherit; text-decoration:none}
+.crumb{font-size:.8rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin:0}
+.crumb a{color:var(--accent)}
+p{max-width:70ch}
+a{color:var(--accent)}
+.lesson{color:var(--soft); font-size:.95rem}
+.demo-grid{display:grid; gap:1rem; grid-template-columns:1fr; margin-top:1rem}
+@media(min-width:820px){.demo-grid{grid-template-columns:1fr 1fr; align-items:start}}
+textarea{
+  width:100%; min-height:340px; resize:vertical;
+  font-family:"Spline Sans Mono",Consolas,monospace; font-size:.8rem; line-height:1.5;
+  color:var(--ink); background:var(--code); border:1px solid var(--line); border-radius:6px;
+  padding:.8rem; tab-size:2;
+}
+canvas{
+  width:100%; height:340px; display:block;
+  background:var(--panel2); border:1px solid var(--line); border-radius:6px;
+}
+.row{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:.6rem 0}
+button{
+  font:inherit; font-size:.9rem; cursor:pointer;
+  background:var(--panel2); color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:.4em 1em;
+}
+button.primary{background:var(--accent-soft); border-color:var(--accent); color:var(--accent); font-weight:700}
+button:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.hint{font-size:.85rem; color:var(--soft)}
+.err{color:var(--warn); font-family:Consolas,monospace; font-size:.82rem; white-space:pre-wrap}
+.tweaks{background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.8rem 1rem; margin-top:1rem; font-size:.93rem}
+.tweaks b{color:var(--good)}
+
+/* index gallery */
+.cards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); margin-top:1.4rem}
+.card{
+  display:block; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:.9rem 1rem; text-decoration:none; color:var(--ink);
+}
+.card:hover{border-color:var(--accent)}
+.card b{color:var(--accent)}
+.card span{display:block; font-size:.85rem; color:var(--soft); margin-top:.2rem}
