@@ -4,7 +4,7 @@
 
 Checked against **Godot 4.7 · Unity 6.3 LTS · Unreal 5.8 · the web (2026)**. The ideas are stable across versions; only menu names drift.
 
----
+*Generated from [this prompt](PROMPT.md), with formatting cleaned up.*
 
 ## Three promises
 
