@@ -61,8 +61,8 @@ One-page quick references for the days you just need the answer:
 
 ## Licensing of this repo
 
-- Code (demos, snippets): **MIT** — see [LICENSE](LICENSE).
-- Prose (chapters, cheatsheets): **CC-BY 4.0** — reuse freely with credit.
+- Prose (chapters, cheatsheets): **CC-BY 4.0** — reuse freely with credit; full legal text in [LICENSE](LICENSE).
+- Code (demos, snippets): **MIT** — see [LICENSE-CODE](LICENSE-CODE).
 
 ## Running the Godot demos
 
