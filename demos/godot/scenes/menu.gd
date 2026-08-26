@@ -1,5 +1,5 @@
 extends Node2D
-## The demo menu. Press a number key to open a demo; Esc returns here.
+## The demo menu. Click a demo to open it, or press its key; Esc returns here.
 ## Like every scene in this project, the UI is built from code in _ready()
 ## so there is nothing hidden in the editor — the script is the whole story.
 
@@ -13,20 +13,39 @@ const DEMOS := [
 	["7", "Additive glow — light that adds up", "res://scenes/glow.tscn"],
 	["8", "Dissolve — the noise-threshold shader", "res://scenes/dissolve.tscn"],
 	["9", "Sound blips — synthesized from nothing", "res://scenes/sound_blips.tscn"],
+	["0", "Trails — a trail is short-term memory, drawn", "res://scenes/trails.tscn"],
+	["Q", "Fragmented trails — a comet of pieces", "res://scenes/trails_fragments.tscn"],
+	["W", "Waterdrops — fall, splash, ripple", "res://scenes/waterdrops.tscn"],
+	["E", "Halo — an additive ring with a ±3% breath", "res://scenes/halo.tscn"],
+	["R", "Chrome & liquid metal — a mirror with opinions", "res://scenes/metal_chrome.tscn"],
+	["T", "Living buttons — plasma underlay + tap impulse", "res://scenes/glow_buttons.tscn"],
+	["Y", "Responsive cursor — chase, shed, pop", "res://scenes/cursor_sparkle.tscn"],
+	["U", "Starfield & ambience — sparks at 1/10 speed", "res://scenes/starfield.tscn"],
+	["I", "Screen shake — trauma², smooth noise, fast calm", "res://scenes/shake.tscn"],
+	["O", "Planet (3D) — a noise-displaced world", "res://scenes/planet_3d.tscn"],
+	["P", "Orbit & glow (3D) — drag-to-orbit + bloom", "res://scenes/orbit_glow_3d.tscn"],
+	["A", "Elemental buttons — 14 of the web page's 104", "res://scenes/elemental_buttons.tscn"],
 ]
 
 func _ready() -> void:
-	var label := Label.new()
-	label.text = "SPARKS & SPRITES — Godot demos\n\n"
-	for d in DEMOS:
-		label.text += "  [%s]  %s\n" % [d[0], d[1]]
-	label.text += "\n  Esc returns to this menu from any demo."
-	label.text += "\n  Each demo builds its whole scene in _ready() — open the script and read it."
-	label.position = Vector2(60, 60)
-	add_child(label)
+	var title := Label.new()
+	title.text = "SPARKS & SPRITES — Godot demos\nClick a demo (or press its key).  Esc returns here.  Each scene builds itself in _ready() — open the script and read it."
+	title.position = Vector2(40, 24)
+	add_child(title)
+	# two columns of real, clickable buttons
+	var half := int(ceil(DEMOS.size() / 2.0))
+	for i in DEMOS.size():
+		var d: Array = DEMOS[i]
+		var btn := Button.new()
+		btn.text = "[%s]  %s" % [d[0], d[1]]
+		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		btn.position = Vector2(40 + floorf(i / float(half)) * 450.0, 90 + (i % half) * 38.0)
+		btn.size = Vector2(430, 32)
+		btn.pressed.connect(func(): get_tree().change_scene_to_file(d[2]))
+		add_child(btn)
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed:
 		for d in DEMOS:
-			if event.keycode == KEY_0 + int(d[0]):
+			if event.keycode == OS.find_keycode_from_string(d[0]):
 				get_tree().change_scene_to_file(d[2])

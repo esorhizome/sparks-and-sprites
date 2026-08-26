@@ -63,7 +63,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> rim width 0.06 → 0.2 (wide molten edge) · rim colour to white-hot <code>"#FFFFFF"</code> · the noise frequencies (0.35/0.3) → 1.5 for a fizzy, TV-static dissolve · <code>t * 0.6</code> → <code>t * 3</code> for a snappy teleport.</div>
-<p class="hint"><b>In Godot:</b> the 3-line shader version lives in the repo (<code>demos/godot/shaders/dissolve.gdshader</code>) with a demo scene. <b>In Unity:</b> Shader Graph — noise texture → Step vs a slider → Alpha Clip; four nodes, then animate the slider from code. <b>In Unreal:</b> the identical graph in the Material editor with a Timeline driving the scalar. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">Chapter 03</a>.</p>
+<p class="hint"><b>In Godot:</b> the 3-line shader version — download <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/shaders/dissolve.gdshader"><code>dissolve.gdshader</code></a> and its scene <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/dissolve.gd"><code>dissolve.gd</code></a> from the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a>. <b>In Unity:</b> Shader Graph — noise texture → Step vs a slider → Alpha Clip; four nodes, then animate the slider from code. <b>In Unreal:</b> the identical graph in the Material editor with a Timeline driving the scalar. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">Chapter 03</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>

@@ -67,7 +67,7 @@ onFrame(() => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> set all three factors to 0.5 — depth vanishes instantly (the best proof of why it worked) · swap the factors (far 0.9, near 0.2) for an unsettling "wrong world" · add a fourth layer.</div>
-<p class="hint"><b>In Godot:</b> the <code>parallax</code> scene uses <code>Parallax2D</code> nodes with <code>scroll_scale</code> = these exact factors. <b>In Unity:</b> the three multiplications go in <code>LateUpdate()</code>, one per layer transform. <b>In Unreal (2D):</b> same arithmetic driven by the camera position. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
+<p class="hint"><b>In Godot:</b> <code>Parallax2D</code> nodes with <code>scroll_scale</code> = these exact factors — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/parallax.gd">download <code>parallax.gd</code></a> from the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a>. <b>In Unity:</b> the three multiplications go in <code>LateUpdate()</code>, one per layer transform. <b>In Unreal (2D):</b> same arithmetic driven by the camera position. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>

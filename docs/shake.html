@@ -68,7 +68,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> remove the square (<code>const shake = trauma;</code>) — feel how small hits get too loud · <code>MAX_OFFSET</code> 14 → 40 (then please come back down) · <code>DECAY</code> 1.4 → 0.3 for a long aftershock. <b>Accessibility stance:</b> keep amplitude modest, keep frequency low, and ship a "reduce shake" toggle — calm defaults cost nothing.</div>
-<p class="hint"><b>In Godot:</b> apply dx/dy to <code>Camera2D.offset</code>, driving noise from <code>FastNoiseLite</code>. <b>In Unity:</b> same recipe on the camera transform in <code>LateUpdate()</code> (or Cinemachine's impulse system, which implements exactly this). <b>In Unreal:</b> a <code>CameraShakeBase</code> class — its oscillation fields are these numbers with different names. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+<p class="hint"><b>In Godot:</b> apply dx/dy to <code>Camera2D.offset</code>, driving noise from <code>FastNoiseLite</code> — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/shake.gd">download <code>shake.gd</code></a>, trauma² and all. <b>In Unity:</b> same recipe on the camera transform in <code>LateUpdate()</code> (or Cinemachine's impulse system, which implements exactly this). <b>In Unreal:</b> a <code>CameraShakeBase</code> class — its oscillation fields are these numbers with different names. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>

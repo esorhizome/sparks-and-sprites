@@ -24,7 +24,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 
 - **Web + Godot get direct, runnable demos.**
   - Web: open any page in **[the live demo gallery](https://esorhizome.github.io/sparks-and-sprites/)** — each one shows editable code next to its visual result. Change a number, press *Run*, watch it change. No installs, no build step.
-  - Godot: open [`demos/godot/`](demos/godot/) as a Godot 4.x project. Every demo builds its whole scene *from code* in `_ready()`, so the script **is** the demo — heavily commented, tweak and re-run.
+  - Godot: open [`demos/godot/`](demos/godot/) as a Godot 4.x project. **Every web demo has a Godot twin** — each builds its whole scene *from code* in `_ready()`, so the script **is** the demo — heavily commented, tweak and re-run. Each gallery page also links its `.gd` file directly, so you can download one demo without cloning anything.
 - **Unity + Unreal get explained code**, not bundled projects (bundling both would bloat the book past usefulness). Each chapter shows the equivalent Unity/Unreal code or editor recipe, explains *why* it produces the same result, and ends with "try it yourself and tweak." The concepts transfer one-to-one; only the syntax changes accent.
 
 ## The chapters
@@ -68,4 +68,4 @@ One-page quick references for the days you just need the answer:
 
 1. Install [Godot 4.x](https://godotengine.org/) (free, ~100 MB, no account needed).
 2. Open Godot → *Import* → choose `demos/godot/project.godot`.
-3. Press **F5**. A menu scene lists every demo; press the number keys to switch.
+3. Press **F5**. A menu scene lists every demo — click one (or press its key); **Esc** returns to the menu.

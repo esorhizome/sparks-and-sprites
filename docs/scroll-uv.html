@@ -67,7 +67,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> speeds 12/40 → 40/12 (near becomes far) · vertical scrolling: <code>translate(0, -offset)</code> and <code>fillRect(0, 0, W, H + 80)</code> · hues 235/270 → 10/30 for drifting embers-sky.</div>
-<p class="hint"><b>In Godot:</b> a one-line shader — <code>UV += vec2(TIME * 0.03, 0.0);</code> (import the texture with <em>Repeat</em> on; see the <code>scroll_uv</code> scene + shader in the repo). <b>In Unity:</b> <code>material.mainTextureOffset += new Vector2(speed * Time.deltaTime, 0);</code>. <b>In Unreal:</b> the material <em>Panner</em> node exists precisely for this. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
+<p class="hint"><b>In Godot:</b> a one-line shader — <code>UV += vec2(TIME * 0.03, 0.0);</code> (import the texture with <em>Repeat</em> on; download <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/scroll_uv.gd"><code>scroll_uv.gd</code></a> + <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/shaders/scroll_uv.gdshader">its shader</a>). <b>In Unity:</b> <code>material.mainTextureOffset += new Vector2(speed * Time.deltaTime, 0);</code>. <b>In Unreal:</b> the material <em>Panner</em> node exists precisely for this. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/04-backgrounds.md">Chapter 04</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>
