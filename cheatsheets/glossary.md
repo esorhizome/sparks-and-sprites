@@ -18,9 +18,14 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Sprite sheet / atlas | Many frames packed into one texture ("flipbook" in Unreal) |
 | UV coordinates | Position *within* a texture, (0,0)–(1,1) |
 | Noise | Smooth organic randomness — static blurred into rolling hills |
+| Environment map | An image of the surroundings that reflective surfaces look reflections up from |
+| Matcap | "Material capture" — shading read from a pre-made image by surface direction |
+| Metaball | Blobby shapes that merge where their soft fields overlap past a threshold |
 | Draw call | One "draw this batch now" instruction to the GPU; fewer = faster |
 | Z-order / layers | Who draws on top of whom |
 | Seed | Random generator's start number; same seed = same sequence forever |
 | Pitch | How high/low a sound is; 2× speed ≈ one octave up |
 | Bus / mixer | Named audio channel grouping sounds ("SFX", "Music") for shared volume |
 | Spring | A value pulled toward a target with momentum; stiffness + damping = personality |
+| Pointer events | The web's unified mouse + pen + finger input events |
+| Hotspot | The one pixel of a cursor image that actually points |

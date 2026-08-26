@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waterdrops · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Waterdrops — fall, splash, ripple</h1>
+<p class="lesson">Rain is the sparks recipe pointed downward — plus one extra idea: <b>a particle's death is an event you can use.</b> When a drop lands, it spawns two children: a burst of tiny splash droplets, and an expanding, fading ripple ring. Three effects, one hand-off.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let RATE = 10;            // drops per second
+const GRAVITY = 700;
+const FLOOR = H * 0.78;   // the water surface
+let drops = [], splash = [], rings = [];
+let due = 0;
+
+onFrame((dt, t) => {
+  ctx.clearRect(0, 0, W, H);
+  // the water surface
+  ctx.strokeStyle = "rgba(120,150,220,0.5)";
+  ctx.beginPath(); ctx.moveTo(0, FLOOR); ctx.lineTo(W, FLOOR); ctx.stroke();
+
+  // spawn new drops on a timer
+  due += dt * RATE;
+  while (due > 1) {
+    due -= 1;
+    drops.push({ x: rand(15, W - 15), y: -10, vy: rand(60, 160) });
+  }
+
+  // drops: fall, and on landing hand off to splash + ring
+  for (const d of drops) {
+    d.vy += GRAVITY * dt;
+    d.y += d.vy * dt;
+    if (d.y >= FLOOR) {
+      d.dead = true;
+      rings.push({ x: d.x, r: 2, a: 0.9 });
+      for (let i = 0; i < 5; i++) {
+        splash.push({ x: d.x, y: FLOOR, vx: rand(-70, 70),
+                      vy: rand(-170, -50), life: rand(0.2, 0.5), max: 0.5 });
+      }
+      continue;   // it has become splash + ring now
+    }
+    // a falling drop reads best as a short streak, not a dot
+    ctx.strokeStyle = "rgba(170,200,255,0.9)";
+    ctx.beginPath(); ctx.moveTo(d.x, d.y - 7); ctx.lineTo(d.x, d.y); ctx.stroke();
+  }
+
+  // splash droplets: sparks physics, tiny and brief
+  for (const p of splash) {
+    p.vy += GRAVITY * dt;
+    p.x += p.vx * dt;  p.y += p.vy * dt;  p.life -= dt;
+    ctx.globalAlpha = Math.max(0, p.life / p.max);
+    ctx.fillStyle = "#BFD4FF";
+    ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, 7); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // ripple rings: an ellipse growing while its alpha tweens down
+  for (const g of rings) {
+    g.r += 65 * dt;
+    g.a -= 1.1 * dt;
+    if (g.a <= 0) continue;
+    ctx.strokeStyle = "rgba(150,190,255," + g.a + ")";
+    ctx.beginPath();
+    ctx.ellipse(g.x, FLOOR, g.r, g.r * 0.3, 0, 0, 7);  // squashed = perspective
+    ctx.stroke();
+  }
+
+  // housekeeping: forget the finished ones
+  drops = drops.filter(d => !d.dead);
+  splash = splash.filter(p => p.life > 0);
+  rings = rings.filter(g => g.a > 0);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The ripple is two lines — a radius growing while an alpha shrinks — and it carries most of the "water" feeling. The squashed ellipse fakes perspective for free.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> <code>RATE</code> 10 → 1 (a cave drip — suddenly the <em>wait</em> is the effect) → 40 (a storm) · ring growth 65 → 200 (energetic plops) · splash count 5 → 20 · give drops sideways wind: <code>d.x += 40 * dt</code> in the fall step.</div>
+<p class="hint"><b>In Godot:</b> a downward <code>CPUParticles2D</code>, and connect a signal (or poll positions) to spawn a ripple scene on landing. <b>In Unity:</b> Particle System with Sub Emitters — the "on death, spawn these" checkbox is exactly this hand-off. <b>In Unreal:</b> Niagara event handlers (collision/death events spawning a second emitter). <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

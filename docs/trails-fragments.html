@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fragmented trails · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Fragmented trails — a comet made of pieces</h1>
+<p class="lesson">The <a href="trails.html">first trails demo</a> smears the whole canvas. This one is the other family: the moving thing <b>drops individual fragments behind it</b>, and each fragment lives its own tiny life. Change what a fragment <em>is</em> — fire, star, waterdrop, sparkle — and the same trail becomes a different spell. <b>Move your pointer over the canvas</b> to steer the comet yourself.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let STYLE = "fire";   // ← try "stars", "drops", "sparkle"
+
+let parts = [];
+let mouse = null;
+canvas.onpointermove = (e) => {
+  const r = canvas.getBoundingClientRect();
+  mouse = { x: e.clientX - r.left, y: e.clientY - r.top };
+};
+canvas.onpointerleave = () => { mouse = null; };
+
+let ex = W / 2, ey = H / 2;      // the comet head
+
+// one fragment is born — what it IS depends on the style
+function spawn(x, y) {
+  if (STYLE == "fire")
+    parts.push({ x, y, vx: rand(-20, 20), vy: rand(-70, -20),
+                 life: rand(0.4, 0.9), max: 0.9, size: rand(4, 9) });
+  if (STYLE == "stars")
+    parts.push({ x, y, vx: rand(-12, 12), vy: rand(-12, 12),
+                 life: rand(0.8, 1.6), max: 1.6, size: rand(3, 6), tw: rand(0, 7) });
+  if (STYLE == "drops")
+    parts.push({ x, y, vx: rand(-15, 15), vy: rand(0, 30),
+                 life: rand(0.5, 1.1), max: 1.1, size: 2 });
+  if (STYLE == "sparkle")
+    parts.push({ x, y, vx: rand(-40, 40), vy: rand(-40, 40),
+                 life: rand(0.2, 0.6), max: 0.6, size: rand(1.5, 3), tw: rand(0, 7) });
+}
+
+onFrame((dt, t) => {
+  ctx.fillStyle = "#14111F";
+  ctx.fillRect(0, 0, W, H);
+
+  // the head wanders on its own — or eases toward your pointer
+  const tx = mouse ? mouse.x : W / 2 + Math.cos(t * 1.3) * W * 0.30;
+  const ty = mouse ? mouse.y : H / 2 + Math.sin(t * 2.1) * H * 0.28;
+  ex += (tx - ex) * Math.min(1, dt * 8);
+  ey += (ty - ey) * Math.min(1, dt * 8);
+  for (let i = 0; i < 3; i++) spawn(ex + rand(-3, 3), ey + rand(-3, 3));
+
+  ctx.globalCompositeOperation = STYLE == "drops" ? "source-over" : "lighter";
+  for (const p of parts) {
+    p.x += p.vx * dt;  p.y += p.vy * dt;  p.life -= dt;
+    if (STYLE == "drops") p.vy += 500 * dt;      // only water falls
+    const u = Math.max(0, p.life / p.max);       // 1 newborn … 0 gone
+    let alpha = u;
+    if (p.tw !== undefined)                      // twinkle, out of sync
+      alpha = u * (0.5 + 0.5 * Math.sin(t * 12 + p.tw));
+    ctx.globalAlpha = alpha;
+    if (STYLE == "fire") {
+      ctx.fillStyle = u > 0.6 ? "#FFE9A8" : (u > 0.3 ? "#FF9E4A" : "#B5432E");
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * u, 0, 7); ctx.fill();
+    }
+    if (STYLE == "stars") {                      // a 4-point cross
+      ctx.strokeStyle = "#CFE0FF"; ctx.lineWidth = 1.5;
+      const s = p.size * u;
+      ctx.beginPath();
+      ctx.moveTo(p.x - s, p.y); ctx.lineTo(p.x + s, p.y);
+      ctx.moveTo(p.x, p.y - s); ctx.lineTo(p.x, p.y + s);
+      ctx.stroke();
+    }
+    if (STYLE == "drops") {
+      ctx.fillStyle = "#9CC1F7";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, 7); ctx.fill();
+    }
+    if (STYLE == "sparkle") {
+      ctx.fillStyle = Math.random() < 0.5 ? "#FFFFFF" : "#FFD9F0";
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.size * u, 0, 7); ctx.fill();
+    }
+  }
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  parts = parts.filter(p => p.life > 0);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Notice what stayed identical across all four styles: born at the head, drift, fade, die. Only the fragment's costume changed. This is also the whole mechanism of "cursor trail" effects — the head is simply your pointer.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> <code>STYLE</code> — all four · fragments per frame 3 → 12 (opulent) → 1 (understated) · mix two styles by calling <code>spawn</code> twice with different <code>STYLE</code> values temporarily set · fire's <code>vy</code> range to <code>rand(20, 70)</code>: falling embers.</div>
+<p class="hint"><b>In Godot:</b> a <code>CPUParticles2D</code> attached to the moving node (or fed the mouse position), one emitter per fragment style. <b>In Unity:</b> a Particle System with <em>Rate over Distance</em> emission — fragments appear only while moving, which feels wonderful. <b>In Unreal:</b> a Niagara emitter using spawn-per-unit. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a> deploys this as a cursor trail.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

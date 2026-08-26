@@ -4,7 +4,7 @@
 
 ---
 
-Everything here is legitimate to use — but licenses differ in what they ask of you.
+Everything here is legitimate to use — but licenses differ in what they ask of you. (Every link in this chapter was last checked on **26 August 2026**, UTC+7.)
 
 ## The 60-second license glossary
 

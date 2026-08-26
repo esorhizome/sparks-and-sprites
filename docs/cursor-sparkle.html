@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Responsive cursor · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a></p>
+<h1>Responsive cursor — a companion, not an arrow</h1>
+<p class="lesson">The recipe for a custom cursor has three organs: <b>hide the real cursor and draw a replacement</b> (here, a soft circle that follows with a tiny lag — the lag alone makes it feel alive), <b>let movement shed sparkles</b>, and <b>make presses an event</b> — the circle flinches, then pops into an ember burst and an expanding ring. Press Run, then <b>move over the canvas and click</b>.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">canvas.style.cursor = "none";     // we bring our own
+let px = W / 2, py = H / 2;       // where the pointer really is
+let cx = px, cy = py;             // where the soft circle is (it lags — on purpose)
+let squish = 1;                   // 1 = round; dips when pressed
+let parts = [], rings = [];
+
+canvas.onpointermove = (e) => {
+  const r = canvas.getBoundingClientRect();
+  px = e.clientX - r.left;  py = e.clientY - r.top;
+};
+canvas.onpointerdown = () => {
+  squish = 0.45;                             // flinch…
+  rings.push({ x: cx, y: cy, r: 10, a: 0.9 });   // …ring…
+  for (let i = 0; i < 26; i++) {             // …and ember burst
+    const a = rand(0, 7), sp = rand(40, 200);
+    parts.push({ x: cx, y: cy, vx: Math.cos(a) * sp,
+                 vy: Math.sin(a) * sp - 40,
+                 life: rand(0.3, 0.7), max: 0.7, ember: true });
+  }
+};
+
+onFrame((dt, t) => {
+  ctx.fillStyle = "#14111F";  ctx.fillRect(0, 0, W, H);
+
+  // the circle chases the pointer — the lag is the personality
+  const moved = Math.hypot(px - cx, py - cy);
+  cx += (px - cx) * Math.min(1, dt * 12);
+  cy += (py - cy) * Math.min(1, dt * 12);
+  squish += (1 - squish) * Math.min(1, dt * 10);   // spring back to round
+
+  // moving fast sheds a sparkle or two
+  if (moved > 3) parts.push({
+    x: cx + rand(-6, 6), y: cy + rand(-6, 6), vx: rand(-15, 15),
+    vy: rand(-15, 15), life: rand(0.3, 0.8), max: 0.8, ember: false });
+
+  ctx.globalCompositeOperation = "lighter";
+
+  // sparkles + embers (same life rules, different costumes)
+  for (const p of parts) {
+    p.x += p.vx * dt;  p.y += p.vy * dt;  p.life -= dt;
+    const u = Math.max(0, p.life / p.max);
+    ctx.globalAlpha = u;
+    ctx.fillStyle = p.ember
+      ? (u > 0.5 ? "#FFD9A0" : "#E8734A")     // burst: gold cooling to ember
+      : "#FFFFFF";                            // trail: tiny white sparkles
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, (p.ember ? 2.6 : 1.6) * u + 0.4, 0, 7);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // pop rings from presses
+  for (const g of rings) {
+    g.r += 160 * dt;  g.a -= 2.2 * dt;
+    if (g.a <= 0) continue;
+    ctx.strokeStyle = "rgba(255,205,150," + g.a + ")";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();  ctx.arc(g.x, g.y, g.r, 0, 7);  ctx.stroke();
+  }
+
+  // the cursor itself: a soft breathing circle (squishes on press)
+  const breathe = 1 + 0.05 * Math.sin(t * 2.4);
+  const rx = 13 * breathe / Math.sqrt(squish);
+  const ry = 13 * breathe * Math.sqrt(squish);
+  const soft = ctx.createRadialGradient(cx, cy, 1, cx, cy, rx * 1.9);
+  soft.addColorStop(0, "rgba(201,194,255,0.75)");
+  soft.addColorStop(1, "rgba(201,194,255,0)");
+  ctx.fillStyle = soft;
+  ctx.beginPath();  ctx.arc(cx, cy, rx * 1.9, 0, 7);  ctx.fill();
+  ctx.strokeStyle = "rgba(230,226,255,0.9)";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();  ctx.ellipse(cx, cy, rx, ry, 0, 0, 7);  ctx.stroke();
+
+  // two tiny satellites orbiting the circle
+  for (let k = 0; k < 2; k++) {
+    const a = t * 1.6 + k * Math.PI;
+    ctx.fillStyle = "rgba(255,255,255,0.9)";
+    ctx.beginPath();
+    ctx.arc(cx + Math.cos(a) * rx * 1.5, cy + Math.sin(a) * ry * 1.5, 1.4, 0, 7);
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = "source-over";
+  parts = parts.filter(p => p.life > 0);
+  rings = rings.filter(g => g.a > 0);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">On a touch screen there is no resting cursor at all — the circle simply appears under your finger, and the press-pop becomes the whole show. Same code, both worlds, thanks to pointer events.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> the chase speed <code>dt * 12</code> → <code>dt * 4</code> (dreamy) → <code>dt * 40</code> (eager) · <code>squish = 0.45</code> → <code>0.15</code> (dramatic flinch) · burst count 26 → 80 · ring speed 160 → 420 (real pop) · sparkle threshold <code>moved > 3</code> → <code>0</code> (sheds constantly).</div>
+<p class="hint"><b>Web (DOM):</b> <code>cursor: none</code> plus a <code>position: fixed</code> element following <code>pointermove</code> — and only where a replacement is drawn; never hide the cursor and offer nothing back. <b>In Godot:</b> <code>Input.set_custom_mouse_cursor()</code> for a static image, or hide the mouse and move a sprite + particle emitter to the mouse position for a living one. <b>In Unity:</b> <code>Cursor.SetCursor()</code> / <code>Cursor.visible = false</code> + a UI element tracking the pointer. <b>In Unreal:</b> <code>SetMouseCursorWidget()</code> — a full animated UMG widget as the cursor. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">Chapter 12</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>
