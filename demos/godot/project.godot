@@ -2,12 +2,14 @@
 ; Open this file with Godot 4.7+ (Import button on the project manager), press F5.
 ; Every demo scene builds itself from code in _ready(), so each script IS the demo.
 ;
-; Capability note: every one of the web gallery's demos has a full Godot twin
-; here — including all 104 elemental buttons (scenes/elements/, paged by family
-; in the elemental_buttons scene). Where the web canvas and Godot spell an
-; effect differently (gradients, additive blending, clipping, trails), the
-; scripts note the translation in place; none of it is beyond _draw() + math.
-; See README.md in this folder for the details and the headless health checks.
+; (Heads-up: the Godot editor rewrites this file and drops these comments
+;  whenever it saves settings — README.md in this folder is the durable home.)
+;
+; Capability note: every web-gallery demo has a full Godot twin here, including
+; all 104 elemental buttons (scenes/elements/) and all 104 cube-codex character
+; effects (scenes/cubefx/). Where the web canvas and Godot spell an effect
+; differently (gradients, additive blending, clipping, trails), the scripts note
+; the translation in place; none of it is beyond _draw() + math.
 
 config_version=5
 

@@ -106,6 +106,12 @@ A continuous, low-rate particle emitter (2–8 per second), long lifetimes, tiny
 
 ▶ *See it:* [starfield/ambience demo](https://esorhizome.github.io/sparks-and-sprites/starfield.html)
 
+## The cube codex — every recipe, worn by a character
+
+Everything on this page becomes twice as legible when it's attached to somebody. The **[cube codex](https://esorhizome.github.io/sparks-and-sprites/cube-vfx.html)** is 104 of this chapter's recipes worn by one protagonist — a cube with eyes, pacing a little fighting-game stage: firebursts and waterhoses, bolts called from the sky, a halo that follows a beat behind, dash afterimages, hit sparks, capes, butterflies. Fourteen families (decorations, neutral energy, fighting elements), each effect an idle loop plus a press reaction, ~25–40 editable lines. All 104 are also ported to GDScript in the repo's Godot project ([`demos/godot/scenes/cubefx/`](../demos/godot/scenes/cubefx/), one file per family, paged in the `cube_vfx` scene), with Unity 2D + 3D scripts (`CubeVfx2D.cs`, `CubeVfx3D.cs`) and an Unreal actor + recipe map (`SSCubeVfx`, `recipes/cube-vfx.md`) in the engine folders.
+
+▶ *See it:* [the cube codex](https://esorhizome.github.io/sparks-and-sprites/cube-vfx.html) — press *Run all*, or wake one card at a time.
+
 ## Effekseer — author once, use in three engines
 
 [Effekseer](https://effekseer.github.io/en/) is a free, open-source (MIT) visual-effects editor with official runtime plugins for Godot, Unity, and Unreal. Design a flame or slash once, export, play it in any of them — and its sample library is excellent dissection material.
