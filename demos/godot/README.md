@@ -70,12 +70,41 @@ protagonist — its patrol, shadow, lean, and eyes — and every effect draws
 behind it, calls `draw_cube`, then draws in front: the sandwich is the
 whole layering system, exactly as on the web page.
 
+## The rhymes — 208 more effects, one right-click away
+
+Every button in the bestiary and every card in the codex hides a **rhyme**:
+a secondary offshoot of the original with **two or three dials turned** —
+a palette warmed or frozen, a speed halved, a gravity flipped, a count
+doubled. **Right-click any card** to swap original ⇄ rhyme (right-click
+again to swap back); the caption turns green and names the moved dials.
+
+The point is pedagogical. Each family file `scenes/elements/<family>.gd`
+(or `scenes/cubefx/<family>.gd`) has a sibling `<family>_r.gd` that:
+
+1. preloads the original as `const Base := preload(...)`;
+2. declares `const RHYMES := { id: { name, hint } }` for its family;
+3. overrides **only the branches whose dials moved** — every other
+   `init/tick/press/draw` path falls through to `Base` via the `match`'s
+   `_:` arm.
+
+So `fire.gd` vs `fire_r.gd` is a readable diff of exactly what changed:
+Candleflame becomes *Ghost candles* by moving the hue and halving the
+flicker; Meteor becomes *Rising lanterns* by flipping one direction sign
+and dividing a speed by three. A foundational understanding, tweaked ever
+so slightly, gives you a similar-yet-different effect — that's the whole
+lesson, and the file layout makes it diffable.
+
+The same 104+104 rhymes exist on the web pages
+([elemental-buttons](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html),
+[cube-vfx](https://esorhizome.github.io/sparks-and-sprites/cube-vfx.html)) —
+there the toggle is the "⇄ its rhyme" link on each card.
+
 ## Health checks
 
 None of these is a demo — they're how the project verifies itself:
 
 ```
 godot --headless --path . -s res://smoke_test.gd     # every scene + injected input
-godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons: init/tick/press/draw
-godot --headless --path . -s res://codex_test.gd     # all 104 cube effects, same regimen
+godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 104 rhymes: init/tick/press/draw
+godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
 ```

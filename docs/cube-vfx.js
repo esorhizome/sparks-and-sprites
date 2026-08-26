@@ -32,6 +32,22 @@ function def(name, tag, hint, make) {
   EFFECTS.push({ name: name, tag: tag, hint: hint, make: make });
 }
 
+/* A RHYME is the same effect with two or three dials turned — a palette, a
+   speed, a direction — proof that understanding one recipe buys you a whole
+   neighbourhood of others. Each card's ⇄ button swaps original and rhyme;
+   the rhyme's hint names exactly which dials moved. */
+function rhymeOf(orig, name, hint, make) {
+  for (var i = 0; i < EFFECTS.length; i++)
+    if (EFFECTS[i].name === orig) {
+      EFFECTS[i].rhyme = { name: name, hint: hint, make: make };
+      return;
+    }
+}
+
+function variantOf(st) {
+  return (st.useRhyme && st.effect.rhyme) ? st.effect.rhyme : st.effect;
+}
+
 function apiFor(canvas) {
   var dpr = window.devicePixelRatio || 1;
   var W = canvas.clientWidth, H = canvas.clientHeight;
@@ -3509,6 +3525,3431 @@ def("Stage rain", "decor", "rain over everything, honestly bouncing off the hero
   };
 });
 
+/* ==================== THE RHYMES — same moves, dials turned ====================
+   Each rhyme is a near-copy of its original with two or three dials moved:
+   a palette, a speed, a direction, a count. Toggle ⇄ on any card, then open
+   both sources — the delta is named in the opening comment. One understood
+   move is a whole moveset. */
+
+rhymeOf("Fireburst", "Frostburst", "the same radial explosion — cold palette, and the shards HANG in the air", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette fire→frost · gravity 160 → 20 (they hang) · fade slower
+  let parts = [], flash = 0;
+  return {
+    press() {
+      flash = 1;
+      for (let i = 0; i < 26; i++) {
+        const th = rand(0, TAU), v = rand(50, 190);
+        parts.push({ x: C.x, y: C.y - C.s * 0.5, vx: Math.cos(th) * v, vy: Math.sin(th) * v - 30, life: 1 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (Math.random() < 0.25)
+        parts.push({ x: C.x + C.face * C.s * 0.55, y: C.y - C.s * 0.35,
+                     vx: rand(-8, 8), vy: rand(-20, -8), life: 0.6 });
+      drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (flash > 0) {
+        glow(C.x, C.y - C.s * 0.5, C.s * (2.5 - flash), "rgba(150,210,255," + flash * 0.7 + ")");
+        flash = Math.max(0, flash - dt * 2.5);
+      }
+      for (const p of parts) {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 20 * dt;
+        p.vx *= Math.pow(0.5, dt); p.vy *= Math.pow(0.5, dt);
+        p.life -= dt * 0.8;
+        if (p.life > 0) glow(p.x, p.y, 4 + p.life * 4, "rgba(170,220,255," + p.life * 0.8 + ")");
+      }
+      parts = parts.filter(p => p.life > 0 && p.y < G + 6);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Flamethrower", "Frost breath", "the same cone at half speed — cold, drifting, no hurry to arrive", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: stream speed 140–220 → 60–110 · palette fire→frost · rise flipped to sink
+  let stream = 0, parts = [];
+  return {
+    press() { stream = 1.2; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const hx = C.x + C.face * C.s * 0.6, hy = C.y - C.s * 0.45;
+      ctx.globalCompositeOperation = "lighter";
+      glow(hx, hy, 4 + Math.sin(t * 6) * 1.5, "rgba(180,225,255,0.7)");
+      if (stream > 0) {
+        stream -= dt;
+        for (let i = 0; i < 4; i++)
+          parts.push({ x: hx, y: hy, vx: C.face * rand(60, 110), vy: rand(-16, 16), life: rand(0.6, 1.1) });
+      }
+      for (const p of parts) {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 14 * dt; p.life -= dt * 1.2;
+        if (p.life > 0)
+          glow(p.x, p.y, 5 + (1 - p.life) * 10, "rgba(170,220,255," + p.life * 0.5 + ")");
+      }
+      parts = parts.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Meteor call", "Comet call", "the same strike from the sky, iced over — gentler impact, no quake", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette fire→ice · shake removed · debris floats up briefly
+  let meteors = [], debris = [];
+  return {
+    press(x) {
+      meteors.push({ x: (x || C.x) + 40, y: -20, life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      glow(C.x, C.y - C.s * 1.6, 6, "rgba(150,210,255," + (0.2 + 0.15 * Math.sin(t * 3)) + ")");
+      for (const m of meteors) {
+        m.x -= 90 * dt; m.y += 200 * dt;
+        glow(m.x, m.y, 9, "rgba(200,235,255,0.9)");
+        ctx.strokeStyle = "rgba(150,210,255,0.6)";
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(m.x + 18, m.y - 40); ctx.lineTo(m.x, m.y); ctx.stroke();
+        if (m.y >= G - 4) {
+          for (let i = 0; i < 14; i++)
+            debris.push({ x: m.x, y: G, vx: rand(-60, 60), vy: rand(-70, -20), life: 1 });
+          m.y = 1e9;
+        }
+      }
+      meteors = meteors.filter(m => m.y < H + 40);
+      for (const d of debris) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 60 * dt; d.life -= dt * 1.2;
+        if (d.life > 0) twinkle(d.x, d.y, 2.5, "rgba(200,235,255," + d.life + ")");
+      }
+      debris = debris.filter(d => d.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Flame aura", "Spirit aura", "the same smoulder in ghost-green, at half the rise", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette fire→spirit · rise 42 → 20 · flare cooler
+  let parts = [], flare = 0;
+  return {
+    press() { flare = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (Math.random() < 0.5 + flare)
+        parts.push({ x: C.x + rand(-C.s * 0.5, C.s * 0.5), y: C.y - rand(0, C.s),
+                     life: 1, r: rand(3, 6) * (1 + flare) });
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of parts) {
+        p.y -= 20 * dt; p.x += Math.sin(p.y * 0.2) * 10 * dt; p.life -= dt * 1.1;
+        if (p.life > 0)
+          glow(p.x, p.y, p.r * p.life + 1, "rgba(140,255,190," + p.life * 0.45 + ")");
+      }
+      parts = parts.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      flare = Math.max(0, flare - dt * 1.4);
+    }
+  };
+});
+
+rhymeOf("Ember dash", "Frost dash", "the same dash leaving ice — the trail lingers three times longer", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette ember→frost · trail decay 1.6 → 0.5 · dash slightly longer
+  let dash = 0, parts = [];
+  return {
+    press() {
+      if (dash <= 0) { dash = 0.45; C.pace = false; C.vx = C.face * 420; }
+    },
+    frame(dt, t) {
+      stage();
+      if (dash > 0) {
+        dash -= dt;
+        for (let i = 0; i < 3; i++)
+          parts.push({ x: C.x + rand(-4, 4), y: C.y - rand(2, C.s * 0.8), life: 1 });
+        if (C.x < C.s || C.x > W - C.s || dash <= 0) {
+          dash = 0; C.pace = true;
+          C.x = Math.max(C.s, Math.min(W - C.s, C.x));
+        }
+      }
+      tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.1)
+        parts.push({ x: C.x, y: C.y - 2, life: 0.7 });
+      for (const p of parts) {
+        p.life -= dt * 0.5;
+        if (p.life > 0) twinkle(p.x, p.y, 2.5 * p.life + 1, "rgba(180,225,255," + p.life * 0.8 + ")");
+      }
+      parts = parts.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Fire spin", "Petal spin", "the same blooming ring — flame tongues swapped for pink petals", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: tongues → petals (draw call) · palette fire→blossom · spin gentler
+  let ring = -1, a0 = 0;
+  return {
+    press() { ring = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (ring >= 0) {
+        ring += dt * 1.1;
+        a0 += dt * 9;
+        C.spin = Math.sin(Math.min(1, ring) * Math.PI) * 0.4;
+        if (ring > 1) { ring = -1; C.spin = 0; }
+      }
+      drawCube();
+      if (ring >= 0) {
+        const r = 10 + ring * C.s * 2.6;
+        for (let i = 0; i < 10; i++) {
+          const th = a0 + i / 10 * TAU;
+          ctx.save();
+          ctx.translate(C.x + Math.cos(th) * r, C.y - C.s * 0.4 + Math.sin(th) * r * 0.4);
+          ctx.rotate(th);
+          ctx.fillStyle = "rgba(255,185,205," + (0.9 - ring * 0.6) + ")";
+          ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  };
+});
+
+rhymeOf("Dragon breath", "Smoke breath", "the same cone, unlit — grey plumes and the recoil dial at zero", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: fire→smoke (alpha fill, no additive) · recoil removed · slower
+  let breath = 0, parts = [];
+  return {
+    press() { breath = 0.9; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (breath > 0) {
+        breath -= dt;
+        for (let i = 0; i < 4; i++) {
+          const spread = rand(-0.3, 0.3);
+          parts.push({ x: C.x + C.face * C.s * 0.5, y: C.y - C.s * 0.55,
+                       vx: C.face * Math.cos(spread) * rand(90, 160), vy: Math.sin(spread) * 90,
+                       r: rand(3, 5), life: rand(0.7, 1.2) });
+        }
+      }
+      drawCube();
+      for (const p of parts) {
+        p.x += p.vx * dt; p.y += p.vy * dt - 10 * dt; p.r += 8 * dt; p.life -= dt * 1.1;
+        if (p.life > 0) {
+          ctx.fillStyle = "rgba(150,150,160," + p.life * 0.25 + ")";
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+        }
+      }
+      parts = parts.filter(p => p.life > 0);
+    }
+  };
+});
+
+rhymeOf("Phoenix guard", "Raven guard", "the same orbit-and-wing in mourning black — dimmer, slower, loyal still", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette flame→raven · orbit ÷2 · wing alpha halved
+  let guard = 0;
+  const feathers = [];
+  for (let i = 0; i < 7; i++) feathers.push({ a: rand(0, TAU), v: rand(0.4, 0.7) });
+  return {
+    press() { guard = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const f of feathers) {
+        f.a += f.v * dt;
+        const x = C.x + Math.cos(f.a) * C.s * 1.1;
+        const y = C.y - C.s * 0.5 + Math.sin(f.a) * C.s * 0.7;
+        ctx.save();
+        ctx.translate(x, y); ctx.rotate(f.a);
+        ctx.fillStyle = "rgba(60,55,80,0.85)";
+        ctx.beginPath(); ctx.ellipse(0, 0, 2, 5.5, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      if (guard > 0) {
+        guard = Math.max(0, guard - dt * 0.8);
+        for (let k = 0; k < 4; k++) {
+          ctx.strokeStyle = "rgba(90,80,120," + guard * 0.5 + ")";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(C.x + C.face * C.s * 0.9, C.y - C.s * 0.55,
+                      C.s * (0.5 + k * 0.16), C.s * (0.9 + k * 0.2), 0,
+                      C.face > 0 ? -1.4 : Math.PI - 1.4, C.face > 0 ? 1.4 : Math.PI + 1.4);
+          ctx.stroke();
+        }
+      }
+    }
+  };
+});
+
+rhymeOf("Waterhose", "Steam hose", "the same jet with buoyancy instead of weight — it curls UP and fades", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: gravity +300 → −140 (steam rises) · palette water→white · no splash
+  let jet = 0, drops = [];
+  return {
+    press() { jet = 1.1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const hx = C.x + C.face * C.s * 0.6, hy = C.y - C.s * 0.5;
+      if (Math.random() < 0.06)
+        drops.push({ x: hx, y: hy, vx: C.face * 10, vy: -6, r: 2, life: 1 });
+      if (jet > 0) {
+        jet -= dt;
+        for (let i = 0; i < 3; i++)
+          drops.push({ x: hx, y: hy, vx: C.face * rand(120, 170), vy: rand(-40, -10), r: rand(2, 4), life: 1.3 });
+      }
+      for (const d of drops) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vy -= 140 * dt;
+        d.vx *= Math.pow(0.4, dt); d.r += 5 * dt; d.life -= dt * 1.1;
+        if (d.life > 0) {
+          ctx.fillStyle = "rgba(225,232,240," + d.life * 0.3 + ")";
+          ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.fill();
+        }
+      }
+      drops = drops.filter(d => d.life > 0 && d.y > -10);
+    }
+  };
+});
+
+rhymeOf("Bubble shield", "Soap shield", "the same bubble with a rainbow rim — it pops lazily, in stages", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rim single-hue → hue-cycling · pop burst ÷2, reform slower
+  let up = 1, reform = 0, drops = [];
+  return {
+    press() {
+      if (up < 1) return;
+      up = 0; reform = 2.2;
+      for (let i = 0; i < 9; i++) {
+        const th = rand(0, TAU);
+        drops.push({ x: C.x + Math.cos(th) * C.s, y: C.y - C.s * 0.5 + Math.sin(th) * C.s,
+                     vx: Math.cos(th) * rand(20, 50), vy: Math.sin(th) * rand(20, 50), life: 1.4 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      reform = Math.max(0, reform - dt);
+      if (reform <= 0) up = Math.min(1, up + dt * 0.8);
+      if (up > 0.05) {
+        const r = C.s * 1.25 * up;
+        for (let k = 0; k < 3; k++) {
+          ctx.strokeStyle = "hsla(" + ((t * 60 + k * 120) % 360) + ",80%,75%," + 0.45 * up + ")";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.ellipse(C.x, C.y - C.s * 0.5, r + k, (r + k) * 1.05, 0, 0, TAU);
+          ctx.stroke();
+        }
+      }
+      for (const d of drops) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 60 * dt; d.life -= dt * 0.8;
+        if (d.life > 0) {
+          ctx.strokeStyle = "hsla(" + ((d.x * 3) % 360) + ",80%,75%," + d.life * 0.7 + ")";
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(d.x, d.y, 2.4, 0, TAU); ctx.stroke();
+        }
+      }
+      drops = drops.filter(d => d.life > 0);
+    }
+  };
+});
+
+rhymeOf("Splash stomp", "Dust stomp", "the same hop and rings — a dry landing: dust, not water", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette water→dust · droplets → hanging puffs · puddle removed
+  let jump = -1, rings = [], puffs = [];
+  return {
+    press() { if (jump < 0) jump = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (jump >= 0) {
+        jump += dt * 2.4;
+        C.y = G - Math.sin(Math.min(1, jump) * Math.PI) * C.s * 1.4;
+        if (jump >= 1) {
+          C.y = G; jump = -1;
+          rings.push({ r: 4, life: 1 });
+          for (let i = 0; i < 10; i++)
+            puffs.push({ x: C.x + rand(-6, 6), y: G, vx: rand(-60, 60), vy: rand(-30, -8), r: rand(3, 5), life: 1 });
+        }
+      }
+      drawCube();
+      for (const ring of rings) {
+        ring.r += 70 * dt; ring.life -= dt * 1.4;
+        if (ring.life > 0) {
+          ctx.strokeStyle = "rgba(190,175,150," + ring.life * 0.5 + ")";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.ellipse(C.x, G + 2, ring.r, ring.r * 0.25, 0, 0, TAU); ctx.stroke();
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+      for (const p of puffs) {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= Math.pow(0.2, dt);
+        p.r += 6 * dt; p.life -= dt * 1.2;
+        if (p.life > 0) {
+          ctx.fillStyle = "rgba(180,165,140," + p.life * 0.35 + ")";
+          ctx.beginPath(); ctx.arc(p.x, Math.min(p.y, G), p.r, 0, TAU); ctx.fill();
+        }
+      }
+      puffs = puffs.filter(p => p.life > 0);
+    }
+  };
+});
+
+rhymeOf("Rain cloud pet", "Snow cloud pet", "the same loyal cloud, wintering — flakes drift and dodge sideways", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rain streaks → swaying flakes · fall 170 → 40 · press: flurry
+  let cx = 0, pour = 0, flakes = [];
+  return {
+    press() { pour = 1.2; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      cx += (C.x - cx) * Math.min(1, dt * 3);
+      const cy = C.y - C.s * 2.1 + Math.sin(t * 1.3) * 2;
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = "rgba(160,168,190,0.9)";
+        ctx.beginPath();
+        ctx.arc(cx + (i - 2) * 8, cy + Math.sin(i * 2.3) * 2.5, 7 + (i % 2) * 2, 0, TAU);
+        ctx.fill();
+      }
+      if (Math.random() < 0.2 + pour)
+        flakes.push({ x: cx + rand(-16, 16), y: cy + 8, ph: rand(0, 9) });
+      if (pour > 0) pour -= dt;
+      for (const f of flakes) {
+        f.y += 40 * dt; f.x += Math.sin(t * 2 + f.ph) * 12 * dt;
+        if (f.y >= C.y - C.s && Math.abs(f.x - C.x) < C.s * 0.5) f.y = 1e9;
+        if (f.y >= G) f.y = 1e9;
+        ctx.fillStyle = "rgba(235,242,255,0.85)";
+        ctx.beginPath(); ctx.arc(f.x, f.y, 1.5, 0, TAU); ctx.fill();
+      }
+      flakes = flakes.filter(f => f.y < H);
+    }
+  };
+});
+
+rhymeOf("Water whip", "Vine whip", "the same travelling-sine lash grown green — half speed, leaf at the tip", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: lash 2.2 → 1.2 · palette water→vine · droplets → a tip leaf
+  let lash = -1;
+  return {
+    press() { if (lash < 0) lash = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const hx = C.x + C.face * C.s * 0.5, hy = C.y - C.s * 0.6;
+      if (lash >= 0) {
+        lash += dt * 1.2;
+        const k = Math.min(1, lash);
+        const reach = Math.sin(k * Math.PI) * C.s * 3.2;
+        ctx.strokeStyle = "rgba(110,180,100,0.9)";
+        ctx.lineWidth = 3.5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        let tipX = hx, tipY = hy;
+        for (let i = 1; i <= 10; i++) {
+          const q = i / 10;
+          tipX = hx + C.face * reach * q;
+          tipY = hy + Math.sin(q * 6 - lash * 10) * 8 * (1 - q * 0.4);
+          ctx.lineTo(tipX, tipY);
+        }
+        ctx.stroke();
+        ctx.fillStyle = "rgba(140,200,110,0.9)";           // the tip leaf
+        ctx.beginPath(); ctx.ellipse(tipX, tipY, 4, 2, lash * 3, 0, TAU); ctx.fill();
+        if (lash >= 1) lash = -1;
+      } else {
+        ctx.strokeStyle = "rgba(110,180,100,0.6)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy);
+        ctx.quadraticCurveTo(hx + C.face * 8, hy + 10 + Math.sin(t * 1.4) * 2, hx + C.face * 3, hy + 18);
+        ctx.stroke();
+      }
+    }
+  };
+});
+
+rhymeOf("Geyser", "Mud pot", "the same eruption gone lazy and brown — half the height, twice the plop", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: column height ÷2, speed ÷2 · palette water→mud · blorp blobs bigger
+  let gx = 0, geysers = [];
+  return {
+    press(x) { geysers.push({ x: x || gx, life: 1.4 }); },
+    frame(dt, t) {
+      stage();
+      gx = W / 2 + Math.sin(t * 0.3 + 2) * W * 0.3;
+      if (Math.random() < 0.1) {
+        ctx.strokeStyle = "rgba(180,150,110,0.5)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(gx + rand(-6, 6), G - 1, rand(2, 4), Math.PI, TAU); ctx.stroke();
+      }
+      tickCube(dt); drawCube();
+      for (const g of geysers) {
+        g.life -= dt * 0.5;
+        if (g.life <= 0) continue;
+        const hgt = Math.sin(Math.min(1, (1.4 - g.life) * 2) * Math.PI * 0.5) * C.s * 1.4 * Math.min(1, g.life * 2);
+        for (let i = 0; i < 6; i++) {
+          const q = i / 6;
+          ctx.fillStyle = "rgba(150,120,85," + (0.7 - q * 0.3) + ")";
+          ctx.beginPath();
+          ctx.ellipse(g.x + Math.sin(t * 8 + i) * 3, G - hgt * q, 8 - q * 2, 7, 0, 0, TAU);
+          ctx.fill();
+        }
+      }
+      geysers = geysers.filter(g => g.life > 0);
+    }
+  };
+});
+
+rhymeOf("Mist veil", "Shadow veil", "the same vanish, dressed in darkness — the wisps go black and tighten", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: fog white→shadow · orbit radius ÷1.4 · vanish deeper (alpha 0.05)
+  let veil = 0;
+  const wisps = [];
+  for (let i = 0; i < 6; i++) wisps.push({ a: rand(0, TAU), v: rand(0.3, 0.7), r: rand(10, 18) });
+  return {
+    press() { veil = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      C.alpha = veil > 0.25 ? 0.05 : 1;
+      drawCube();
+      C.alpha = 1;
+      for (const wsp of wisps) {
+        wsp.a += wsp.v * dt;
+        const x = C.x + Math.cos(wsp.a) * C.s * (0.7 + veil * 0.5);
+        const y = C.y - C.s * 0.5 + Math.sin(wsp.a) * C.s * 0.5;
+        ctx.fillStyle = "rgba(15,10,25," + (0.3 + veil * 0.35) + ")";
+        ctx.beginPath(); ctx.arc(x, y, wsp.r * (1 + veil), 0, TAU); ctx.fill();
+      }
+      veil = Math.max(0, veil - dt * 0.8);
+    }
+  };
+});
+
+rhymeOf("Tidal push", "Slow surge", "the same wall of water at half speed and half again the height", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: travel 150 → 70 · height ×1.5 · decay slower — a patient wave
+  let waves = [], foam = [];
+  return {
+    press() { waves.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, life: 1 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      ctx.strokeStyle = "rgba(130,190,235,0.35)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(C.x, G + 1, C.s * (0.8 + Math.sin(t * 2) * 0.1), 3, 0, Math.PI, TAU);
+      ctx.stroke();
+      drawCube();
+      for (const w of waves) {
+        w.x += w.dir * 70 * dt; w.life -= dt * 0.3;
+        if (w.life <= 0) continue;
+        const hgt = C.s * 1.95 * Math.min(1, w.life * 1.6);
+        for (let k = 0; k < 4; k++) {
+          ctx.strokeStyle = "rgba(120,190,240," + (0.6 - k * 0.12) * w.life + ")";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(w.x - w.dir * k * 5, G, 14 + k * 4, Math.max(0.5, hgt - k * 5), 0, Math.PI, TAU);
+          ctx.stroke();
+        }
+        if (Math.random() < 0.3)
+          foam.push({ x: w.x + rand(-8, 8), y: G - hgt, vx: w.dir * 20, vy: rand(-30, 0), life: 0.9 });
+      }
+      waves = waves.filter(w => w.life > 0);
+      for (const f of foam) {
+        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 120 * dt; f.life -= dt * 1.2;
+        if (f.life > 0) { ctx.fillStyle = "rgba(220,240,255," + f.life + ")"; ctx.fillRect(f.x, f.y, 2, 2); }
+      }
+      foam = foam.filter(f => f.life > 0);
+    }
+  };
+});
+
+rhymeOf("Sky bolt", "Twin forks", "the same called strike, doubled — one bolt each side of the mark", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: bolt count 1 → 2 (±18px) · flash softer · palette unchanged
+  let bolts = [], flash = 0;
+  return {
+    press(x) {
+      const cx = x || C.x;
+      bolts.push({ x: cx - 18, life: 1 });
+      bolts.push({ x: cx + 18, life: 1 });
+      flash = 0.7;
+    },
+    frame(dt, t) {
+      stage();
+      if (flash > 0.5) {
+        ctx.fillStyle = "rgba(200,210,240," + (flash - 0.5) + ")";
+        ctx.fillRect(0, 0, W, H);
+      }
+      for (let i = 0; i < 4; i++) {
+        ctx.fillStyle = "rgba(70,72,95,0.9)";
+        ctx.beginPath();
+        ctx.arc(W * 0.2 + i * W * 0.2, 12 + Math.sin(t + i) * 2, 12, 0, TAU);
+        ctx.fill();
+      }
+      tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const b of bolts) {
+        b.life -= dt * 3;
+        if (b.life <= 0) continue;
+        ctx.strokeStyle = "rgba(220,230,255," + b.life + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        let px = b.x, py = 16;
+        ctx.moveTo(px, py);
+        while (py < G) { px += rand(-9, 9); py += rand(10, 20); ctx.lineTo(px, py); }
+        ctx.stroke();
+        glow(b.x, G, 12, "rgba(200,220,255," + b.life * 0.6 + ")");
+      }
+      bolts = bolts.filter(b => b.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      flash = Math.max(0, flash - dt * 3);
+    }
+  };
+});
+
+rhymeOf("Chain zap", "Chain frost", "the same hopping charge in ice — each landing leaves a frost patch", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette bolt→frost · hop glow → lingering frost twinkles · slower
+  let chain = -1, patches = [];
+  function jag(x0, y0, x1, y1, a) {
+    ctx.strokeStyle = "rgba(190,230,255," + a + ")";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.moveTo(x0, y0);
+    for (let i = 1; i <= 4; i++) {
+      const k = i / 4;
+      ctx.lineTo(x0 + (x1 - x0) * k + rand(-4, 4), y0 + (y1 - y0) * k + rand(-4, 4));
+    }
+    ctx.stroke();
+  }
+  return {
+    press() { chain = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.2)
+        twinkle(C.x + rand(-C.s, C.s) * 0.5, C.y - rand(0, C.s), 2.5, "rgba(190,230,255,0.7)");
+      if (chain >= 0) {
+        chain += dt * 2;
+        const hops = Math.min(3, Math.floor(chain) + 1);
+        let px = C.x, py = C.y - C.s * 0.5;
+        for (let i = 0; i < hops; i++) {
+          const nx = C.x + C.face * C.s * (1.4 + i * 1.3);
+          const ny = G - 4;
+          jag(px, py, nx, ny, 1 - chain * 0.25);
+          if (chain - i > 0.9 && patches.length <= i * 3)
+            for (let k = 0; k < 3; k++)
+              patches.push({ x: nx + rand(-8, 8), y: G - rand(0, 4), life: 2 });
+          px = nx; py = ny;
+        }
+        if (chain > 3.5) { chain = -1; }
+      }
+      for (const p of patches) {
+        p.life -= dt * 0.5;
+        if (p.life > 0)
+          twinkle(p.x, p.y, 2.5, "rgba(200,235,255," + Math.min(1, p.life) * 0.8 + ")");
+      }
+      patches = patches.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Static aura", "Ember static", "the same crackle warmed to fire — the nova rolls out slower", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette blue→ember · nova speed ÷1.8 · crackle chance ÷1.5
+  let nova = 0;
+  return {
+    press() { nova = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i++)
+        if (Math.random() < 0.26) {
+          const th = rand(0, TAU);
+          const x0 = C.x + Math.cos(th) * C.s * 0.55;
+          const y0 = C.y - C.s * 0.5 + Math.sin(th) * C.s * 0.55;
+          ctx.strokeStyle = "rgba(255,180,110,0.8)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x0, y0);
+          ctx.lineTo(x0 + rand(-6, 6), y0 + rand(-6, 6));
+          ctx.stroke();
+        }
+      if (nova > 0) {
+        const r = (1 - nova) * C.s * 3.2 + 8;
+        ctx.strokeStyle = "rgba(255,190,120," + nova + ")";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        for (let i = 0; i <= 14; i++) {
+          const th = i / 14 * TAU;
+          const rr = r + rand(-2, 2);
+          const px = C.x + Math.cos(th) * rr, py = C.y - C.s * 0.5 + Math.sin(th) * rr * 0.7;
+          if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        nova = Math.max(0, nova - dt);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Thunder clap", "Frost clap", "the same clap, exhaled cold — mist ring instead of shock lines", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette storm→frost · shock lines → mist blobs · decay slower
+  let clap = 0;
+  return {
+    press() { clap = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.06)
+        twinkle(C.x + rand(-C.s, C.s), C.y - rand(0, C.s * 1.4), 2.5, "rgba(190,230,255,0.6)");
+      if (clap > 0) {
+        const k = 1 - clap;
+        glow(C.x, C.y - C.s * 0.6, 10 + k * 20, "rgba(220,240,255," + clap * 0.8 + ")");
+        for (let i = 0; i < 8; i++) {
+          const th = i / 8 * TAU + 0.4;
+          const r0 = 10 + k * C.s * 1.8;
+          glow(C.x + Math.cos(th) * r0, C.y - C.s * 0.6 + Math.sin(th) * r0 * 0.6,
+               6, "rgba(200,230,250," + clap * 0.35 + ")");
+        }
+        clap = Math.max(0, clap - dt * 1.2);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Charge & release", "Overcharge", "the same gather, twice as greedy — a thicker bolt for less patience", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: charge rate 0.12 → 0.3 · intake ×1.6 · bolt width ×2, shorter life
+  let charge = 0, bolt = 0;
+  let orbs = [];
+  return {
+    press() { bolt = Math.max(0.4, charge); charge = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      charge = Math.min(1, charge + dt * 0.3);
+      if (Math.random() < 0.45 + charge * 0.5)
+        orbs.push({ a: rand(0, TAU), r: C.s * 2.2, life: 1 });
+      ctx.globalCompositeOperation = "lighter";
+      for (const o of orbs) {
+        o.r -= 95 * dt; o.a += 4 * dt; o.life -= dt * 1.2;
+        if (o.life > 0 && o.r > 4)
+          glow(C.x + Math.cos(o.a) * o.r, C.y - C.s * 0.5 + Math.sin(o.a) * o.r * 0.7,
+               3, "rgba(190,215,255," + o.life * 0.8 + ")");
+      }
+      orbs = orbs.filter(o => o.life > 0 && o.r > 4);
+      glow(C.x, C.y - C.s * 0.5, 6 + charge * 18, "rgba(200,225,255," + (0.25 + charge * 0.55) + ")");
+      if (bolt > 0) {
+        ctx.strokeStyle = "rgba(225,235,255," + Math.min(1, bolt * 2) + ")";
+        ctx.lineWidth = 4 + bolt * 8;
+        ctx.beginPath();
+        let px = C.x + C.face * C.s * 0.5, py = C.y - C.s * 0.5;
+        ctx.moveTo(px, py);
+        while (px > 0 && px < W) { px += C.face * rand(14, 26); py += rand(-8, 8); ctx.lineTo(px, py); }
+        ctx.stroke();
+        bolt = Math.max(0, bolt - dt * 4);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Volt dash", "Shadow step", "the same blink with the lightning dial removed — only fading footprints", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: zigzag trail → footprint dashes on the floor · shimmer darkened
+  let prints = [];
+  return {
+    press() {
+      const from = C.x;
+      let to = C.x + C.face * C.s * 3.2;
+      to = Math.max(C.s, Math.min(W - C.s, to));
+      for (let i = 0; i <= 4; i++)
+        prints.push({ x: from + (to - from) * i / 4, life: 1 });
+      C.x = to;
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.1) {
+        ctx.fillStyle = "rgba(60,45,90,0.4)";
+        ctx.fillRect(C.x + rand(-C.s, C.s) * 0.5, C.y - rand(0, C.s), 2, 2);
+      }
+      for (const p of prints) {
+        p.life -= dt * 1.4;
+        if (p.life > 0) {
+          ctx.fillStyle = "rgba(40,30,65," + p.life * 0.7 + ")";
+          ctx.beginPath();
+          ctx.ellipse(p.x, G + 1, 6 * p.life + 2, 2, 0, 0, TAU);
+          ctx.fill();
+        }
+      }
+      prints = prints.filter(p => p.life > 0);
+    }
+  };
+});
+
+rhymeOf("Orbiting sparks", "Orbiting embers", "the same patrol, warmed — fired embers arc down under gravity", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette bolt→ember · fired path straight → gravity arc
+  const orbs = [0, 1, 2].map(i => ({ ph: i / 3 * TAU, fired: -1, vy: 0 }));
+  return {
+    press() {
+      for (const o of orbs) if (o.fired < 0) { o.fired = 0; o.vy = -60; }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const o of orbs) {
+        if (o.fired < 0) {
+          const a = t * 2 + o.ph;
+          o.x = C.x + Math.cos(a) * C.s * 1.1;
+          o.y = C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.6;
+          glow(o.x, o.y, 5, "rgba(255,190,110,0.9)");
+        } else {
+          o.fired += dt;
+          o.x += C.face * 180 * dt;
+          o.vy += 220 * dt;
+          o.y += o.vy * dt;
+          glow(o.x, o.y, 4, "rgba(255,170,90," + Math.max(0, 1 - o.fired) + ")");
+          if (o.y > G || o.fired > 1.4) { o.fired = -1; }
+        }
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Storm call", "Heat lightning", "the same summoned storm with the rain removed — silent flashes only", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rain deleted · bolts → soft sky flashes (no jag) · warm tint
+  let storm = 0, flashes = [];
+  return {
+    press() {
+      storm = 1.6;
+      for (let i = 0; i < 3; i++)
+        flashes.push({ x: C.x + rand(-C.s * 2.4, C.s * 2.4), delay: i * 0.3, life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.004 + (storm > 0 ? 0.02 : 0))
+        flashes.push({ x: rand(0, W), delay: 0, life: 0.6 });
+      for (const f of flashes) {
+        f.delay -= dt;
+        if (f.delay > 0) continue;
+        f.life -= dt * 2;
+        if (f.life <= 0) continue;
+        glow(f.x, 14, 40 * f.life + 14, "rgba(255,230,190," + f.life * 0.4 + ")");
+      }
+      flashes = flashes.filter(f => f.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      storm = Math.max(0, storm - dt);
+    }
+  };
+});
+
+rhymeOf("Sparkle shower", "Star shower", "the same falling glitter, upscaled — fewer, larger, slower stars", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: count 22 → 8 · size ×2.4 · fall 40–90 → 20–40
+  let parts = [];
+  function star(x, y, r, rot, a) {
+    ctx.fillStyle = "rgba(255,235,150," + a + ")";
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const rr = i % 2 === 0 ? r : r * 0.45;
+      const th = rot + i / 10 * TAU;
+      const px = x + Math.cos(th) * rr, py = y + Math.sin(th) * rr;
+      if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    }
+    ctx.closePath(); ctx.fill();
+  }
+  return {
+    press() {
+      for (let i = 0; i < 8; i++)
+        parts.push({ x: C.x + rand(-C.s * 1.6, C.s * 1.6), y: C.y - C.s * 2.4 - rand(0, 20),
+                     vy: rand(20, 40), rot: rand(0, TAU), life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.02)
+        parts.push({ x: C.x + rand(-C.s, C.s), y: C.y - rand(0, C.s * 1.4), vy: 8, rot: rand(0, TAU), life: 0.8 });
+      for (const p of parts) {
+        p.y += p.vy * dt; p.rot += dt * 2; p.life -= dt * 0.6;
+        if (p.life > 0) star(p.x, p.y, 6, p.rot, p.life);
+      }
+      parts = parts.filter(p => p.life > 0 && p.y < G);
+    }
+  };
+});
+
+rhymeOf("Pixie trail", "Ember trail", "the same per-step shedding, glowing warm and sinking instead of floating", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette pixie→ember · drift up → sink down · glow draw
+  let parts = [], lastX = null, travelled = 0, swirl = 0;
+  return {
+    press() { swirl = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (lastX === null) lastX = C.x;
+      travelled += Math.abs(C.x - lastX);
+      lastX = C.x;
+      while (travelled > 7) {
+        travelled -= 7;
+        parts.push({ x: C.x + rand(-4, 4), y: C.y - rand(2, C.s * 0.8), a: rand(0, TAU), life: 1 });
+      }
+      drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of parts) {
+        if (swirl > 0) {
+          p.a += 4 * dt;
+          p.x += (C.x + Math.cos(p.a) * C.s * 1.3 - p.x) * dt * 6;
+          p.y += (C.y - C.s * 0.5 + Math.sin(p.a) * C.s * 0.8 - p.y) * dt * 6;
+        } else p.y += 10 * dt;
+        p.life -= dt * 0.7;
+        if (p.life > 0)
+          glow(p.x, Math.min(p.y, G), 3 + p.life * 2, "rgba(255,170,90," + p.life * 0.7 + ")");
+      }
+      ctx.globalCompositeOperation = "source-over";
+      parts = parts.filter(p => p.life > 0);
+      swirl = Math.max(0, swirl - dt * 0.8);
+    }
+  };
+});
+
+rhymeOf("Star twirl", "Snow twirl", "the same pirouette flinging snowflakes — they drift, not fly", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: stars → flakes (twinkle draw) · fling speed ÷2 · gravity ÷3
+  let flung = [];
+  return {
+    press() {
+      C.spin = 0.001;
+      for (let i = 0; i < 8; i++) {
+        const th = rand(0, TAU);
+        flung.push({ x: C.x, y: C.y - C.s * 0.5, vx: Math.cos(th) * rand(30, 70),
+                     vy: Math.sin(th) * rand(30, 70) - 20, life: 1.4 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (C.spin !== 0) {
+        C.spin += dt * 14;
+        if (C.spin > TAU) C.spin = 0;
+      }
+      drawCube();
+      const a = t * 1.6;
+      twinkle(C.x + Math.cos(a) * C.s * 1.2, C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.7,
+              3, "rgba(230,240,255,0.9)");
+      for (const f of flung) {
+        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 40 * dt;
+        f.vx *= Math.pow(0.5, dt); f.life -= dt * 0.8;
+        if (f.life > 0) twinkle(f.x, f.y, 3, "rgba(235,242,255," + Math.min(1, f.life) + ")");
+      }
+      flung = flung.filter(f => f.life > 0 && f.y < G);
+    }
+  };
+});
+
+rhymeOf("Glitter burst", "Petal burst", "the same click-burst, softened to petals that flutter as they fall", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: twinkles → petal ellipses · speed ÷1.6 · flutter sway added
+  let parts = [];
+  return {
+    press(x, y) {
+      for (let i = 0; i < 20; i++) {
+        const th = rand(0, TAU), v = rand(20, 90);
+        parts.push({ x: x || C.x, y: Math.min(y || C.y - C.s, G - 4),
+                     vx: Math.cos(th) * v, vy: Math.sin(th) * v, rot: rand(0, TAU),
+                     flut: rand(3, 7), life: 1.2 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const p of parts) {
+        p.vy = Math.min(p.vy + 60 * dt, 30);
+        p.x += (p.vx + Math.sin(t * p.flut) * 18) * dt;
+        p.y += p.vy * dt;
+        p.rot += dt * 2;
+        p.vx *= Math.pow(0.4, dt);
+        p.life -= dt * 0.6;
+        if (p.life > 0 && p.y < G) {
+          ctx.save();
+          ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+          ctx.fillStyle = "rgba(255,190,210," + Math.min(1, p.life) + ")";
+          ctx.beginPath(); ctx.ellipse(0, 0, 3, 1.8, 0, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+      }
+      parts = parts.filter(p => p.life > 0 && p.y < G);
+    }
+  };
+});
+
+rhymeOf("Charm hearts", "Broken hearts", "the same hearts falling instead of floating, fading twice as fast", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: float up → tumble down · fade ×2 · palette dimmed
+  let hearts = [];
+  function heart(x, y, s, a) {
+    ctx.fillStyle = "rgba(200,110,140," + a + ")";
+    ctx.beginPath();
+    ctx.arc(x - s * 0.5, y, s * 0.55, 0, TAU);
+    ctx.arc(x + s * 0.5, y, s * 0.55, 0, TAU);
+    ctx.moveTo(x - s, y + s * 0.2);
+    ctx.lineTo(x, y + s * 1.5);
+    ctx.lineTo(x + s, y + s * 0.2);
+    ctx.closePath(); ctx.fill();
+  }
+  return {
+    press() {
+      for (let i = 0; i < 8; i++)
+        hearts.push({ x: C.x + rand(-C.s, C.s), y: C.y - C.s * 1.2,
+                      vx: rand(-30, 30), vy: rand(-20, 10), life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.012)
+        hearts.push({ x: C.x + rand(-6, 6), y: C.y - C.s * 1.2, vx: rand(-10, 10), vy: 0, life: 1 });
+      for (const hh of hearts) {
+        hh.x += hh.vx * dt; hh.y += hh.vy * dt; hh.vy += 90 * dt;
+        hh.life -= dt * 1.6;
+        if (hh.life > 0 && hh.y < G) heart(hh.x, hh.y, 4.5, hh.life);
+      }
+      hearts = hearts.filter(hh => hh.life > 0 && hh.y < G);
+    }
+  };
+});
+
+rhymeOf("Confetti pop", "Leaf pop", "the same flutter physics dressed for autumn — larger leaves, longer drift", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rectangles → leaf ellipses · hues → ambers · terminal fall slower
+  let bits = [];
+  return {
+    press() {
+      for (let i = 0; i < 18; i++)
+        bits.push({ x: C.x, y: C.y - C.s, vx: rand(-70, 70), vy: rand(-160, -60),
+                    rot: rand(0, TAU), vr: rand(-6, 6), hue: rand(15, 50),
+                    flut: rand(3, 7), life: 1.4 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const b of bits) {
+        b.vy += 130 * dt;
+        b.vy = Math.min(b.vy, 26);
+        b.x += (b.vx + Math.sin(t * b.flut) * 26) * dt;
+        b.y += b.vy * dt;
+        b.rot += b.vr * dt;
+        b.vx *= Math.pow(0.4, dt);
+        b.life -= dt * 0.45;
+        if (b.life > 0 && b.y < G) {
+          ctx.save();
+          ctx.translate(b.x, b.y); ctx.rotate(b.rot);
+          ctx.fillStyle = "hsla(" + b.hue + ",70%,52%," + Math.min(1, b.life) + ")";
+          ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+      }
+      bits = bits.filter(b => b.life > 0 && b.y < G);
+    }
+  };
+});
+
+rhymeOf("Shooting star", "Falling feather", "the same summoned visitor, unhurried — it settles rather than salutes", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: streaks → drifting feathers · dive → gentle descent, no flash
+  let feathers = [], summoned = null, timer = 1;
+  return {
+    press() { if (!summoned) summoned = { x: C.x + rand(-20, 20), y: -6, ph: rand(0, 9) }; },
+    frame(dt, t) {
+      stage();
+      timer -= dt;
+      if (timer <= 0) {
+        feathers.push({ x: rand(10, W - 10), y: -4, ph: rand(0, 9) });
+        timer = rand(2.5, 4);
+      }
+      tickCube(dt); drawCube();
+      const all = summoned ? feathers.concat([summoned]) : feathers;
+      for (const f of all) {
+        f.y += (f === summoned ? 34 : 22) * dt;
+        f.x += Math.sin(t * 2 + f.ph) * 14 * dt;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(Math.sin(t * 3 + f.ph) * 0.5);
+        ctx.fillStyle = "rgba(240,240,250,0.85)";
+        ctx.beginPath(); ctx.ellipse(0, 0, 4, 1.6, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      if (summoned && summoned.y >= C.y - C.s * 1.1 && Math.abs(summoned.x - C.x) < C.s) summoned = null;
+      if (summoned && summoned.y > G) summoned = null;
+      feathers = feathers.filter(f => f.y < G);
+    }
+  };
+});
+
+rhymeOf("Twinkle crown", "Thorn crown", "the same hovering circle turned solemn — dark spikes, rare red glints", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: twinkles → thorn triangles · flare → slow red pulse
+  let pulse = 0;
+  return {
+    press() { pulse = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const cy = C.y - C.s * 1.35 + Math.sin(t * 1.2) * 2;
+      for (let i = 0; i < 7; i++) {
+        const a = t * 0.4 + i / 7 * TAU;
+        const x = C.x + Math.cos(a) * C.s * 0.45;
+        const y = cy + Math.sin(a) * 3;
+        ctx.fillStyle = "rgba(50,40,60,0.95)";
+        ctx.beginPath();
+        ctx.moveTo(x - 2, y + 2); ctx.lineTo(x, y - 4); ctx.lineTo(x + 2, y + 2);
+        ctx.closePath(); ctx.fill();
+        if (pulse > 0 || Math.random() < 0.008)
+          glow(x, y, 3, "rgba(230,80,80," + Math.max(pulse * 0.7, 0.4) + ")");
+      }
+      pulse = Math.max(0, pulse - dt * 0.8);
+    }
+  };
+});
+
+rhymeOf("Following halo", "Dark halo", "the same loyal ellipse in violet-black — the lag doubled for menace", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette gold→umbral violet · lag 5 → 2.5 · pulse absorbs light
+  let hx = null, pulse = 0;
+  return {
+    press() { pulse = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (hx === null) hx = C.x;
+      hx += (C.x - hx) * Math.min(1, dt * 2.5);
+      const hy = C.y - C.s * 1.5 + Math.sin(t * 1.2) * 2.5;
+      const breath = 1 + 0.03 * Math.sin(t * TAU / 3);
+      for (let k = 0; k < 3; k++) {
+        ctx.strokeStyle = "rgba(120,80,180," + (0.6 - k * 0.15 + pulse * 0.3) + ")";
+        ctx.lineWidth = 3 - k * 0.7;
+        ctx.beginPath();
+        ctx.ellipse(hx, hy, (C.s * 0.55 + k * 1.5) * breath * (1 + pulse * 0.3),
+                    (C.s * 0.16 + k * 0.8) * breath, 0, 0, TAU);
+        ctx.stroke();
+      }
+      if (pulse > 0) {                     // it dims the world instead of lighting it
+        ctx.fillStyle = "rgba(10,5,20," + pulse * 0.25 + ")";
+        ctx.fillRect(0, 0, W, H);
+      }
+      pulse = Math.max(0, pulse - dt * 1.6);
+    }
+  };
+});
+
+rhymeOf("Angel wings", "Bat wings", "the same unfurl with membrane instead of feathers — dark, ribbed, quick", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: feather arcs → filled membrane fan · palette light→dusk · unfurl ×1.5
+  let unfurl = 0;
+  function wing(spread, a) {
+    const bx = C.x - C.face * C.s * 0.3;
+    const by = C.y - C.s * 0.7;
+    ctx.fillStyle = "rgba(45,35,70," + a + ")";
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    for (let f = 0; f < 4; f++)            // the ribbed edge: scalloped points
+      ctx.lineTo(bx - C.face * (12 + f * 11) * spread, by - (16 - f * 7) * spread + f * 3);
+    for (let f = 3; f >= 0; f--)
+      ctx.lineTo(bx - C.face * (8 + f * 10) * spread, by + (2 + f * 2) * spread);
+    ctx.closePath(); ctx.fill();
+  }
+  return {
+    press() { unfurl = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      const spread = 0.25 + Math.sin(t * 6) * 0.04 + unfurl * 1.2;
+      wing(Math.min(1.7, spread), 0.6 + unfurl * 0.35);
+      drawCube();
+      unfurl = Math.max(0, unfurl - dt * 0.85);
+    }
+  };
+});
+
+rhymeOf("Sanctuary ring", "Warding ring", "the same travelling circle turned to warning — red runes, sharper pulse", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette gold→warning-red · rune tick count 6 → 8 · pulse faster
+  let wide = 0;
+  return {
+    press() { wide = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      const r = C.s * (1.1 + wide * 1.3);
+      ctx.globalCompositeOperation = "lighter";
+      glow(C.x, G, r, "rgba(255,110,100," + (0.10 + wide * 0.12) + ")");
+      ctx.strokeStyle = "rgba(255,120,110," + (0.5 + wide * 0.4) + ")";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.ellipse(C.x, G + 1, r, r * 0.24, 0, 0, TAU); ctx.stroke();
+      for (let i = 0; i < 8; i++) {
+        const a = -t * 1.2 + i / 8 * TAU;
+        const x = C.x + Math.cos(a) * r, y = G + 1 + Math.sin(a) * r * 0.24;
+        ctx.fillStyle = "rgba(255,140,120," + (0.6 + wide * 0.4) + ")";
+        ctx.fillRect(x - 1, y - 3, 2, 6);
+      }
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      wide = Math.max(0, wide - dt * 1.1);
+    }
+  };
+});
+
+rhymeOf("Light pillar", "Moon pillar", "the same descending beam, narrowed and silvered — motes fall, not rise", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: width ÷2 · palette warm→silver · mote direction up→down
+  let pillar = 0, motes = [];
+  return {
+    press() { pillar = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      ctx.globalCompositeOperation = "lighter";
+      const w = C.s * (0.25 + pillar * 0.55);
+      const a = 0.06 + pillar * 0.3;
+      const grad = ctx.createLinearGradient(0, 0, 0, G);
+      grad.addColorStop(0, "rgba(220,228,250," + a + ")");
+      grad.addColorStop(1, "rgba(220,228,250," + a * 0.25 + ")");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(C.x - w * 0.6, 0); ctx.lineTo(C.x + w * 0.6, 0);
+      ctx.lineTo(C.x + w, G); ctx.lineTo(C.x - w, G);
+      ctx.closePath(); ctx.fill();
+      if (pillar > 0 && Math.random() < 0.5)
+        motes.push({ x: C.x + rand(-w, w) * 0.7, y: 4, life: 1 });
+      for (const m of motes) {
+        m.y += 46 * dt; m.life -= dt;
+        if (m.life > 0 && m.y < G) glow(m.x, m.y, 3, "rgba(225,232,252," + m.life * 0.8 + ")");
+      }
+      motes = motes.filter(m => m.life > 0 && m.y < G);
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      pillar = Math.max(0, pillar - dt * 0.6);
+    }
+  };
+});
+
+rhymeOf("Guardian orbs", "Wisp orbs", "the same three keepers, green and unhurried — they scatter, not shield", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette gold→wisp-green · orbit ÷2 · press: triangle → startled scatter
+  let scatter = 0;
+  return {
+    press() { scatter = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 3; i++) {
+        const a = t * 0.7 + i / 3 * TAU;
+        const spook = scatter * C.s * 1.4;
+        const x = C.x + Math.cos(a) * (C.s * 1.15 + spook);
+        const y = C.y - C.s * 0.5 + Math.sin(a) * (C.s * 0.65 + spook * 0.5);
+        glow(x, y, 5 + scatter * 2, "rgba(150,255,190," + (0.9 - scatter * 0.3) + ")");
+      }
+      ctx.globalCompositeOperation = "source-over";
+      scatter = Math.max(0, scatter - dt * 0.7);
+    }
+  };
+});
+
+rhymeOf("Blessing rain", "Ember blessing", "the same drifting motes, warmed — and the press makes them SWARM to it", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette light→ember · press: ascend → converge on the hero
+  let motes = [], gather = 0;
+  return {
+    press() { gather = 1.4; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.3)
+        motes.push({ x: C.x + rand(-C.s * 1.8, C.s * 1.8), y: rand(0, G * 0.4), life: 1 });
+      ctx.globalCompositeOperation = "lighter";
+      for (const m of motes) {
+        if (gather > 0) {
+          m.x += (C.x - m.x) * dt * 3;
+          m.y += (C.y - C.s * 0.5 - m.y) * dt * 3;
+        } else m.y += 22 * dt;
+        m.life -= dt * 0.4;
+        if (m.life > 0 && m.y > 0 && m.y < G)
+          glow(m.x, m.y, 3.5, "rgba(255,190,110," + m.life * 0.7 + ")");
+      }
+      motes = motes.filter(m => m.life > 0 && m.y < G);
+      ctx.globalCompositeOperation = "source-over";
+      gather = Math.max(0, gather - dt);
+    }
+  };
+});
+
+rhymeOf("Radiant burst", "Umbral burst", "the same cross-flare inverted — a flash of dark with a violet rim", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: light→dark (fills, not adds) · rim violet · idle glow shadowy
+  let burst = 0;
+  return {
+    press() { burst = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.fillStyle = "rgba(20,10,35," + (0.14 + 0.05 * Math.sin(t * 1.3)) + ")";
+      ctx.beginPath(); ctx.arc(C.x, C.y - C.s * 0.5, C.s * 0.8, 0, TAU); ctx.fill();
+      if (burst > 0) {
+        const k = 1 - burst;
+        const L = 10 + k * C.s * 2.4;
+        ctx.strokeStyle = "rgba(15,8,30," + burst * 0.9 + ")";
+        ctx.lineWidth = 5;
+        ctx.beginPath();
+        ctx.moveTo(C.x - L, C.y - C.s * 0.5); ctx.lineTo(C.x + L, C.y - C.s * 0.5);
+        ctx.moveTo(C.x, C.y - C.s * 0.5 - L * 0.8); ctx.lineTo(C.x, C.y - C.s * 0.5 + L * 0.8);
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(160,110,220," + burst * 0.7 + ")";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.ellipse(C.x, C.y - C.s * 0.5, L * 0.8, L * 0.5, 0, 0, TAU);
+        ctx.stroke();
+        burst = Math.max(0, burst - dt * 1.8);
+      }
+    }
+  };
+});
+
+rhymeOf("Saint's spotlight", "Villain's spotlight", "the same following beam — red, tight, and it hurries when pressed", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: light warm→red · width ÷1.6 · snap chase ×1.5
+  let sx = null, snap = 0;
+  return {
+    press() { snap = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (sx === null) sx = C.x;
+      sx += (C.x - sx) * Math.min(1, dt * (2 + snap * 18));
+      ctx.globalCompositeOperation = "lighter";
+      const w = C.s * (0.85 - snap * 0.35);
+      ctx.fillStyle = "rgba(255,90,80," + (0.10 + snap * 0.18) + ")";
+      ctx.beginPath();
+      ctx.moveTo(sx - 5, 0); ctx.lineTo(sx + 5, 0);
+      ctx.lineTo(sx + w, G); ctx.lineTo(sx - w, G);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(sx, G + 1, w, w * 0.22, 0, 0, TAU);
+      ctx.fill();
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      snap = Math.max(0, snap - dt * 0.8);
+    }
+  };
+});
+
+rhymeOf("Power-up aura", "Serene aura", "the same rising energy at meditation pace — white, thin, unhurried", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rise 70 → 26 · spawn ÷2 · palette blue/gold→white · no tint
+  let parts = [], deep = 0;
+  return {
+    press() { deep = 1.6; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (Math.random() < 0.3 + (deep > 0 ? 0.2 : 0))
+        parts.push({ x: C.x + rand(-C.s * 0.7, C.s * 0.7), y: C.y, life: 1 });
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of parts) {
+        p.y -= 26 * dt;
+        p.x += (C.x - p.x) * dt * 1.2;
+        p.life -= dt * 0.7;
+        if (p.life > 0)
+          glow(p.x, p.y, 4 + p.life * 3, "rgba(240,242,250," + p.life * 0.35 + ")");
+      }
+      parts = parts.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      deep = Math.max(0, deep - dt);
+    }
+  };
+});
+
+rhymeOf("Ki charge", "Ki vent", "the same spiral with the direction swapped — it LEAKS at rest, gathers on press", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: idle in→out, press out→in — the whole anatomy mirrored
+  let wisps = [], gather = 0;
+  return {
+    press() { gather = 1.2; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.4)
+        wisps.push({ a: rand(0, TAU), r: gather > 0 ? C.s * 2 : 6, life: 1 });
+      ctx.globalCompositeOperation = "lighter";
+      for (const w of wisps) {
+        w.r += (gather > 0 ? -45 : 32) * dt;             // the swap, in one sign
+        w.a += 2.2 * dt;
+        w.life -= dt * 0.8;
+        if (w.life > 0 && w.r > 3 && w.r < C.s * 2.4)
+          glow(C.x + Math.cos(w.a) * w.r, C.y - C.s * 0.5 + Math.sin(w.a) * w.r * 0.7,
+               3, "rgba(160,220,255," + w.life * 0.7 + ")");
+      }
+      wisps = wisps.filter(w => w.life > 0 && w.r > 3 && w.r < C.s * 2.6);
+      ctx.globalCompositeOperation = "source-over";
+      gather = Math.max(0, gather - dt);
+    }
+  };
+});
+
+rhymeOf("Energy shield", "Flame shield", "the same faceted bubble burning — panels flicker like pilot lights", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette teal→flame · shimmer speed ×2 · ripple warmer
+  let hit = 0, hitA = 0;
+  return {
+    press(x, y) {
+      hit = 1;
+      hitA = Math.atan2((y || C.y - C.s) - (C.y - C.s * 0.5), (x || C.x + C.s) - C.x);
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const r = C.s * 1.3;
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 12; i++) {
+        const th = i / 12 * TAU;
+        const shim = Math.max(0, Math.sin(t * 4 + i * 1.7)) * 0.3;
+        let a = 0.12 + shim;
+        if (hit > 0) {
+          const d = Math.abs(((th - hitA + Math.PI * 3) % TAU) - Math.PI);
+          a += Math.max(0, hit - d * 0.35) * 0.7;
+        }
+        ctx.strokeStyle = "rgba(255,160,80," + Math.min(1, a) + ")";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(C.x, C.y - C.s * 0.5, r, r * 1.05, 0, th, th + 0.42);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      hit = Math.max(0, hit - dt * 1.8);
+    }
+  };
+});
+
+rhymeOf("Focus lines", "Dizzy spiral", "the same converging lines, bent — they curve into a woozy spiral", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: straight rays → arc segments · rotation added · decay slower
+  let focus = 0;
+  return {
+    press() { focus = 1.4; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (focus > 0) {
+        const cx = C.x, cy = C.y - C.s * 0.5;
+        ctx.strokeStyle = "rgba(230,228,245," + Math.min(1, focus) * 0.5 + ")";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 10; i++) {
+          const th = i / 10 * TAU + t * 3;
+          const rIn = C.s * (1.5 + focus);
+          ctx.beginPath();
+          ctx.arc(cx, cy, rIn + i * 7, th, th + 1.2);
+          ctx.stroke();
+        }
+        focus = Math.max(0, focus - dt * 0.8);
+      }
+    }
+  };
+});
+
+rhymeOf("Battle glow", "Fever glow", "the same heartbeat gone sickly — green, fast, and it never quite calms", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette blue/red→fever-green · rate ×1.7 · calm floor raised
+  let alarm = 0.4;
+  return {
+    press() { alarm = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      const rate = 1.7 + alarm * 1.2;
+      const cyc = (t * rate) % 1.3;
+      const beat = Math.exp(-Math.pow((cyc - 0.12) * 12, 2)) + Math.exp(-Math.pow((cyc - 0.36) * 12, 2)) * 0.6;
+      ctx.globalCompositeOperation = "lighter";
+      glow(C.x, C.y - C.s * 0.5, C.s * (1 + beat * 0.5),
+           "rgba(150,230,110," + (0.12 + beat * 0.35) + ")");
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+      alarm = Math.max(0.4, alarm - dt * 0.4);           // it never fully rests
+    }
+  };
+});
+
+rhymeOf("Overdrive", "Limit break", "the same toggle burning red — denser flames, and the cube itself darkens", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette blue→red · spawn ×1.5 · tint darker
+  let on = false, parts = [];
+  return {
+    press() { on = !on; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (on && Math.random() < 0.95)
+        parts.push({ x: C.x + rand(-C.s * 0.6, C.s * 0.6), y: C.y - rand(0, C.s), life: 1 });
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of parts) {
+        p.y -= 100 * dt; p.life -= dt * 1.8;
+        if (p.life > 0) glow(p.x, p.y, 4 + p.life * 5, "rgba(255,90,70," + p.life * 0.6 + ")");
+      }
+      parts = parts.filter(p => p.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      C.tint = on ? "#4A1A22" : null;
+      drawCube();
+      C.tint = null;
+    }
+  };
+});
+
+rhymeOf("Inner light", "Inner void", "the same cracks running DARK — they drink the light around them", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: crack glow → crack shadow (dark strokes + violet rim) · flare inverts
+  let flare = 0;
+  const cracks = [];
+  for (let i = 0; i < 4; i++) {
+    const pts = [{ x: rand(-0.4, 0.4), y: -rand(0, 0.9) }];
+    for (let k = 0; k < 3; k++)
+      pts.push({ x: pts[k].x + rand(-0.25, 0.25), y: pts[k].y + rand(-0.25, 0.25) });
+    cracks.push(pts);
+  }
+  return {
+    press() { flare = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.save();
+      ctx.translate(C.x, C.y - C.hop);
+      ctx.rotate(C.lean);
+      for (const pts of cracks) {
+        const a = 0.5 + 0.25 * Math.sin(t * 2 + pts[0].x * 9) + flare * 0.4;
+        ctx.strokeStyle = "rgba(8,4,16," + Math.min(1, a) + ")";
+        ctx.lineWidth = 2 + flare * 2;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x * C.s, pts[0].y * C.s);
+        for (const p of pts) ctx.lineTo(p.x * C.s, Math.max(-C.s, Math.min(0, p.y * C.s)));
+        ctx.stroke();
+        ctx.strokeStyle = "rgba(150,90,220," + Math.min(1, a) * 0.4 + ")";
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+      ctx.restore();
+      flare = Math.max(0, flare - dt * 1.6);
+    }
+  };
+});
+
+rhymeOf("Tension sparks", "Calm static", "the same ticks slowed to weather — soft blue, one at a time", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: tick chance ÷3 · burst count ÷2 · palette hard-white→soft blue
+  let tension = 0;
+  function arc(cx, cy, r) {
+    let px = cx + rand(-r, r), py = cy + rand(-r, r) * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    for (let i = 0; i < 3; i++) { px += rand(-8, 8); py += rand(-6, 6); ctx.lineTo(px, py); }
+    ctx.stroke();
+  }
+  return {
+    press() { tension = 1.4; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.strokeStyle = "rgba(160,200,255,0.55)";
+      ctx.lineWidth = 1.1;
+      if (Math.random() < 0.013) arc(C.x, C.y - C.s * 0.5, C.s);
+      if (tension > 0) {
+        for (let i = 0; i < 2; i++) if (Math.random() < 0.6) arc(C.x, C.y - C.s * 0.5, C.s * 1.3);
+        tension -= dt;
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Afterimages", "Chromatic ghosts", "the same delayed selves split into red and cyan — one hue per past", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: ghost tint uniform → alternating red/cyan offsets · dash unchanged
+  let ghosts = [], timer = 0, dash = 0;
+  return {
+    press() {
+      if (dash <= 0) { dash = 0.3; C.pace = false; C.vx = C.face * 460; }
+    },
+    frame(dt, t) {
+      stage();
+      if (dash > 0) {
+        dash -= dt;
+        if (C.x < C.s || C.x > W - C.s || dash <= 0) {
+          dash = 0; C.pace = true;
+          C.x = Math.max(C.s, Math.min(W - C.s, C.x));
+        }
+      }
+      tickCube(dt);
+      timer -= dt;
+      if (timer <= 0) {
+        ghosts.push({ x: C.x, y: C.y, hop: C.hop, lean: C.lean, life: 1, ch: ghosts.length % 2 });
+        timer = dash > 0 ? 0.02 : 0.12;
+      }
+      for (const g of ghosts) {
+        g.life -= dt * (dash > 0 ? 2 : 1.4);
+        if (g.life <= 0) continue;
+        ctx.save();
+        ctx.globalAlpha = g.life * 0.28;
+        ctx.translate(g.x + (g.ch === 0 ? -2 : 2), g.y - g.hop);
+        ctx.rotate(g.lean);
+        ctx.fillStyle = g.ch === 0 ? "#B84A5E" : "#4AA8B8";
+        ctx.fillRect(-C.s / 2, -C.s, C.s, C.s);
+        ctx.restore();
+      }
+      ghosts = ghosts.filter(g => g.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Double jump", "Triple hop", "the same air-jump grammar extended by one — three small hops, three rings", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: air jumps 1 → 2 (three total) · jump power ÷1.3 each
+  let vy = 0, airborne = false, jumpsLeft = 0, rings = [];
+  return {
+    press() {
+      if (!airborne) { airborne = true; jumpsLeft = 2; vy = -180; }
+      else if (jumpsLeft > 0) {
+        jumpsLeft--; vy = -180;
+        rings.push({ x: C.x, y: C.y, r: 4, life: 1 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (airborne) {
+        vy += 620 * dt;
+        C.y += vy * dt;
+        if (C.y >= G) { C.y = G; airborne = false; vy = 0; }
+      }
+      for (const r of rings) {
+        r.r += 110 * dt; r.life -= dt * 2.2;
+        if (r.life > 0) {
+          ctx.strokeStyle = "rgba(200,210,255," + r.life * 0.8 + ")";
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(r.x, r.y, r.r, r.r * 0.3, 0, 0, TAU); ctx.stroke();
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Landing dust", "Splash landing", "the same leap onto a wet floor — droplets and a ring instead of dust", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: dust puffs → water droplets + ring · palette earth→water
+  let vy = 0, airborne = false, drops = [], rings = [];
+  return {
+    press() { if (!airborne) { airborne = true; vy = -300; } },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      ctx.fillStyle = "rgba(90,150,210,0.18)";           // the wet floor sheen
+      ctx.fillRect(0, G, W, H - G);
+      if (airborne) {
+        vy += 640 * dt;
+        C.y += vy * dt;
+        if (C.y >= G) {
+          C.y = G; airborne = false;
+          rings.push({ r: 4, x: C.x, life: 1 });
+          for (let i = 0; i < 12; i++)
+            drops.push({ x: C.x + rand(-4, 4), y: G,
+                        vx: rand(30, 90) * (i % 2 ? 1 : -1), vy: rand(-90, -30), life: 1 });
+          vy = 0;
+        }
+      }
+      for (const r of rings) {
+        r.r += 90 * dt; r.life -= dt * 1.6;
+        if (r.life > 0) {
+          ctx.strokeStyle = "rgba(150,210,245," + r.life * 0.8 + ")";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.ellipse(r.x, G + 2, r.r, r.r * 0.25, 0, 0, TAU); ctx.stroke();
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+      for (const d of drops) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 260 * dt; d.life -= dt * 1.6;
+        if (d.life > 0) { ctx.fillStyle = "rgba(170,220,250," + d.life + ")"; ctx.fillRect(d.x, d.y, 2, 2); }
+      }
+      drops = drops.filter(d => d.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Skid smoke", "Spark skid", "the same U-turn tell, striking sparks instead of smoke", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: puffs → spark streaks with gravity · palette smoke→spark
+  let sparks = [], lastFace = 1, burnout = 0;
+  return {
+    press() { burnout = 0.8; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (C.face !== lastFace) {
+        lastFace = C.face;
+        for (let i = 0; i < 6; i++)
+          sparks.push({ x: C.x - C.face * C.s * 0.3, y: G, vx: -C.face * rand(40, 100), vy: rand(-70, -20), life: 1 });
+      }
+      if (burnout > 0) {
+        burnout -= dt;
+        sparks.push({ x: C.x + rand(-6, 6), y: G, vx: rand(-80, 80), vy: rand(-80, -20), life: 1 });
+      }
+      ctx.globalCompositeOperation = "lighter";
+      for (const s of sparks) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 300 * dt; s.life -= dt * 1.8;
+        if (s.life > 0) {
+          ctx.strokeStyle = "rgba(255,200,110," + s.life + ")";
+          ctx.lineWidth = 1.3;
+          ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x - s.vx * 0.02, s.y - s.vy * 0.02); ctx.stroke();
+        }
+      }
+      ctx.globalCompositeOperation = "source-over";
+      sparks = sparks.filter(s => s.life > 0 && s.y < G + 4);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Speed lines", "Slow-mo trail", "the same trailing lines stretched long and faint — bullet-time walking", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: line length ×3 · alpha ÷2 · sprint slows the WORLD (cube patrol ÷3)
+  let slowmo = 0;
+  return {
+    press() { slowmo = 1.4; },
+    frame(dt, t) {
+      const warped = slowmo > 0 ? dt * 0.3 : dt;         // the bullet-time dial
+      stage(); tickCube(warped);
+      const speed = Math.min(1, Math.abs(C.vx) / 60) + 0.3;
+      for (let i = 0; i < 5; i++) {
+        const y = C.y - C.s * (0.15 + i * 0.2);
+        const len = (18 + i * 9) * speed;
+        ctx.strokeStyle = "rgba(200,205,240," + (0.1 + speed * 0.15) + ")";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(C.x - C.face * C.s * 0.6, y);
+        ctx.lineTo(C.x - C.face * (C.s * 0.6 + len), y);
+        ctx.stroke();
+      }
+      drawCube();
+      slowmo = Math.max(0, slowmo - dt);
+    }
+  };
+});
+
+rhymeOf("Teleport blink", "Mirror swap", "the same blink that always lands at the STAGE's mirror point — no aiming", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: destination click → mirrored x · motes violet→teal · flash softer
+  let parts = [], phase = 0, target = 0, arriveFlash = 0;
+  return {
+    press() {
+      if (phase !== 0) return;
+      phase = 1;
+      target = Math.max(C.s, Math.min(W - C.s, W - C.x));   // the mirror, always
+      for (let i = 0; i < 16; i++)
+        parts.push({ x: C.x + rand(-C.s * 0.5, C.s * 0.5), y: C.y - rand(0, C.s),
+                     tx: target, life: 1 });
+      C.alpha = 0;
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      ctx.globalCompositeOperation = "lighter";
+      if (phase === 1) {
+        let arrived = 0;
+        for (const p of parts) {
+          p.x += (p.tx - p.x) * dt * 6;
+          p.y += ((C.y - C.s * 0.5) - p.y) * dt * 6;
+          if (Math.abs(p.x - p.tx) < 6) arrived++;
+          glow(p.x, p.y, 4, "rgba(140,230,210,0.8)");
+        }
+        if (arrived > 12) {
+          phase = 0; parts = [];
+          C.x = target; C.alpha = 1;
+          arriveFlash = 0.6;
+        }
+      }
+      if (arriveFlash > 0) {
+        glow(C.x, C.y - C.s * 0.5, C.s * 1.3, "rgba(140,230,210," + arriveFlash * 0.5 + ")");
+        arriveFlash = Math.max(0, arriveFlash - dt * 2);
+      }
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Backflip", "Frontflip", "the same acrobatics with the rotation sign flipped — momentum agrees now", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: spin −face → +face (with travel) · trail warm · arc slightly lower
+  let flip = -1, trail = [];
+  return {
+    press() { if (flip < 0) flip = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (flip >= 0) {
+        flip += dt * 1.6;
+        const k = Math.min(1, flip);
+        C.y = G - Math.sin(k * Math.PI) * C.s * 1.4;
+        C.spin = C.face * k * TAU;
+        trail.push({ x: C.x, y: C.y - C.s * 0.5, life: 1 });
+        if (flip >= 1) { flip = -1; C.y = G; C.spin = 0; }
+      }
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of trail) {
+        p.life -= dt * 2;
+        if (p.life > 0) glow(p.x, p.y, 5, "rgba(255,190,130," + p.life * 0.4 + ")");
+      }
+      ctx.globalCompositeOperation = "source-over";
+      trail = trail.filter(p => p.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Wall kick", "Rubber walls", "the same wall-to-wall run with the bounce dial cranked — springy chaos", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: run speed 70 → 120, +10% per kick · walls flash on impact
+  let sparks = [], boost = 0, vy = 0, wallFlash = 0, wallSide = 0;
+  return {
+    press() { boost = 1; },
+    frame(dt, t) {
+      stage();
+      C.pace = false;
+      if (C.vx === 0) C.vx = 120;
+      C.face = C.vx > 0 ? 1 : -1;
+      tickCube(dt);
+      if (C.x < C.s * 0.6 || C.x > W - C.s * 0.6) {
+        wallSide = C.x < W / 2 ? -1 : 1;
+        wallFlash = 1;
+        C.vx = -C.vx * 1.1;                              // springier every kick
+        if (Math.abs(C.vx) > 320) C.vx = Math.sign(C.vx) * 320;
+        C.x = Math.max(C.s * 0.6, Math.min(W - C.s * 0.6, C.x));
+        for (let i = 0; i < 5; i++)
+          sparks.push({ x: C.x - Math.sign(C.vx) * C.s * 0.5, y: C.y - rand(0, C.s),
+                        vx: Math.sign(C.vx) * rand(30, 80), vy: rand(-40, 10), life: 1 });
+        if (boost > 0) { vy = -240; boost = 0; }
+      }
+      vy += 600 * dt;
+      C.y = Math.min(G, C.y + vy * dt);
+      if (C.y >= G) vy = 0;
+      ctx.fillStyle = "rgba(120,180,140," + (0.4 + (wallSide === -1 ? wallFlash : 0) * 0.5) + ")";
+      ctx.fillRect(0, G - C.s * 2.4, 4, C.s * 2.4);
+      ctx.fillStyle = "rgba(120,180,140," + (0.4 + (wallSide === 1 ? wallFlash : 0) * 0.5) + ")";
+      ctx.fillRect(W - 4, G - C.s * 2.4, 4, C.s * 2.4);
+      wallFlash = Math.max(0, wallFlash - dt * 3);
+      for (const s of sparks) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 2;
+        if (s.life > 0) { ctx.fillStyle = "rgba(180,240,200," + s.life + ")"; ctx.fillRect(s.x, s.y, 2, 2); }
+      }
+      sparks = sparks.filter(s => s.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Hit spark", "Ice hit", "the same star-flash frozen — it shatters into hanging shards", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: star → shard burst · palette warm→ice · decay slower
+  let hits = [], lunge = 0;
+  return {
+    press(x, y) {
+      lunge = 1;
+      const hx = x || C.x + C.face * C.s, hy = Math.min(y || C.y - C.s * 0.6, G - 4);
+      for (let i = 0; i < 8; i++) {
+        const th = rand(0, TAU);
+        hits.push({ x: hx, y: hy, vx: Math.cos(th) * rand(20, 60), vy: Math.sin(th) * rand(20, 60),
+                    rot: rand(0, TAU), life: 1 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (lunge > 0) { C.lean = C.face * 0.18 * lunge; lunge = Math.max(0, lunge - dt * 4); }
+      else if (Math.random() < 0.02) lunge = 0.4;
+      drawCube();
+      for (const hh of hits) {
+        hh.x += hh.vx * dt; hh.y += hh.vy * dt;
+        hh.vx *= Math.pow(0.3, dt); hh.vy *= Math.pow(0.3, dt);
+        hh.rot += 3 * dt; hh.life -= dt * 1.2;
+        if (hh.life > 0) {
+          ctx.save();
+          ctx.translate(hh.x, hh.y); ctx.rotate(hh.rot);
+          ctx.fillStyle = "rgba(190,225,255," + hh.life * 0.9 + ")";
+          ctx.beginPath(); ctx.moveTo(5, 0); ctx.lineTo(-3, 2); ctx.lineTo(-3, -2); ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+      }
+      hits = hits.filter(hh => hh.life > 0);
+    }
+  };
+});
+
+rhymeOf("Combo counter", "Damage numbers", "the same escalation shown as RPG numbers drifting off the hit", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: one big counter → floating per-hit numbers that grow with the streak
+  let nums = [], combo = 0, cool = 0, lunge = 0;
+  return {
+    press() {
+      combo++; cool = 1.6; lunge = 1;
+      nums.push({ x: C.x + C.face * C.s + rand(-6, 6), y: C.y - C.s,
+                  v: 40 + Math.min(combo, 12) * 8, life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (cool > 0) { cool -= dt; if (cool <= 0) combo = 0; }
+      if (lunge > 0) { C.lean = C.face * 0.15 * lunge; lunge = Math.max(0, lunge - dt * 4); }
+      drawCube();
+      for (const n of nums) {
+        n.y -= 40 * dt; n.life -= dt * 1.1;
+        if (n.life <= 0) continue;
+        const size = 11 + Math.min(n.v / 8, 14);
+        ctx.font = "800 " + Math.round(size) + "px system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(40,20,60," + n.life * 0.9 + ")";
+        ctx.strokeText(String(n.v), n.x, n.y);
+        ctx.fillStyle = "hsla(" + (50 - Math.min(n.v, 130) * 0.3) + ",95%,65%," + n.life + ")";
+        ctx.fillText(String(n.v), n.x, n.y);
+      }
+      nums = nums.filter(n => n.life > 0);
+    }
+  };
+});
+
+rhymeOf("Shockwave punch", "Twin shockwave", "the same ring sent BOTH ways — the lunge stays home to pay for it", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: ring count 1 → 2 (both directions) · lunge removed · shake softer
+  let rings = [], shake = 0;
+  return {
+    press() {
+      shake = 0.5;
+      rings.push({ x: C.x + C.s * 0.9, dir: 1, r: 6, life: 1 });
+      rings.push({ x: C.x - C.s * 0.9, dir: -1, r: 6, life: 1 });
+    },
+    frame(dt, t) {
+      stage();
+      const sh = shake * shake * 3;
+      ctx.save();
+      ctx.translate(rand(-sh, sh), rand(-sh, sh));
+      tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const r of rings) {
+        r.x += r.dir * 70 * dt; r.r += 100 * dt; r.life -= dt * 1.6;
+        if (r.life > 0) {
+          ctx.strokeStyle = "rgba(230,225,255," + r.life * 0.8 + ")";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.ellipse(r.x, C.y - C.s * 0.5, r.r * 0.5, r.r, 0, 0, TAU);
+          ctx.stroke();
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      ctx.restore();
+      shake = Math.max(0, shake - dt * 2);
+    }
+  };
+});
+
+rhymeOf("Block clang", "Iron wall", "the same guard held wide and heavy — dust falls where sparks flew", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: shards → falling dust · guard bigger, holds 2× · palette steel-grey
+  let block = 0, dust = [];
+  return {
+    press() {
+      block = 1;
+      for (let i = 0; i < 8; i++)
+        dust.push({ x: C.x + C.face * C.s * rand(0.7, 1), y: C.y - rand(0, C.s),
+                    vy: rand(10, 40), life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (block > 0) C.lean = -C.face * 0.1 * block;
+      drawCube();
+      if (block > 0) {
+        ctx.strokeStyle = "rgba(160,165,175," + Math.min(1, block * 1.4) + ")";
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(C.x + C.face * C.s * 0.85, C.y - C.s * 1.2);
+        ctx.lineTo(C.x + C.face * C.s * 0.85, C.y + 2);
+        ctx.stroke();
+        block = Math.max(0, block - dt * 0.9);
+      }
+      for (const d of dust) {
+        d.y += d.vy * dt; d.life -= dt * 1.4;
+        if (d.life > 0) {
+          ctx.fillStyle = "rgba(150,145,140," + d.life * 0.5 + ")";
+          ctx.fillRect(d.x, Math.min(d.y, G), 1.8, 1.8);
+        }
+      }
+      dust = dust.filter(d => d.life > 0);
+    }
+  };
+});
+
+rhymeOf("Parry flash", "Crimson counter", "the same one-frame flash in danger red — the freeze lasts longer", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette white-blue→red · freeze window 0.4 → 0.7 of the flash
+  let parry = 0;
+  return {
+    press() { parry = 1; },
+    frame(dt, t) {
+      stage();
+      if (parry < 0.3) tickCube(dt);       // a longer, harder freeze
+      drawCube();
+      if (parry > 0) {
+        ctx.globalCompositeOperation = "lighter";
+        if (parry > 0.6) {
+          ctx.fillStyle = "rgba(255,90,90," + (parry - 0.6) * 1.4 + ")";
+          ctx.fillRect(0, 0, W, H);
+        }
+        ctx.strokeStyle = "rgba(255,130,120," + parry + ")";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.ellipse(C.x + C.face * C.s * 0.6, C.y - C.s * 0.55,
+                    (1 - parry) * C.s * 1.6 + 6, ((1 - parry) * C.s * 1.6 + 6) * 1.2, 0, 0, TAU);
+        ctx.stroke();
+        ctx.globalCompositeOperation = "source-over";
+        parry = Math.max(0, parry - dt * 1.8);
+      }
+    }
+  };
+});
+
+rhymeOf("Knockback", "Launcher", "the same helpless physics aimed UP — juggle-state, then the landing", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: knock direction back→up · tumble in the air · dust on landing
+  let vy = 0, launched = false, stars = [], dust = [];
+  return {
+    press() {
+      if (!launched) {
+        launched = true; vy = -320;
+        C.pace = false; C.vx = -C.face * 40;
+        for (let i = 0; i < 5; i++)
+          stars.push({ a: rand(0, TAU), life: 1.6 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (launched) {
+        vy += 620 * dt;
+        C.y += vy * dt;
+        C.spin += dt * 9;
+        if (C.y >= G) {
+          C.y = G; launched = false; C.spin = 0; C.pace = true; vy = 0;
+          for (let i = 0; i < 8; i++)
+            dust.push({ x: C.x + rand(-4, 4), y: G, vx: rand(-60, 60), vy: rand(-30, -8), life: 1 });
+        }
+      }
+      drawCube();
+      for (const s of stars) {
+        s.a += 5 * dt; s.life -= dt;
+        if (s.life > 0)
+          twinkle(C.x + Math.cos(s.a) * C.s * 0.7, C.y - C.s * 1.25 + Math.sin(s.a) * 4,
+                  3, "rgba(255,235,150," + Math.min(1, s.life) + ")");
+      }
+      stars = stars.filter(s => s.life > 0);
+      for (const d of dust) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.life -= dt * 1.8;
+        if (d.life > 0) {
+          ctx.fillStyle = "rgba(160,150,180," + d.life * 0.5 + ")";
+          ctx.beginPath(); ctx.arc(d.x, Math.min(d.y, G), 3, 0, TAU); ctx.fill();
+        }
+      }
+      dust = dust.filter(d => d.life > 0);
+    }
+  };
+});
+
+rhymeOf("Ground crack", "Frost crack", "the same punched floor veined with GLOWING ice — it heals twice as fast", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: crack dark→glowing ice · heal ×2 · debris → glints
+  let cracks = [], glints = [];
+  return {
+    press() {
+      const cx = C.x + C.face * C.s * 0.7;
+      const rays = [];
+      for (let i = 0; i < 5; i++) {
+        const dir = rand(0, TAU);
+        const segs = [[cx, G]];
+        let px = cx;
+        for (let k = 0; k < 3; k++) {
+          px += Math.cos(dir) * rand(8, 18);
+          segs.push([px, G + Math.abs(Math.sin(dir)) * rand(2, 8) * (k + 1) * 0.4]);
+        }
+        rays.push(segs);
+      }
+      cracks.push({ rays: rays, life: 1 });
+      for (let i = 0; i < 6; i++)
+        glints.push({ x: cx + rand(-14, 14), y: G - rand(0, 6), life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const c of cracks) {
+        c.life -= dt * 0.5;
+        if (c.life <= 0) continue;
+        ctx.strokeStyle = "rgba(160,220,255," + Math.min(1, c.life * 1.5) + ")";
+        ctx.lineWidth = 2;
+        for (const ray of c.rays) {
+          ctx.beginPath();
+          ctx.moveTo(ray[0][0], ray[0][1]);
+          for (const s of ray) ctx.lineTo(s[0], s[1]);
+          ctx.stroke();
+        }
+      }
+      cracks = cracks.filter(c => c.life > 0);
+      for (const g of glints) {
+        g.life -= dt * 1.2;
+        if (g.life > 0) twinkle(g.x, g.y, 2.5, "rgba(200,235,255," + g.life + ")");
+      }
+      glints = glints.filter(g => g.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Stomp quake", "Ripple stomp", "the same stomp on water — rings roll out instead of dust humps", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: dust waves → travelling rings · palette earth→water · slower
+  let rings = [], hop = -1;
+  return {
+    press() { if (hop < 0) hop = 0; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      ctx.fillStyle = "rgba(90,150,210,0.15)";
+      ctx.fillRect(0, G, W, H - G);
+      if (hop >= 0) {
+        hop += dt * 3;
+        C.y = G - Math.sin(Math.min(1, hop) * Math.PI) * C.s * 0.7;
+        if (hop >= 1) {
+          C.y = G; hop = -1;
+          for (let i = 0; i < 3; i++) rings.push({ r: 4 + i * 8, life: 1 + i * 0.15 });
+        }
+      }
+      drawCube();
+      for (const r of rings) {
+        r.r += 80 * dt; r.life -= dt * 0.8;
+        if (r.life > 0) {
+          ctx.strokeStyle = "rgba(150,210,245," + Math.min(1, r.life) * 0.7 + ")";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.ellipse(C.x, G + 2, r.r, r.r * 0.22, 0, 0, TAU); ctx.stroke();
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+    }
+  };
+});
+
+rhymeOf("Rock throw", "Snowball throw", "the same lob — it splats instead of shattering, and leaves a mark", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rock → snowball (circle) · shatter → splat blobs + lingering patch
+  let balls = [], splats = [], patches = [];
+  return {
+    press() {
+      balls.push({ x: C.x + C.face * C.s * 0.5, y: C.y - C.s, vx: C.face * rand(120, 160), vy: -160 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const b of balls) {
+        b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 320 * dt;
+        if (b.y >= G - 4) {
+          patches.push({ x: b.x, life: 3 });
+          for (let i = 0; i < 6; i++)
+            splats.push({ x: b.x, y: G - 2, vx: rand(-50, 50), vy: rand(-60, -10), life: 1 });
+          b.y = 1e9;
+        } else {
+          ctx.fillStyle = "rgba(240,246,252,0.95)";
+          ctx.beginPath(); ctx.arc(b.x, b.y, 5, 0, TAU); ctx.fill();
+        }
+      }
+      balls = balls.filter(b => b.y < H);
+      for (const p of patches) {
+        p.life -= dt * 0.5;
+        if (p.life > 0) {
+          ctx.fillStyle = "rgba(240,246,252," + Math.min(1, p.life) * 0.7 + ")";
+          ctx.beginPath(); ctx.ellipse(p.x, G, 9, 2.5, 0, 0, TAU); ctx.fill();
+        }
+      }
+      patches = patches.filter(p => p.life > 0);
+      for (const s of splats) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 260 * dt; s.life -= dt * 1.6;
+        if (s.life > 0) { ctx.fillStyle = "rgba(240,246,252," + s.life + ")"; ctx.fillRect(s.x, s.y, 2, 2); }
+      }
+      splats = splats.filter(s => s.life > 0);
+    }
+  };
+});
+
+rhymeOf("Vine snare", "Chain snare", "the same rising grab in cold iron — links, not leaves, and no sway", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: vines → chain links (circles) · writhe removed · rise faster
+  let snares = [];
+  return {
+    press(x) { snares.push({ x: Math.max(10, Math.min(W - 10, x || C.x + C.face * C.s * 2)), life: 1.4 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const sn of snares) {
+        sn.life -= dt * 0.8;
+        if (sn.life <= 0) continue;
+        const up = Math.sin(Math.min(1, (1.4 - sn.life) * 2.6) * Math.PI * 0.5) * Math.min(1, sn.life * 1.8);
+        const links = Math.floor(up * 7);
+        ctx.strokeStyle = "rgba(150,155,170," + Math.min(1, sn.life) + ")";
+        ctx.lineWidth = 2;
+        for (let k = 0; k < links; k++) {
+          ctx.beginPath();
+          ctx.ellipse(sn.x, G - 6 - k * 9, 3, 5, k % 2 ? 0.5 : -0.5, 0, TAU);
+          ctx.stroke();
+        }
+      }
+      snares = snares.filter(sn => sn.life > 0);
+    }
+  };
+});
+
+rhymeOf("Leaf whirl", "Stone belt", "the same orbit with pebbles — heavier, lower, slower", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: leaves → pebbles · orbit ÷1.6 and flattened · burst throws them out
+  const stones = [];
+  for (let i = 0; i < 8; i++)
+    stones.push({ a: rand(0, TAU), r: rand(0.9, 1.3), v: rand(0.6, 1.1), burst: 0 });
+  return {
+    press() { for (const s of stones) s.burst = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const s of stones) {
+        s.burst = Math.max(0, s.burst - dt * 0.7);
+        s.a += s.v * (1 + s.burst * 3) * dt;
+        const r = C.s * s.r * (1 + s.burst * 1.4);
+        const x = C.x + Math.cos(s.a) * r;
+        const y = C.y - C.s * 0.35 + Math.sin(s.a) * r * 0.35;
+        ctx.fillStyle = "rgba(122,110,94,0.9)";
+        ctx.beginPath();
+        ctx.moveTo(x - 3, y + 1); ctx.lineTo(x - 1, y - 3); ctx.lineTo(x + 3, y - 1); ctx.lineTo(x + 2, y + 2);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+  };
+});
+
+rhymeOf("Boulder shield", "Leaf shield", "the same summoned orbit in foliage — lighter, higher, briefer", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rocks → leaves · duration 3 → 2 · orbit raised and faster
+  let armour = 0;
+  return {
+    press() { armour = 2; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (armour > 0) {
+        armour -= dt;
+        const rise = Math.min(1, (2 - armour) * 3);
+        for (let i = 0; i < 6; i++) {
+          const a = t * 3.4 + i / 6 * TAU;
+          const x = C.x + Math.cos(a) * C.s * 1.15;
+          const y = C.y - C.s * 0.65 * rise + Math.sin(a) * C.s * 0.45;
+          ctx.save();
+          ctx.translate(x, y); ctx.rotate(a + t);
+          ctx.fillStyle = "rgba(120,185,110," + Math.min(1, armour) + ")";
+          ctx.beginPath(); ctx.ellipse(0, 0, 4, 2, 0, 0, TAU); ctx.fill();
+          ctx.restore();
+        }
+      }
+    }
+  };
+});
+
+rhymeOf("Bloom trail", "Frost trail", "the same footstep magic, frozen — six-point frost stars instead of flowers", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: petals → frost stars · palette pink→ice · they FADE (flowers stayed)
+  let marks = [], lastX = null, travelled = 0;
+  return {
+    press() {
+      for (let i = 0; i < 7; i++)
+        marks.push({ x: Math.max(6, Math.min(W - 6, C.x + rand(-C.s * 2.4, C.s * 2.4))), open: 0, life: 1.6 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (lastX === null) lastX = C.x;
+      travelled += Math.abs(C.x - lastX);
+      lastX = C.x;
+      while (travelled > 26) { travelled -= 26; marks.push({ x: C.x, open: 0, life: 1.6 }); }
+      for (const m of marks) {
+        m.open = Math.min(1, m.open + dt * 2);
+        m.life -= dt * 0.4;
+        if (m.life <= 0) continue;
+        const s = 5 * m.open;
+        ctx.strokeStyle = "rgba(190,230,255," + Math.min(1, m.life) * 0.8 + ")";
+        ctx.lineWidth = 1;
+        for (let p = 0; p < 6; p++) {
+          const th = p / 6 * TAU;
+          ctx.beginPath();
+          ctx.moveTo(m.x, G - 2);
+          ctx.lineTo(m.x + Math.cos(th) * s, G - 2 + Math.sin(th) * s * 0.4);
+          ctx.stroke();
+        }
+      }
+      marks = marks.filter(m => m.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Sand kick", "Snow kick", "the same dirty trick in winter — powder hangs in the air longer", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: sand→snow · gravity 300 → 120 · fade ÷1.5 (powder lingers)
+  let grains = [];
+  return {
+    press() {
+      C.lean = -C.face * 0.15;
+      for (let i = 0; i < 24; i++)
+        grains.push({ x: C.x + C.face * C.s * 0.4, y: G - 2,
+                      vx: C.face * rand(60, 160), vy: rand(-100, -30), life: 1.3 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const g of grains) {
+        g.x += g.vx * dt; g.y += g.vy * dt; g.vy += 120 * dt;
+        g.vx *= Math.pow(0.5, dt); g.life -= dt * 0.9;
+        if (g.y > G) g.y = G;
+        if (g.life > 0) { ctx.fillStyle = "rgba(240,246,255," + Math.min(1, g.life) * 0.8 + ")"; ctx.fillRect(g.x, g.y, 1.8, 1.8); }
+      }
+      grains = grains.filter(g => g.life > 0);
+    }
+  };
+});
+
+rhymeOf("Quake slam", "Wave slam", "the same rolling hump made of water — taller, softer, with spray", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: floor hump → water swell (+spray) · height ×1.6 · palette earth→sea
+  let humps = [], spray = [];
+  return {
+    press() { humps.push({ x: C.x, dir: C.face, life: 1 }); },
+    frame(dt, t) {
+      const bumps = humps.filter(hh => hh.life > 0);
+      const groundAt = function (x) {
+        let y = G;
+        for (const hh of bumps) {
+          const d = Math.abs(x - hh.x);
+          y -= Math.max(0, 16 - d * 0.4) * hh.life;
+        }
+        return y;
+      };
+      stage();
+      ctx.fillStyle = "rgba(50,110,170,0.5)";
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 4) ctx.lineTo(x, groundAt(x));
+      ctx.lineTo(W, H);
+      ctx.closePath(); ctx.fill();
+      tickCube(dt);
+      C.y = groundAt(C.x);
+      drawCube();
+      C.y = G;
+      for (const hh of humps) {
+        hh.x += hh.dir * 100 * dt; hh.life -= dt * 0.7;
+        if (Math.random() < 0.4)
+          spray.push({ x: hh.x + rand(-6, 6), y: groundAt(hh.x), vx: hh.dir * 30, vy: rand(-50, -15), life: 0.7 });
+      }
+      humps = humps.filter(hh => hh.life > 0 && hh.x > -20 && hh.x < W + 20);
+      for (const s of spray) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 200 * dt; s.life -= dt * 1.6;
+        if (s.life > 0) { ctx.fillStyle = "rgba(200,230,250," + s.life + ")"; ctx.fillRect(s.x, s.y, 1.6, 1.6); }
+      }
+      spray = spray.filter(s => s.life > 0);
+    }
+  };
+});
+
+rhymeOf("Thorn wall", "Ice fence", "the same rising fence in glass-blue — it melts down instead of sinking", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: thorns→ice spears · retreat sink → melt (height shrinks + drips)
+  let walls = [], drips = [];
+  return {
+    press() { walls.push({ x: C.x + C.face * C.s * 1.8, life: 2.6 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const w of walls) {
+        w.life -= dt * 0.6;
+        if (w.life <= 0) continue;
+        const up = Math.min(1, (2.6 - w.life) * 2.4);
+        const melt = Math.min(1, w.life);
+        for (let i = -2; i <= 2; i++) {
+          const hgt = (C.s * 1.5 - Math.abs(i) * 6) * up * melt;
+          ctx.fillStyle = "rgba(170,215,250," + Math.min(1, w.life) * 0.75 + ")";
+          ctx.beginPath();
+          ctx.moveTo(w.x + i * 9 - 4, G);
+          ctx.lineTo(w.x + i * 9, G - hgt);
+          ctx.lineTo(w.x + i * 9 + 4, G);
+          ctx.closePath(); ctx.fill();
+        }
+        if (Math.random() < 0.25)
+          drips.push({ x: w.x + rand(-20, 20), y: G - rand(4, 20) * melt, life: 0.8 });
+      }
+      walls = walls.filter(w => w.life > 0);
+      for (const d of drips) {
+        d.y += 50 * dt; d.life -= dt * 1.8;
+        if (d.life > 0 && d.y < G) { ctx.fillStyle = "rgba(190,225,250," + d.life + ")"; ctx.fillRect(d.x, d.y, 1.5, 3); }
+      }
+      drips = drips.filter(d => d.life > 0 && d.y < G);
+    }
+  };
+});
+
+rhymeOf("Energy ball", "Shadow ball", "the same thrown orb in negative — a dark core wearing a violet rim", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: bright orb → dark disc + rim · trail absorbs instead of glows
+  let orbs = [];
+  return {
+    press() {
+      orbs.push({ x: C.x + C.face * C.s * 0.6, y: C.y - C.s * 0.5, vx: C.face * 200 });
+      C.lean = C.face * 0.15;
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.fillStyle = "rgba(30,18,50," + (0.4 + Math.sin(t * 9) * 0.15) + ")";
+      ctx.beginPath(); ctx.arc(C.x + C.face * C.s * 0.55, C.y - C.s * 0.45, 3.5, 0, TAU); ctx.fill();
+      for (const o of orbs) {
+        o.x += o.vx * dt;
+        ctx.fillStyle = "rgba(15,8,28,0.55)";            // its wake dims the stage
+        ctx.beginPath(); ctx.arc(o.x - o.vx * 0.04, o.y, 7, 0, TAU); ctx.fill();
+        ctx.fillStyle = "#0A0514";
+        ctx.beginPath(); ctx.arc(o.x, o.y, 8, 0, TAU); ctx.fill();
+        ctx.strokeStyle = "rgba(170,110,255,0.85)";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(o.x, o.y, 9, 0, TAU); ctx.stroke();
+      }
+      orbs = orbs.filter(o => o.x > -20 && o.x < W + 20);
+    }
+  };
+});
+
+rhymeOf("Beam blast", "Ice beam", "the same beam crusted cold — slower flicker, frost left where it passed", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette blue-white→ice · flicker 30 → 8 · residue twinkles linger
+  let beam = 0, residue = [];
+  return {
+    press() {
+      beam = 0.8;
+      for (let i = 0; i < 8; i++)
+        residue.push({ x: C.x + C.face * rand(C.s, W * 0.5), y: C.y - C.s * 0.5 + rand(-6, 6), life: 2 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.2)
+        glow(C.x + C.face * C.s * 0.6 + rand(-8, 8), C.y - C.s * 0.5 + rand(-8, 8),
+             2.5, "rgba(200,235,255,0.7)");
+      if (beam > 0) {
+        const hy = C.y - C.s * 0.5;
+        const x0 = C.x + C.face * C.s * 0.6;
+        const thick = 7 * Math.min(1, beam * 3) * (0.8 + Math.sin(t * 8) * 0.08);
+        const x1 = C.face > 0 ? W : 0;
+        ctx.fillStyle = "rgba(190,230,255,0.55)";
+        ctx.fillRect(Math.min(x0, x1), hy - thick, Math.abs(x1 - x0), thick * 2);
+        glow(x0, hy, 14 + thick, "rgba(220,240,255,0.9)");
+        C.lean = -C.face * 0.1;
+        beam -= dt;
+      }
+      for (const r of residue) {
+        r.life -= dt * 0.7;
+        if (r.life > 0) twinkle(r.x, r.y, 2.5, "rgba(200,235,255," + Math.min(1, r.life) * 0.8 + ")");
+      }
+      residue = residue.filter(r => r.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Homing orbs", "Homing embers", "the same spiral-then-chase, on fire and one orb lighter", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: count 3 → 2 · palette pink→ember · chase speed ×1.2
+  let flying = [];
+  return {
+    press() {
+      for (let i = 0; i < 2; i++)
+        flying.push({ x: C.x, y: C.y - C.s * 0.5, a: i * Math.PI, spiral: 0.6, dir: C.face, life: 2 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (let i = 0; i < 2; i++) {
+        const a = t * 1.8 + i * Math.PI;
+        glow(C.x + Math.cos(a) * C.s * 0.95, C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.55,
+             4, "rgba(255,170,90,0.8)");
+      }
+      for (const f of flying) {
+        if (f.spiral > 0) {
+          f.spiral -= dt;
+          f.a += 9 * dt;
+          f.x += Math.cos(f.a) * 90 * dt;
+          f.y += Math.sin(f.a) * 60 * dt;
+        } else {
+          f.x += f.dir * 290 * dt;
+          f.y += (C.y - C.s * 0.5 - f.y) * dt * 2;
+        }
+        f.life -= dt;
+        if (f.life > 0) glow(f.x, f.y, 6, "rgba(255,180,100,0.9)");
+      }
+      flying = flying.filter(f => f.life > 0 && f.x > -20 && f.x < W + 20);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Boomerang", "Twin glaives", "the same out-and-back flown by two blades in mirrored phase", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: glaive count 1 → 2 (one high, one low, opposite spin)
+  let flight = null;
+  return {
+    press() {
+      if (!flight) flight = { p: 0, dir: C.face };
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (flight) {
+        flight.p += dt * 0.9;
+        const k = Math.min(1, flight.p);
+        const reach = Math.sin(k * Math.PI) * C.s * 3.2;
+        for (const lane of [-1, 1]) {
+          const x = C.x + flight.dir * reach;
+          const y = C.y - C.s * 0.6 + lane * (10 + Math.sin(k * TAU) * 4);
+          ctx.save();
+          ctx.translate(x, y);
+          ctx.rotate(lane * t * 16);
+          ctx.strokeStyle = "rgba(220,225,245,0.95)";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(-6, 3); ctx.lineTo(0, -4); ctx.lineTo(6, 3);
+          ctx.stroke();
+          ctx.restore();
+        }
+        if (flight.p >= 1) flight = null;
+      } else {
+        ctx.strokeStyle = "rgba(220,225,245," + (0.5 + Math.sin(t * 3) * 0.3) + ")";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(C.x - C.face * C.s * 0.4 - 4, C.y - C.s * 0.3);
+        ctx.lineTo(C.x - C.face * C.s * 0.4 + 4, C.y - C.s * 0.34);
+        ctx.stroke();
+      }
+    }
+  };
+});
+
+rhymeOf("Laser sight", "Green scope", "the same patient line in green, blinking slower — the shot hums, not cracks", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: red→green · blink 7 → 2.5 · shot width ÷2, longer decay
+  let shot = 0;
+  return {
+    press() { shot = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const hy = C.y - C.s * 0.55;
+      const x0 = C.x + C.face * C.s * 0.55;
+      const x1 = C.face > 0 ? W : 0;
+      ctx.globalCompositeOperation = "lighter";
+      if (shot <= 0) {
+        ctx.strokeStyle = "rgba(110,255,140," + (0.25 + Math.sin(t * 2.5) * 0.12) + ")";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x0, hy);
+        ctx.lineTo(x1, hy);
+        ctx.stroke();
+        glow(C.face > 0 ? W - 4 : 4, hy, 3, "rgba(140,255,170,0.6)");
+      } else {
+        ctx.strokeStyle = "rgba(200,255,215," + shot + ")";
+        ctx.lineWidth = 1 + shot * 2.5;
+        ctx.beginPath();
+        ctx.moveTo(x0, hy);
+        ctx.lineTo(x1, hy);
+        ctx.stroke();
+        glow(x0, hy, 10, "rgba(160,255,190," + shot + ")");
+        shot = Math.max(0, shot - dt * 1.4);
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Charge shot", "Instant volley", "the same shot with patience deleted — three small ones, right now", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: charge mechanic removed · one big → three quick smalls · palette same
+  let shots = [];
+  return {
+    press() {
+      for (let i = 0; i < 3; i++)
+        shots.push({ x: C.x + C.face * C.s * 0.6, y: C.y - C.s * 0.5,
+                     vx: C.face * 220, delay: i * 0.09, r: 4 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      glow(C.x + C.face * C.s * 0.6, C.y - C.s * 0.5,
+           3 + Math.sin(t * 10) * 1, "rgba(170,255,190,0.5)");
+      for (const s of shots) {
+        s.delay -= dt;
+        if (s.delay > 0) continue;
+        s.x += s.vx * dt;
+        glow(s.x, s.y, s.r, "rgba(190,255,205,0.9)");
+      }
+      shots = shots.filter(s => s.x > -30 && s.x < W + 30);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Spread shot", "Tight burst", "the same fan squeezed narrow and doubled — accuracy traded for volume", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: spread ±0.44 → ±0.1 · pellets 5 → 10 · speed ×1.1
+  let pellets = [];
+  return {
+    press() {
+      for (let i = 0; i < 10; i++) {
+        const th = rand(-0.1, 0.1);
+        pellets.push({ x: C.x + C.face * C.s * 0.6, y: C.y - C.s * 0.55,
+                       vx: C.face * Math.cos(th) * 230, vy: Math.sin(th) * 230, life: 1.4 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      glow(C.x + C.face * C.s * 0.55, C.y - C.s * 0.45 - Math.abs(Math.sin(t * 5)) * 4,
+           2.5, "rgba(255,220,150,0.8)");
+      for (const p of pellets) {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+        if (p.life > 0) glow(p.x, p.y, 3, "rgba(255,225,160,0.9)");
+      }
+      pellets = pellets.filter(p => p.life > 0 && p.x > -10 && p.x < W + 10);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Orbit launch", "Orbit recall", "the same launch that comes BACK — every shard boomerangs to its post", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: fly-off → out-and-return arc (one cosine) · palette warmer
+  const shards = [0, 1, 2, 3].map(i => ({ ph: i / 4 * TAU, out: -1, delay: 0 }));
+  return {
+    press() {
+      let d = 0;
+      for (const s of shards)
+        if (s.out < 0) { s.out = 0; s.delay = d; d += 0.15; }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const s of shards) {
+        let x, y;
+        if (s.out < 0) {
+          const a = t * 2 + s.ph;
+          x = C.x + Math.cos(a) * C.s * 1.05;
+          y = C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.6;
+        } else {
+          s.delay -= dt;
+          if (s.delay <= 0) s.out += dt * 1.1;
+          const k = Math.max(0, Math.min(1, s.out));
+          const reach = Math.sin(k * Math.PI) * C.s * 2.8;
+          const a = t * 2 + s.ph;
+          x = C.x + Math.cos(a) * C.s * 1.05 + C.face * reach;
+          y = C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.6;
+          if (s.out >= 1) s.out = -1;
+        }
+        glow(x, y, 4.5, "rgba(255,200,140,0.9)");
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Ice shards", "Fire shards", "the same volley alight — shards curve upward as heat argues with aim", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette ice→fire · vy drift −20 (they rise) · breath → shimmer
+  let shards = [];
+  return {
+    press() {
+      for (let i = 0; i < 5; i++)
+        shards.push({ x: C.x + C.face * C.s * 0.5, y: C.y - C.s * 0.6 + rand(-6, 6),
+                      vx: C.face * rand(160, 220), vy: rand(-30, 0), rot: 0, life: 1.2 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (Math.random() < 0.15)
+        glow(C.x + C.face * C.s * 0.55, C.y - C.s * 0.55, 4, "rgba(255,170,90,0.3)");
+      for (const s of shards) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.vy -= 20 * dt; s.rot += 6 * dt; s.life -= dt;
+        if (s.life > 0) {
+          ctx.save();
+          ctx.translate(s.x, s.y); ctx.rotate(s.rot);
+          ctx.fillStyle = "rgba(255,170,90,0.9)";
+          ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, 2.5); ctx.lineTo(-4, -2.5); ctx.closePath(); ctx.fill();
+          ctx.restore();
+        }
+      }
+      shards = shards.filter(s => s.life > 0 && s.x > -10 && s.x < W + 10);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Frost armor", "Stone armor", "the same toggled shell in granite — dust motes instead of glints", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette ice→stone · glints → falling dust · outline thicker
+  let on = false, dust = [];
+  return {
+    press() { on = !on; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      C.tint = on ? "#4A443C" : null;
+      drawCube();
+      C.tint = null;
+      if (on) {
+        ctx.save();
+        ctx.translate(C.x, C.y - C.hop);
+        ctx.rotate(C.lean);
+        ctx.strokeStyle = "rgba(150,140,125,0.9)";
+        ctx.lineWidth = 3.5;
+        ctx.strokeRect(-C.s / 2 - 3, -C.s - 3, C.s + 6, C.s + 6);
+        ctx.restore();
+        if (Math.random() < 0.15)
+          dust.push({ x: C.x + rand(-C.s * 0.6, C.s * 0.6), y: C.y - rand(0, C.s), life: 0.8 });
+      }
+      for (const d of dust) {
+        d.y += 30 * dt; d.life -= dt * 1.4;
+        if (d.life > 0) { ctx.fillStyle = "rgba(150,140,125," + d.life * 0.6 + ")"; ctx.fillRect(d.x, d.y, 1.6, 1.6); }
+      }
+      dust = dust.filter(d => d.life > 0);
+    }
+  };
+});
+
+rhymeOf("Freeze stomp", "Burn stomp", "the same spreading floor-front, scorched — it smoulders as it fades", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: frost teeth → flame licks · palette ice→char · smoulder embers added
+  let sheets = [];
+  return {
+    press() { sheets.push({ x: C.x, spread: 4, life: 1 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      for (const sh of sheets) {
+        sh.spread += 110 * dt;
+        sh.life -= dt * 0.35;
+        if (sh.life <= 0) continue;
+        const a = Math.min(1, sh.life * 2);
+        ctx.fillStyle = "rgba(40,25,18," + a * 0.6 + ")";
+        ctx.fillRect(sh.x - sh.spread, G, sh.spread * 2, 5);
+        ctx.globalCompositeOperation = "lighter";
+        for (let x = -sh.spread; x < sh.spread; x += 14)
+          glow(sh.x + x + 4, G - 2, 4 * a, "rgba(255,140,60," + a * 0.5 + ")");
+        ctx.globalCompositeOperation = "source-over";
+      }
+      sheets = sheets.filter(sh => sh.life > 0);
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Snow aura", "Ash aura", "the same private weather after the fire — grey flakes that smear, not melt", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette snow→ash · sway ÷2 · flakes leave a smudge at the floor
+  let flakes = [], smudges = [], flurry = 0;
+  return {
+    press() { flurry = 1.4; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.2 + (flurry > 0 ? 0.5 : 0))
+        flakes.push({ x: C.x + rand(-C.s * 1.4, C.s * 1.4), y: C.y - C.s * 2, ph: rand(0, 9), life: 1 });
+      for (const f of flakes) {
+        f.y += 26 * dt;
+        f.x += Math.sin(t + f.ph) * 5 * dt + (C.x - f.x) * dt * 0.4;
+        f.life -= dt * 0.5;
+        if (f.y >= G - 1) { smudges.push({ x: f.x, life: 1.6 }); f.life = 0; }
+        if (f.life > 0) {
+          ctx.fillStyle = "rgba(150,145,150," + f.life * 0.7 + ")";
+          ctx.beginPath(); ctx.arc(f.x, f.y, 1.5, 0, TAU); ctx.fill();
+        }
+      }
+      flakes = flakes.filter(f => f.life > 0);
+      for (const s of smudges) {
+        s.life -= dt * 0.5;
+        if (s.life > 0) {
+          ctx.fillStyle = "rgba(110,105,110," + Math.min(1, s.life) * 0.4 + ")";
+          ctx.fillRect(s.x - 2, G, 4, 2);
+        }
+      }
+      smudges = smudges.filter(s => s.life > 0);
+      flurry = Math.max(0, flurry - dt);
+    }
+  };
+});
+
+rhymeOf("Icicle drop", "Stalactite spear", "the same summoned fall as ONE great spear — slower to form, harder to land", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: count 3 → 1, size ×2.5 · form 2.4 → 1 (slower) · impact bigger
+  let spears = [], bits = [];
+  return {
+    press(x, y) {
+      spears.push({ x: Math.max(14, Math.min(W - 14, x || C.x)),
+                    y: Math.max(14, Math.min(G - 60, y || 30)), form: 0, vy: 0 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const sp of spears) {
+        if (sp.form < 1) { sp.form += dt; }
+        else { sp.vy += 600 * dt; sp.y += sp.vy * dt; }
+        if (sp.y >= G - 14) {
+          for (let i = 0; i < 12; i++)
+            bits.push({ x: sp.x, y: G, vx: rand(-110, 110), vy: rand(-140, -30), life: 1 });
+          sp.y = 1e9;
+        } else {
+          ctx.fillStyle = "rgba(190,225,255," + 0.9 * Math.min(1, sp.form) + ")";
+          ctx.beginPath();
+          ctx.moveTo(sp.x - 7, sp.y); ctx.lineTo(sp.x + 7, sp.y);
+          ctx.lineTo(sp.x, sp.y + 30 * sp.form);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+      spears = spears.filter(sp => sp.y < H);
+      for (const b of bits) {
+        b.x += b.vx * dt; b.y += b.vy * dt; b.vy += 280 * dt; b.life -= dt * 1.6;
+        if (b.life > 0) { ctx.fillStyle = "rgba(210,240,255," + b.life + ")"; ctx.fillRect(b.x, b.y, 2, 2); }
+      }
+      bits = bits.filter(b => b.life > 0);
+    }
+  };
+});
+
+rhymeOf("Glacial wall", "Ember wall", "the same summoned barrier on fire — it burns DOWN instead of melting", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: ice→fire · drips → rising sparks · decay = burning from the top
+  let walls = [], sparks = [];
+  return {
+    press() { walls.push({ x: C.x + C.face * C.s * 1.9, life: 3 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const w of walls) {
+        w.life -= dt * 0.7;
+        if (w.life <= 0) continue;
+        const up = Math.min(1, (3 - w.life) * 3);
+        const burn = Math.min(1, w.life);
+        const hgt = C.s * 1.6 * up * burn;
+        glow(w.x, G - hgt * 0.5, 16 + hgt * 0.4, "rgba(255,130,50,0.25)");
+        ctx.fillStyle = "rgba(255,110,40,0.55)";
+        ctx.fillRect(w.x - 12, G - hgt, 24, Math.max(1, hgt));
+        for (let i = 0; i < 3; i++)        // the burning crest
+          glow(w.x + rand(-10, 10), G - hgt + rand(-3, 3), 5, "rgba(255,200,110,0.6)");
+        if (Math.random() < 0.4)
+          sparks.push({ x: w.x + rand(-10, 10), y: G - hgt, vy: rand(-60, -25), life: 0.8 });
+      }
+      for (const s of sparks) {
+        s.y += s.vy * dt; s.life -= dt * 1.6;
+        if (s.life > 0) { ctx.fillStyle = "rgba(255,190,100," + s.life + ")"; ctx.fillRect(s.x, s.y, 2, 2); }
+      }
+      sparks = sparks.filter(s => s.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      walls = walls.filter(w => w.life > 0);
+    }
+  };
+});
+
+rhymeOf("Tornado spin", "Firenado", "the same travelling funnel, ignited — warm rings and shed embers", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette wind→fire · shed embers while storming · spin ×1.2
+  let storm = 0, embers = [];
+  return {
+    press() {
+      if (storm <= 0) { storm = 1; C.pace = false; C.vx = C.face * 160; }
+    },
+    frame(dt, t) {
+      stage();
+      if (storm > 0) {
+        storm -= dt * 0.7;
+        C.spin += dt * 26;
+        if (C.x < C.s || C.x > W - C.s) C.vx = -C.vx;
+        if (Math.random() < 0.5)
+          embers.push({ x: C.x + rand(-C.s, C.s), y: C.y - rand(0, C.s * 1.8), vy: rand(-50, -20), life: 0.8 });
+        if (storm <= 0) { C.pace = true; C.spin = 0; C.vx = 0; }
+      }
+      tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (storm > 0) {
+        for (let i = 0; i < 8; i++) {
+          const k = i / 7;
+          const y = C.y - k * C.s * 1.9;
+          const r = (C.s * 0.4 + k * C.s * 0.8);
+          const a = t * 14 + i;
+          ctx.strokeStyle = "rgba(255," + Math.round(170 - k * 80) + ",70," + (0.5 - k * 0.2) * Math.min(1, storm * 2) + ")";
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.ellipse(C.x, y, r, r * 0.3, 0, a, a + 3.6);
+          ctx.stroke();
+        }
+      }
+      for (const e of embers) {
+        e.y += e.vy * dt; e.life -= dt * 1.4;
+        if (e.life > 0) glow(e.x, e.y, 3, "rgba(255,170,80," + e.life * 0.8 + ")");
+      }
+      embers = embers.filter(e => e.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Gust palm", "Water palm", "the same pushed rings made liquid — droplets shed off every ring", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: air rings→water rings · droplets added · travel ÷1.3
+  let rings = [], drops = [];
+  return {
+    press() {
+      for (let i = 0; i < 3; i++)
+        rings.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, r: 5 + i * 3, delay: i * 0.08, life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const r of rings) {
+        r.delay -= dt;
+        if (r.delay > 0) continue;
+        r.x += r.dir * 145 * dt; r.r += 26 * dt; r.life -= dt * 1.6;
+        if (r.life > 0) {
+          ctx.strokeStyle = "rgba(130,200,245," + r.life * 0.7 + ")";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.ellipse(r.x, C.y - C.s * 0.55, r.r * 0.4, r.r, 0, 0, TAU);
+          ctx.stroke();
+          if (Math.random() < 0.5)
+            drops.push({ x: r.x, y: C.y - C.s * 0.55 + rand(-r.r, r.r), vx: r.dir * 40, vy: rand(-20, 20), life: 0.6 });
+        }
+      }
+      rings = rings.filter(r => r.life > 0);
+      for (const d of drops) {
+        d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; d.life -= dt * 1.8;
+        if (d.life > 0) { ctx.fillStyle = "rgba(170,220,250," + d.life + ")"; ctx.fillRect(d.x, d.y, 1.8, 1.8); }
+      }
+      drops = drops.filter(d => d.life > 0);
+    }
+  };
+});
+
+rhymeOf("Cyclone jump", "Rocket jump", "the same launch powered by fire — exhaust below instead of wind around", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: wind corkscrew → downward exhaust · arc ×1.2 higher · scorch mark
+  let lift = -1, exhaust = [], scorch = 0;
+  return {
+    press() { if (lift < 0) { lift = 0; scorch = 2; } },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (scorch > 0) {
+        ctx.fillStyle = "rgba(40,25,18," + Math.min(1, scorch) * 0.5 + ")";
+        ctx.beginPath(); ctx.ellipse(C.x, G + 1, 12, 3, 0, 0, TAU); ctx.fill();
+        scorch -= dt * 0.5;
+      }
+      if (lift >= 0) {
+        lift += dt * 1.1;
+        C.y = G - Math.sin(Math.min(1, lift) * Math.PI) * C.s * 2.6;
+        for (let i = 0; i < 3; i++)
+          exhaust.push({ x: C.x + rand(-4, 4), y: C.y, vy: rand(60, 120), life: 0.6 });
+        if (lift >= 1) { lift = -1; C.y = G; }
+      }
+      ctx.globalCompositeOperation = "lighter";
+      for (const e of exhaust) {
+        e.y += e.vy * dt; e.life -= dt * 1.8;
+        if (e.life > 0 && e.y < G)
+          glow(e.x, e.y, 4 + (0.6 - e.life) * 6, "rgba(255,160,70," + e.life * 0.7 + ")");
+      }
+      exhaust = exhaust.filter(e => e.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Wind cloak", "Storm cloak", "the same orbiting streams, electrified — arcs jump between them", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette wind→storm · arcs between streams added · deflect flashes
+  let deflect = 0;
+  return {
+    press() { deflect = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      const pts = [];
+      for (let i = 0; i < 4; i++) {
+        const a = t * 2 + i / 4 * TAU;
+        const rr = C.s * (0.95 + deflect * 0.7);
+        const x = C.x + Math.cos(a + 0.6) * rr;
+        const y = C.y - C.s * 0.5 + Math.sin(a + 0.6) * rr * 0.55;
+        pts.push([x, y]);
+        ctx.strokeStyle = "rgba(170,190,235," + (0.4 + deflect * 0.4) + ")";
+        ctx.lineWidth = 1.6 + deflect;
+        ctx.beginPath();
+        ctx.ellipse(C.x, C.y - C.s * 0.5, rr, rr * 0.55, 0, a, a + 1.2);
+        ctx.stroke();
+      }
+      if (Math.random() < 0.15 + deflect * 0.5) {
+        const a = pts[Math.floor(rand(0, 4))], b = pts[Math.floor(rand(0, 4))];
+        ctx.strokeStyle = "rgba(200,215,255,0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]);
+        ctx.lineTo((a[0] + b[0]) / 2 + rand(-5, 5), (a[1] + b[1]) / 2 + rand(-5, 5));
+        ctx.lineTo(b[0], b[1]);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = "source-over";
+      deflect = Math.max(0, deflect - dt * 1.4);
+    }
+  };
+});
+
+rhymeOf("Air slash", "Flame crescent", "the same flying arcs on fire — they shed embers as they travel", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette air→fire · ember shed added · speed ÷1.2
+  let blades = [], embers = [];
+  return {
+    press() {
+      for (let i = 0; i < 2; i++)
+        blades.push({ x: C.x + C.face * C.s * 0.6, y: C.y - C.s * 0.55 + i * 8 - 4,
+                      dir: C.face, delay: i * 0.1, life: 1 });
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const b of blades) {
+        b.delay -= dt;
+        if (b.delay > 0) continue;
+        b.x += b.dir * 215 * dt; b.life -= dt * 1.2;
+        if (b.life > 0) {
+          ctx.strokeStyle = "rgba(255,170,80," + b.life * 0.9 + ")";
+          ctx.lineWidth = 2.5;
+          const a0 = b.dir > 0 ? -0.9 : Math.PI - 0.9;
+          ctx.beginPath();
+          ctx.arc(b.x - b.dir * 8, b.y, 11, a0, a0 + 1.8);
+          ctx.stroke();
+          if (Math.random() < 0.5)
+            embers.push({ x: b.x - b.dir * 12, y: b.y + rand(-8, 8), life: 0.5 });
+        }
+      }
+      blades = blades.filter(b => b.life > 0 && b.x > -14 && b.x < W + 14);
+      for (const e of embers) {
+        e.y += 20 * dt; e.life -= dt * 1.6;
+        if (e.life > 0) glow(e.x, e.y, 2.5, "rgba(255,180,90," + e.life + ")");
+      }
+      embers = embers.filter(e => e.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Updraft column", "Downdraft", "the same column with the sign flipped — it slams the feathers DOWN", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: column force up→down ×1.5 · strands drawn falling · feathers thud
+  let columns = [], feathers = [];
+  return {
+    press(x) { columns.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), life: 1.6 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.03)
+        feathers.push({ x: rand(10, W - 10), y: -4, ph: rand(0, 9) });
+      for (const f of feathers) {
+        let vy = 26;
+        for (const c of columns)
+          if (Math.abs(f.x - c.x) < 16 && c.life > 0) vy = 180;
+        f.y += vy * dt;
+        f.x += Math.sin(t * 2 + f.ph) * 12 * dt;
+        ctx.save();
+        ctx.translate(f.x, f.y);
+        ctx.rotate(Math.sin(t * 3 + f.ph) * 0.5);
+        ctx.fillStyle = "rgba(230,235,245,0.8)";
+        ctx.beginPath(); ctx.ellipse(0, 0, 3.5, 1.3, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      }
+      feathers = feathers.filter(f => f.y > -12 && f.y < G);
+      for (const c of columns) {
+        c.life -= dt * 0.7;
+        if (c.life <= 0) continue;
+        for (let i = 0; i < 3; i++) {
+          const x = c.x + Math.sin(t * 8 + i * 2) * 6;
+          const y = ((t * 170 + i * 40) % (G * 0.8));
+          ctx.strokeStyle = "rgba(200,215,235," + Math.min(1, c.life) * 0.4 + ")";
+          ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 2, y + 12); ctx.stroke();
+        }
+      }
+      columns = columns.filter(c => c.life > 0);
+    }
+  };
+});
+
+rhymeOf("Shadow clone", "Golden double", "the same delayed twin in triumph gold — a shorter lag, a brighter dash", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette shadow→gold · history 30 → 12 frames · dash leaves glow
+  let history = [], attack = -1, ax = 0;
+  return {
+    press() { if (attack < 0) { attack = 0; ax = C.x; } },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      history.push({ x: C.x, hop: C.hop, lean: C.lean });
+      if (history.length > 12) history.shift();
+      let cx, chop, clean;
+      if (attack >= 0) {
+        attack += dt * 1.4;
+        ax += C.face * 260 * dt;
+        cx = ax; chop = 0; clean = C.face * 0.2;
+        ctx.globalCompositeOperation = "lighter";
+        glow(ax, C.y - C.s * 0.5, C.s, "rgba(255,215,120," + Math.max(0, 1 - attack) * 0.4 + ")");
+        ctx.globalCompositeOperation = "source-over";
+        if (attack >= 1) attack = -1;
+      } else {
+        const past = history[0];
+        cx = past.x; chop = past.hop; clean = past.lean;
+      }
+      ctx.save();
+      ctx.globalAlpha = attack >= 0 ? Math.max(0, 1 - attack) * 0.85 : 0.6;
+      ctx.translate(cx, C.y - chop);
+      ctx.rotate(clean);
+      ctx.fillStyle = "#8A6E2A";
+      ctx.fillRect(-C.s / 2, -C.s, C.s, C.s);
+      ctx.fillStyle = "rgba(255,240,190,0.9)";
+      ctx.fillRect(-C.s * 0.15, -C.s * 0.66, 2.5, 4);
+      ctx.fillRect(C.s * 0.1, -C.s * 0.66, 2.5, 4);
+      ctx.restore();
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Void grasp", "Angel hand", "the same grasp descending FROM ABOVE in light — direction and palette", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rise-from-floor → descend-from-sky · shadow→light · fingers open
+  let hands = [];
+  return {
+    press(x) { hands.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), life: 1.6 }); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const hd of hands) {
+        hd.life -= dt * 0.7;
+        if (hd.life <= 0) continue;
+        const down = Math.sin(Math.min(1, (1.6 - hd.life) * 2) * Math.PI * 0.5) * Math.min(1, hd.life * 2);
+        const wristY = down * G * 0.5;
+        ctx.strokeStyle = "rgba(255,245,215," + Math.min(1, hd.life * 1.2) * 0.7 + ")";
+        ctx.lineWidth = 5;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(hd.x, 0);
+        ctx.lineTo(hd.x, wristY);
+        ctx.stroke();
+        ctx.lineWidth = 2.5;
+        for (let f = -2; f <= 2; f++) {
+          ctx.beginPath();
+          ctx.moveTo(hd.x, wristY);
+          ctx.quadraticCurveTo(hd.x + f * 6, wristY + 10,
+                               hd.x + f * 9, wristY + 16 + Math.sin(t * 4 + f) * 2);
+          ctx.stroke();
+        }
+        glow(hd.x, wristY, 14, "rgba(255,245,215," + Math.min(1, hd.life) * 0.3 + ")");
+      }
+      ctx.globalCompositeOperation = "source-over";
+      hands = hands.filter(hd => hd.life > 0);
+    }
+  };
+});
+
+rhymeOf("Dark aura", "Holy smoke", "the same coiling plumes in white — they rise straighter and thin faster", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette dark→white · sway ÷2 · fade ×1.4
+  let parts = [], erupt = 0;
+  return {
+    press() { erupt = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (Math.random() < 0.35 + erupt)
+        parts.push({ x: C.x + rand(-C.s * 0.6, C.s * 0.6), y: C.y - rand(0, C.s),
+                     r: rand(3, 6) * (1 + erupt), life: 1 });
+      for (const p of parts) {
+        p.y -= (30 + erupt * 60) * dt;
+        p.x += Math.sin(p.y * 0.15) * 5 * dt;
+        p.r += 4 * dt; p.life -= dt * 1.4;
+        if (p.life > 0) {
+          ctx.fillStyle = "rgba(240,242,248," + p.life * 0.25 + ")";
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill();
+        }
+      }
+      parts = parts.filter(p => p.life > 0);
+      drawCube();
+      erupt = Math.max(0, erupt - dt * 1.2);
+    }
+  };
+});
+
+rhymeOf("Smoke vanish", "Flash vanish", "the same disappearing act by LIGHT — an instant flash, then gone", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: smoke → one bright flash + sparkles · gone-time ÷2
+  let gone = 0, flash = 0, sparks = [];
+  return {
+    press() {
+      gone = 0.5; flash = 1;
+      C.alpha = 0;
+      for (let i = 0; i < 10; i++) {
+        const th = rand(0, TAU);
+        sparks.push({ x: C.x, y: C.y - C.s * 0.5,
+                      vx: Math.cos(th) * rand(40, 110), vy: Math.sin(th) * rand(40, 110), life: 1 });
+      }
+    },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (gone > 0) {
+        gone -= dt;
+        if (gone <= 0) { C.alpha = 1; flash = 0.7; }
+      }
+      ctx.globalCompositeOperation = "lighter";
+      if (flash > 0) {
+        glow(C.x, C.y - C.s * 0.5, C.s * 2 * (1.2 - flash), "rgba(255,250,230," + flash * 0.7 + ")");
+        flash = Math.max(0, flash - dt * 3);
+      }
+      for (const s of sparks) {
+        s.x += s.vx * dt; s.y += s.vy * dt; s.life -= dt * 2;
+        if (s.life > 0) twinkle(s.x, s.y, 2.5, "rgba(255,250,225," + s.life + ")");
+      }
+      sparks = sparks.filter(s => s.life > 0);
+      ctx.globalCompositeOperation = "source-over";
+      drawCube();
+    }
+  };
+});
+
+rhymeOf("Black hole", "Sun spot", "the same summoned singularity, inverted — it SHINES and pushes away", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: pull → push · void-dark → miniature sun · lean flips outward
+  let spot = null, motes = [];
+  return {
+    press() { if (!spot) spot = { x: C.x + C.face * C.s * 2.4, y: C.y - C.s * 0.7, life: 2 }; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      if (spot) {
+        if (Math.random() < 0.5)
+          motes.push({ x: spot.x + rand(-6, 6), y: spot.y + rand(-5, 5), life: 1 });
+        C.lean = -Math.sign(spot.x - C.x) * 0.12;        // it leans AWAY now
+      }
+      drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      if (spot) {
+        for (const m of motes) {
+          const dx = m.x - spot.x, dy = m.y - spot.y;
+          const d = Math.max(3, Math.hypot(dx, dy));
+          m.x += dx / d * 90 * dt; m.y += dy / d * 60 * dt;
+          m.life -= dt * 1.3;
+          if (m.life > 0) { ctx.fillStyle = "rgba(255,230,170," + m.life * 0.8 + ")"; ctx.fillRect(m.x, m.y, 1.8, 1.8); }
+        }
+        motes = motes.filter(m => m.life > 0);
+        glow(spot.x, spot.y, 14, "rgba(255,230,160,0.9)");
+        spot.life -= dt;
+        if (spot.life <= 0) { spot = null; motes = []; }
+      }
+      ctx.globalCompositeOperation = "source-over";
+    }
+  };
+});
+
+rhymeOf("Night veil", "Dawn veil", "the same closing circle made of light — the world washes out, not dark", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: darkness → daylight (the veil colour inverts) · press still widens
+  let reach = 0;
+  return {
+    press() { reach = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const r = C.s * (2 + reach * 1.8 + Math.sin(t * 1.2) * 0.15);
+      const g = ctx.createRadialGradient(C.x, C.y - C.s * 0.5, r * 0.5, C.x, C.y - C.s * 0.5, r);
+      g.addColorStop(0, "rgba(255,245,225,0)");
+      g.addColorStop(1, "rgba(255,245,225,0.75)");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      reach = Math.max(0, reach - dt * 0.5);
+    }
+  };
+});
+
+rhymeOf("Butterflies", "Moths", "the same companions after dark — grey wings, drawn to a lamp overhead", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: hues → moth-grey · target cube → a lamp above it · flap ÷1.5
+  const flies = [];
+  for (let i = 0; i < 3; i++)
+    flies.push({ x: rand(0, 200), y: rand(20, 80), ph: rand(0, 9), panic: 0 });
+  return {
+    press() { for (const f of flies) f.panic = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      const lx = C.x, ly = C.y - C.s * 2.2;              // the lamp they love
+      ctx.globalCompositeOperation = "lighter";
+      glow(lx, ly, 8, "rgba(255,220,150,0.7)");
+      ctx.globalCompositeOperation = "source-over";
+      for (const f of flies) {
+        f.panic = Math.max(0, f.panic - dt * 0.5);
+        const tx = lx + Math.sin(t * 1.4 + f.ph * 3) * 16;
+        const ty = ly + Math.cos(t * 1.8 + f.ph) * 10;
+        const chase = f.panic > 0 ? -3 : 2.2;
+        f.x += (tx - f.x) * dt * chase + Math.sin(t * 7 + f.ph) * 10 * dt;
+        f.y += (ty - f.y) * dt * chase - f.panic * 40 * dt;
+        f.y = Math.max(8, Math.min(G - 8, f.y));
+        f.x = Math.max(4, Math.min(W - 4, f.x));
+        const flap = Math.sin(t * 10 + f.ph) * 0.8;
+        for (const side of [-1, 1]) {
+          ctx.fillStyle = "rgba(170,165,155,0.85)";
+          ctx.beginPath();
+          ctx.ellipse(f.x + side * 2.4, f.y, 3, 1.6 + Math.abs(flap), side * flap, 0, TAU);
+          ctx.fill();
+        }
+      }
+    }
+  };
+});
+
+rhymeOf("Floating lanterns", "Party balloons", "the same gentle ascent in bright rubber — they bob, and never burn out", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: lanterns → balloons (no glow, hue each) · rise with bob · no fade at top
+  let balloons = [];
+  function release(n, fromCube) {
+    for (let i = 0; i < n; i++)
+      balloons.push({ x: fromCube ? C.x + rand(-6, 6) : rand(20, W - 20),
+                      y: fromCube ? C.y - C.s : G - rand(0, 30),
+                      ph: rand(0, 9), hue: rand(0, 360) });
+  }
+  release(4, false);
+  return {
+    press() { release(3, true); },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      for (const b of balloons) {
+        b.y -= 12 * dt;
+        b.x += Math.sin(t * 0.9 + b.ph) * 10 * dt;
+        if (b.y < 10) b.y = 10 + Math.sin(t * 2 + b.ph) * 2;   // they gather at the ceiling
+        ctx.strokeStyle = "rgba(200,200,210,0.4)";
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(b.x, b.y + 5); ctx.lineTo(b.x + Math.sin(t + b.ph) * 2, b.y + 13); ctx.stroke();
+        ctx.fillStyle = "hsla(" + b.hue + ",75%,62%,0.95)";
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, 4, 5, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = "rgba(255,255,255,0.5)";
+        ctx.fillRect(b.x - 1.5, b.y - 2.5, 1.2, 1.8);
+      }
+      if (balloons.length > 14) balloons.shift();
+    }
+  };
+});
+
+rhymeOf("Petal fall", "First snow", "the same drifting descent as the season's first flakes — slower, whiter", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: petals → flakes · sideways drift ÷2 · spiral gentler
+  let flakes = [], spiral = 0;
+  return {
+    press() { spiral = 1.2; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (Math.random() < 0.12 + (spiral > 0 ? 0.4 : 0))
+        flakes.push({ x: rand(-10, W), y: -4, ph: rand(0, 9) });
+      for (const p of flakes) {
+        if (spiral > 0) {
+          const ctr = { x: C.x, y: C.y - C.s };
+          const d = Math.hypot(p.x - ctr.x, p.y - ctr.y);
+          const a = Math.atan2(p.y - ctr.y, p.x - ctr.x) + dt * 2.5;
+          p.x = ctr.x + Math.cos(a) * d * (1 - dt * 0.2);
+          p.y = ctr.y + Math.sin(a) * d * (1 - dt * 0.2);
+        } else {
+          p.y += 16 * dt;
+          p.x += (6 + Math.sin(t * 2 + p.ph) * 6) * dt;
+        }
+        ctx.fillStyle = "rgba(240,246,255,0.9)";
+        ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, TAU); ctx.fill();
+      }
+      flakes = flakes.filter(p => p.y < G && p.x < W + 14);
+      spiral = Math.max(0, spiral - dt);
+    }
+  };
+});
+
+rhymeOf("Fireflies at dusk", "Embers at dusk", "the same gathering lights, blown off a campfire — they rise as they blink", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: palette green→ember · added upward drift · blink shorter
+  let sync = 0;
+  const flies = [];
+  for (let i = 0; i < 9; i++)
+    flies.push({ x: rand(0, 200), y: rand(40, 110), ph: rand(0, TAU), sp: rand(0.8, 1.6), wx: rand(0, 9) });
+  return {
+    press() { sync = 1; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      ctx.globalCompositeOperation = "lighter";
+      for (const f of flies) {
+        f.x += (C.x + Math.sin(f.wx * 3) * C.s * 2 - f.x) * dt * 0.4 + Math.sin(t + f.wx) * 10 * dt;
+        f.y += -6 * dt + Math.cos(t * 1.3 + f.wx) * 8 * dt;
+        if (f.y < 14) f.y = G - 10;
+        let blink = Math.pow(Math.max(0, Math.sin(t * f.sp * 2 + f.ph)), 5);
+        blink = Math.max(blink, sync);
+        if (blink > 0.05)
+          glow(f.x, f.y, 4, "rgba(255,180,90," + blink * 0.85 + ")");
+      }
+      ctx.globalCompositeOperation = "source-over";
+      sync = Math.max(0, sync - dt * 1.6);
+    }
+  };
+});
+
+rhymeOf("Hero's cape", "Tattered cape", "the same chasing ribbon after many battles — darker, slower, gap-toothed", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: colour crimson→worn slate · follow 14 → 8 (heavier) · torn gaps drawn
+  const pts = [];
+  for (let i = 0; i < 9; i++) pts.push({ x: 0, y: 0 });
+  let gust = 0;
+  return {
+    press() { gust = 1.4; },
+    frame(dt, t) {
+      stage(); tickCube(dt);
+      const ax = C.x - C.face * C.s * 0.45;
+      const ay = C.y - C.s * 0.9 - C.hop;
+      pts[0].x = ax; pts[0].y = ay;
+      const wind = 1 + gust * 2.4 + Math.min(1, Math.abs(C.vx) / 40);
+      for (let i = 1; i < pts.length; i++) {
+        const tx = pts[i - 1].x - C.face * 5 * wind;
+        const ty = pts[i - 1].y + 3 + Math.sin(t * (4 + wind) + i) * (1.5 + gust * 2);
+        pts[i].x += (tx - pts[i].x) * Math.min(1, dt * 8);
+        pts[i].y += (ty - pts[i].y) * Math.min(1, dt * 8);
+      }
+      for (let i = 1; i < pts.length; i++) {             // torn: every third segment missing
+        if (i % 3 === 0) continue;
+        ctx.strokeStyle = "rgba(90,95,110,0.9)";
+        ctx.lineWidth = 5 - i * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+        ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      }
+      drawCube();
+      gust = Math.max(0, gust - dt);
+    }
+  };
+});
+
+rhymeOf("Stage rain", "Stage snow", "the same honest weather, frozen — flakes SETTLE on the hero's head", function (u) {
+  const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  // dials moved: rain → snow (÷5 speed) · bounce → settle (a little cap of snow!)
+  let flakes = [], cap = 0, pour = 0;
+  return {
+    press() { pour = 1.6; },
+    frame(dt, t) {
+      stage(); tickCube(dt); drawCube();
+      if (cap > 0) {                       // the snow-cap it now wears
+        ctx.fillStyle = "rgba(240,246,255,0.95)";
+        ctx.beginPath();
+        ctx.ellipse(C.x, C.y - C.s - C.hop - 1, C.s * 0.45, Math.min(4, cap), 0, Math.PI, TAU);
+        ctx.fill();
+      }
+      if (Math.random() < 0.25 + (pour > 0 ? 0.5 : 0))
+        flakes.push({ x: rand(0, W), y: -4, ph: rand(0, 9) });
+      for (const f of flakes) {
+        f.y += 45 * dt;
+        f.x += Math.sin(t * 2 + f.ph) * 8 * dt;
+        if (f.y >= C.y - C.s - C.hop && f.y < C.y && Math.abs(f.x - C.x) < C.s * 0.45) {
+          cap = Math.min(5, cap + 0.25);   // it SETTLES — the rhyme's whole point
+          f.y = 1e9;
+        }
+        if (f.y >= G) f.y = 1e9;
+        ctx.fillStyle = "rgba(240,246,255,0.9)";
+        ctx.beginPath(); ctx.arc(f.x, f.y, 1.5, 0, TAU); ctx.fill();
+      }
+      flakes = flakes.filter(f => f.y < H);
+      cap = Math.max(0, cap - dt * 0.15);  // and slowly melts
+      pour = Math.max(0, pour - dt);
+    }
+  };
+});
+
 /* @@EFFECTS-END@@ */
 
 /* ============================== the page runner ============================== */
@@ -3545,23 +6986,41 @@ function buildCard(effect) {
   var meta = document.createElement("div");
   meta.className = "meta";
   var b = document.createElement("b");
-  b.textContent = effect.name;
+  var links = document.createElement("span");
+  var r = document.createElement("a");
+  r.href = "javascript:void(0)";
+  r.className = "rhyme";
   var a = document.createElement("a");
   a.href = "#editor";
   a.textContent = "open code ⤵";
+  links.appendChild(r);
+  links.appendChild(document.createTextNode(" · "));
+  links.appendChild(a);
   meta.appendChild(b);
-  meta.appendChild(a);
+  meta.appendChild(links);
   card.appendChild(meta);
   var hint = document.createElement("p");
   hint.className = "bhint";
-  hint.textContent = effect.hint;
   card.appendChild(hint);
 
-  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true };
+  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true, useRhyme: false };
+  st.refresh = function () {
+    var v = variantOf(st);
+    b.textContent = v.name;
+    hint.textContent = v.hint;
+    r.textContent = st.useRhyme ? "⇄ the original" : "⇄ its rhyme";
+    r.style.display = effect.rhyme ? "" : "none";
+  };
+  st.refresh();
   cards.push(st);
   canvas.__st = st;
 
-  a.addEventListener("click", function () { openInEditor(effect); });
+  r.addEventListener("click", function () {
+    st.useRhyme = !st.useRhyme && !!effect.rhyme;
+    st.refresh();
+    startCard(st);                         // hearing the change at once IS the lesson
+  });
+  a.addEventListener("click", function () { openInEditor(effect, st.useRhyme); });
   canvas.addEventListener("pointerdown", function (e) {
     var r = canvas.getBoundingClientRect();
     var mx = e.clientX - r.left, my = e.clientY - r.top;
@@ -3586,7 +7045,7 @@ function placeholder(st) {
 function startCard(st) {
   var u = apiFor(st.canvas);
   st.u = u;
-  try { st.inst = st.effect.make(u); } catch (err) { failCard(st, err); return; }
+  try { st.inst = variantOf(st).make(u); } catch (err) { failCard(st, err); return; }
   st.elapsed = 0;
   st.running = true;
   ensureLoop();
@@ -3701,7 +7160,7 @@ var resetBtn = document.getElementById("reset");
 var errBox = document.getElementById("err");
 var cv = document.getElementById("cv");
 var edname = document.getElementById("edname");
-var current = EFFECTS[0];
+var current = { effect: EFFECTS[0], useRhyme: false };
 var pv = { inst: null, raf: null, elapsed: 0 };
 
 function dedent(src) {
@@ -3727,10 +7186,13 @@ function previewHint() {
   u.ctx.fillText("Press ▶ Run — nothing moves until you do.", u.W / 2, u.H * 0.25);
 }
 
-function openInEditor(effect) {
-  current = effect;
-  edname.textContent = effect.name + " — " + effect.hint;
-  codeBox.value = dedent(effect.make.toString());
+function openInEditor(effect, useRhyme) {
+  current = { effect: effect, useRhyme: !!(useRhyme && effect.rhyme) };
+  var v = current.useRhyme ? effect.rhyme : effect;
+  edname.textContent = current.useRhyme
+    ? v.name + " — a rhyme of " + effect.name + " — " + v.hint
+    : v.name + " — " + v.hint;
+  codeBox.value = dedent(v.make.toString());
   stopPreview();
   errBox.textContent = "";
   previewHint();
@@ -3781,7 +7243,7 @@ runBtn.addEventListener("click", runPreview);
 stopBtn.addEventListener("click", stopPreview);
 resetBtn.addEventListener("click", function () {
   stopPreview();
-  openInEditor(current);
+  openInEditor(current.effect, current.useRhyme);
 });
 cv.addEventListener("pointerdown", function (e) {
   if (!pv.inst || !pv.inst.press) return;
