@@ -1074,7 +1074,7 @@ def("Glitter burst", "sparkle", "press: an explosion of glitter right where you 
     },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      if (Math.random() < 0.1)             // idle shimmer on the cube's crown
+      if (Math.random() < 0.1)             // idle shimmer above the cube's brow
         twinkle(C.x + rand(-C.s * 0.4, C.s * 0.4), C.y - C.s, 2.5, "rgba(255,240,255,0.7)");
       for (const p of parts) {
         p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 60 * dt;
@@ -1205,7 +1205,7 @@ def("Shooting star", "sparkle", "stars cross the backdrop; press and one dives t
   };
 });
 
-def("Twinkle crown", "sparkle", "a crown of twinkles bobs above; press and it flares like royalty", function (u) {
+def("Twinkle wreath", "sparkle", "a wreath of twinkles bobs above; press and it flares in celebration", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
   let flare = 0;
   return {
@@ -1213,7 +1213,7 @@ def("Twinkle crown", "sparkle", "a crown of twinkles bobs above; press and it fl
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       const cy = C.y - C.s * 1.35 + Math.sin(t * 1.8) * 2;
-      for (let i = 0; i < 5; i++) {        // five points of the crown
+      for (let i = 0; i < 5; i++) {        // five points of the wreath
         const a = t * 0.8 + i / 5 * TAU;
         const x = C.x + Math.cos(a) * C.s * 0.45;
         const y = cy + Math.sin(a) * 3;
@@ -1221,7 +1221,7 @@ def("Twinkle crown", "sparkle", "a crown of twinkles bobs above; press and it fl
       }
       if (flare > 0) {
         ctx.globalCompositeOperation = "lighter";
-        for (let i = 0; i < 5; i++) {      // royal rays
+        for (let i = 0; i < 5; i++) {      // festive rays
           const th = -Math.PI / 2 + (i - 2) * 0.35;
           ctx.strokeStyle = "rgba(255,235,150," + flare * 0.6 + ")";
           ctx.lineWidth = 1.6;
@@ -4584,7 +4584,7 @@ rhymeOf("Shooting star", "Falling feather", "the same summoned visitor, unhurrie
   };
 });
 
-rhymeOf("Twinkle crown", "Thorn crown", "the same hovering circle turned solemn — dark spikes, rare red glints", function (u) {
+rhymeOf("Twinkle wreath", "Thorn wreath", "the same hovering circle turned solemn — dark spikes, rare red glints", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
   // dials moved: twinkles → thorn triangles · flare → slow red pulse
   let pulse = 0;
