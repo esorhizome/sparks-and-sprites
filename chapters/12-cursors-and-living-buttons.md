@@ -48,6 +48,12 @@ The secret of a good tap response is to **add velocity, not set position**. In t
 
 The same three lines welcome a press anywhere: cards, list rows, map pins, save slots.
 
+## The elemental button bestiary
+
+The two species above — the static loop and the thank-you — are a recipe, and recipes want variations. The **[elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)** is 104 of them: buttons possessed by fire, lightning, water, mercury, frost, stone, wind, light, sparks, deep space, growing things, dubious green liquids, crystal, and whole compressed weather systems. Every one idles with its own loop and answers a press with its own reaction, every one is ~20–35 lines of canvas code you can open in the page's editor, and every one is built from ingredients this book already taught: particles ([chapter 06](06-vfx-cookbook.md)), additive light, gradients, cracks-as-jagged-lines, trails-by-not-clearing, springs and friction ([chapter 05](05-movement-and-personality.md)). None of it is new machinery — it's the same eight tricks wearing 104 costumes, which is the most encouraging thing a demo page can possibly tell you.
+
+▶ *See it:* [the elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html) — press *Run all*, or wake buttons one at a time.
+
 ## Cursor trails (motion-reactive)
 
 A cursor trail is a particle emitter whose position is the pointer. That's the whole secret — the entire [fragmented trails](https://esorhizome.github.io/sparks-and-sprites/trails-fragments.html) recipe from [chapter 06](06-vfx-cookbook.md) with `emitter = pointer`:

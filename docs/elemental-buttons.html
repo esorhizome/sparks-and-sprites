@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The elemental button bestiary · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the bestiary grid */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:130px; display:block; background:#14111F; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:manipulation}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a></p>
+<h1>The elemental button bestiary</h1>
+<p class="lesson">One hundred and four buttons, each possessed by a different element. Every one is a <b>static loop</b> (alive before you touch it) plus a <b>thank-you</b> (a reaction when you press it) — the two species from chapter 12, taken on a grand tour of fire, lightning, water, mercury, ice, stone, wind, light, and stranger matter. Press <b>▶ Run all</b> to wake the whole bestiary, or click any single button to wake just that one. <b>Clicking a running button triggers its reaction.</b> Under each button, <i>open code</i> loads its full source into the editor at the bottom of the page — every effect is ~20–35 lines, self-contained, and editable.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="bestiary"><!-- cards are built by elemental-buttons.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick a button above</span></h2>
+<p class="lesson">Every effect is one function, <code>make(u)</code>. It receives a kit <code>u</code> and returns <code>{ frame(dt, t), press(x, y) }</code>. The kit: <code>ctx</code> (2D context), <code>W, H</code> (canvas size), <code>B</code> (the button rectangle: <code>x, y, w, h, cx, cy, r</code>), <code>rand(a, b)</code>, <code>rr(x, y, w, h, r)</code> (begins a rounded-rect path), <code>face(fill, stroke)</code> (draws the standard button face), <code>label(text, colour)</code> (centred caption), and <code>TAU</code> (a full turn). Change a number, press Run, watch it change.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the grid cards, and every effect is written relative to <code>W</code>, <code>H</code>, and <code>B</code> — so the same code scales up without edits. Click the preview to trigger the press reaction.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> every effect keeps its magic numbers near the top — particle counts, speeds, colours. Halve a speed for elegance, double a count for chaos. Swap a colour family (fire palette on the ice button) and you've invented button #105.</div>
+<p class="hint"><b>On the real web (DOM):</b> each of these is a <code>&lt;canvas&gt;</code> layered behind or over a real <code>&lt;button&gt;</code> — or, for the simpler ones, a pseudo-element with an animated gradient and <code>filter: blur()</code>. Wrap all idle motion in <code>@media (prefers-reduced-motion: no-preference)</code>; the press reactions can stay, because the user asked for those. <b>In Godot:</b> a <code>Button</code> with a shader or <code>GPUParticles2D</code> child; press → <code>Tween</code>. <b>In Unity:</b> UI Image + animated material + a particle system, impulse via coroutine. <b>In Unreal:</b> UMG widget, animated material, Widget Animation for the press. The mechanisms are the book's usual suspects — particles, additive light, gradients, cracks-as-lines, trails-by-not-clearing — recombined 104 ways. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">Chapter 12</a> names the species; <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 6</a> teaches the ingredients.</p>
+</div>
+<script src="elemental-buttons.js"></script>
+</body>
+</html>
