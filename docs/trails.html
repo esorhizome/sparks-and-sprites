@@ -53,7 +53,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> <code>fade</code> 0.08 → 0.5 (crisp comet) → 0.015 (long ghosts) · the two frequencies <code>1.1 / 2.2</code> → <code>1.0 / 1.618</code> — an alien pair that never quite repeats · dot count: add a third.</div>
-<p class="hint"><b>In Godot:</b> the structured version is <code>Line2D</code> fed the last N positions each frame (fading width/alpha along its length). <b>In Unity:</b> the <code>TrailRenderer</code> component — add it to anything that moves, zero code, then shape its Width curve. <b>In Unreal:</b> a Niagara ribbon emitter. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+<p class="hint"><b>In Godot:</b> a trail is short-term memory, drawn — remember the last N positions, redraw them with fading alpha (<a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/trails.gd">download <code>trails.gd</code></a>); the structured version is <code>Line2D</code> fed those same positions (fading width/alpha along its length). <b>In Unity:</b> the <code>TrailRenderer</code> component — add it to anything that moves, zero code, then shape its Width curve. <b>In Unreal:</b> a Niagara ribbon emitter. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>

@@ -92,7 +92,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> <code>RATE</code> 10 → 1 (a cave drip — suddenly the <em>wait</em> is the effect) → 40 (a storm) · ring growth 65 → 200 (energetic plops) · splash count 5 → 20 · give drops sideways wind: <code>d.x += 40 * dt</code> in the fall step.</div>
-<p class="hint"><b>In Godot:</b> a downward <code>CPUParticles2D</code>, and connect a signal (or poll positions) to spawn a ripple scene on landing. <b>In Unity:</b> Particle System with Sub Emitters — the "on death, spawn these" checkbox is exactly this hand-off. <b>In Unreal:</b> Niagara event handlers (collision/death events spawning a second emitter). <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+<p class="hint"><b>In Godot:</b> the death-as-an-event hand-off written out plainly — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/waterdrops.gd">download <code>waterdrops.gd</code></a>; the node version is a downward <code>CPUParticles2D</code> spawning a ripple scene on landing. <b>In Unity:</b> Particle System with Sub Emitters — the "on death, spawn these" checkbox is exactly this hand-off. <b>In Unreal:</b> Niagara event handlers (collision/death events spawning a second emitter). <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>

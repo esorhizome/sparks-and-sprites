@@ -58,7 +58,7 @@ onFrame((dt, t) => {
 </div>
 
 <div class="tweaks"><b>Try tweaking:</b> to make it <b>snow</b>: <code>vy: rand(8, 20)</code>, white, size up · <b>fireflies</b>: warm colour <code>"#D6A878"</code>, COUNT 15, bigger twinkle range · <b>dust motes</b>: COUNT 30, DRIFT 3, alpha max 0.25 · a "warp" starfield: multiply both velocities by 40 and watch calm become momentum.</div>
-<p class="hint"><b>In Godot / Unity / Unreal:</b> a continuous emitter at 2–8 particles/sec, long lifetime, tiny size, slow drift — the same five numbers in each engine's particle panel. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06 (ambient atmosphere)</a>.</p>
+<p class="hint"><b>In Godot:</b> the same five calm numbers, with preset costumes on keys 1–4 (stars, snow, motes, fireflies) — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/starfield.gd">download <code>starfield.gd</code></a>; the node version is one <code>CPUParticles2D</code> with a low emission rate and a long lifetime. <b>In Unity:</b> a Particle System with <em>Rate over Time</em> 2–8, Start Lifetime 10+, tiny Start Size, gravity 0, and the Shape module widened to cover the screen. <b>In Unreal:</b> a Niagara emitter with those same five numbers — the Fountain template with the urgency deleted. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06 (ambient atmosphere)</a>.</p>
 </div>
 <script src="demo.js"></script>
 </body>
