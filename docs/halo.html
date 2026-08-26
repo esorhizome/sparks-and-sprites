@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halo · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Halo — a ring that breathes</h1>
+<p class="lesson">A halo is an additive ring plus <b>two tiny motions</b>: a scale "breath" of about ±3% on a slow sine, and an alpha shimmer from cheap noise (two sines that never line up). That's the entire recipe — the same one behind auras, selection rings, and save-point circles. Only colour and speed change.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let BREATH = 0.03;    // ±3% scale — the "it is alive" number
+let PERIOD = 3;       // seconds per breath
+let HUE = "255, 214, 120";   // halo colour (gold), as "r, g, b"
+
+onFrame((dt, t) => {
+  ctx.clearRect(0, 0, W, H);
+  const cx = W / 2, cy = H * 0.62;
+
+  // the subject: a humble pebble-person (any sprite goes here)
+  ctx.fillStyle = "#4A4368";
+  ctx.beginPath(); ctx.ellipse(cx, cy, 34, 44, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, cy - 62, 22, 0, 7); ctx.fill();
+
+  // ---- the halo ----
+  ctx.globalCompositeOperation = "lighter";   // additive: light adds up
+
+  // motion 1: the breath (±3% scale on a slow sine)
+  const s = 1 + BREATH * Math.sin(t * Math.PI * 2 / PERIOD);
+  // motion 2: the shimmer (two sines at odd speeds ≈ cheap noise)
+  const shimmer = 0.62 + 0.18 * Math.sin(t * 1.7) + 0.1 * Math.sin(t * 4.3 + 1);
+
+  const rx = 34 * s, ry = 10 * s;             // squashed = floats above
+  const hy = cy - 96;                         // halo height
+
+  // soft under-glow disc, then the crisp ring on top
+  const glow = ctx.createRadialGradient(cx, hy, 2, cx, hy, rx * 2.1);
+  glow.addColorStop(0, "rgba(" + HUE + "," + 0.25 * shimmer + ")");
+  glow.addColorStop(1, "rgba(" + HUE + ",0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath(); ctx.arc(cx, hy, rx * 2.1, 0, 7); ctx.fill();
+
+  ctx.strokeStyle = "rgba(" + HUE + "," + shimmer + ")";
+  ctx.lineWidth = 5;
+  ctx.beginPath(); ctx.ellipse(cx, hy, rx, ry, 0, 0, 7); ctx.stroke();
+
+  // one spark slowly orbiting the rim (rotation you can actually see)
+  const a = t * 0.9;
+  ctx.fillStyle = "rgba(255,255,255," + shimmer + ")";
+  ctx.beginPath();
+  ctx.arc(cx + Math.cos(a) * rx, hy + Math.sin(a) * ry, 2.4, 0, 7);
+  ctx.fill();
+
+  ctx.globalCompositeOperation = "source-over";
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Cover the halo with your thumb and the pebble is just a pebble. The ±3% breath is doing more work than any other number on this page — it's the difference between a <em>drawing of a ring</em> and a <em>presence</em>.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> <code>HUE</code> to <code>"140, 230, 255"</code> (spirit) or <code>"255, 120, 120"</code> (cursed) · <code>BREATH</code> 0.03 → 0.15 (excited pulse — notice it stops feeling holy) · <code>PERIOD</code> 3 → 0.8 (alarm ring) · drop the halo to <code>cy</code> and flatten <code>ry</code> to 6: a selection ring at the feet.</div>
+<p class="hint"><b>In Godot:</b> an additive-blend ring sprite (CanvasItemMaterial → Add), scale animated by an <code>AnimationPlayer</code> or tween on a 3 s sine. <b>In Unity:</b> a ring sprite with an additive material, scale + alpha from a looping tween (or one Animator curve). <b>In Unreal:</b> an additive material on a widget or plane; drive scale/opacity with a Timeline. <b>On the web (DOM):</b> a CSS <code>radial-gradient</code> ring with <code>mix-blend-mode: screen</code> and a keyframed scale. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Living buttons · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a></p>
+<h1>Living buttons — glowing before, grateful after</h1>
+<p class="lesson">Two button species. The top one runs a <b>static loop</b>: coloured light blobs orbit slowly <em>behind</em> the button face, leaking out the edges like plasma — it looks alive before you ever touch it. The bottom one is <b>tap-reactive</b>: its rings idle almost imperceptibly, then a tap gives them a spin impulse that eases out, plus a luminous pulse. Press Run, then <b>click both buttons</b>.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">let energy = 0;               // button A flare (0..1)
+let spin = 0, spinVel = 0;    // button B extra rotation + impulse
+let pulses = [];              // button B luminous pop rings
+
+const A = { x: W / 2 - 90, y: H * 0.16, w: 180, h: 54 };  // plasma button
+const B = { x: W / 2, y: H * 0.68, r: 52 };               // ring button
+
+function rr(x, y, w, h, r) {  // rounded-rect path helper
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+canvas.onpointerdown = (e) => {
+  const c = canvas.getBoundingClientRect();
+  const mx = e.clientX - c.left, my = e.clientY - c.top;
+  if (mx > A.x &amp;&amp; mx < A.x + A.w &amp;&amp; my > A.y &amp;&amp; my < A.y + A.h)
+    energy = 1;                              // flare, then cool off
+  if (Math.hypot(mx - B.x, my - B.y) < B.r + 14) {
+    spinVel += 6;                            // a push, not a teleport
+    pulses.push({ r: B.r, a: 0.8 });
+  }
+};
+
+onFrame((dt, t) => {
+  ctx.fillStyle = "#14111F";  ctx.fillRect(0, 0, W, H);
+  const midx = A.x + A.w / 2, midy = A.y + A.h / 2;
+
+  // ---- button A: the plasma underlay ----
+  ctx.save();
+  rr(A.x - 10, A.y - 10, A.w + 20, A.h + 20, 22);
+  ctx.clip();                                // light may only leak a little
+  ctx.globalCompositeOperation = "lighter";
+  const cols = ["120,140,255", "255,120,200", "120,230,220"];
+  for (let i = 0; i < 3; i++) {              // three blobs, three speeds
+    const bx = midx + Math.cos(t * 0.7 + i * 2.1) * A.w * 0.32;
+    const by = midy + Math.sin(t * 1.1 + i * 2.1) * A.h * 0.55;
+    const g = ctx.createRadialGradient(bx, by, 4, bx, by, 70);
+    g.addColorStop(0, "rgba(" + cols[i] + "," + 0.5 * (1 + energy * 1.5) + ")");
+    g.addColorStop(1, "rgba(" + cols[i] + ",0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(A.x - 30, A.y - 30, A.w + 60, A.h + 60);
+  }
+  ctx.restore();
+  ctx.globalCompositeOperation = "source-over";
+  rr(A.x, A.y, A.w, A.h, 14);                // the face sits on its own light
+  ctx.fillStyle = "rgba(18, 14, 32, 0.84)";  ctx.fill();
+  ctx.strokeStyle = "rgba(190,200,255," + (0.45 + energy * 0.55) + ")";
+  ctx.lineWidth = 1.5;  ctx.stroke();
+  ctx.fillStyle = "#EDEBFF";
+  ctx.font = "600 16px system-ui, sans-serif";
+  ctx.textAlign = "center";  ctx.textBaseline = "middle";
+  ctx.fillText("P L A Y", midx, midy + 1);
+  energy = Math.max(0, energy - dt * 2);
+
+  // ---- button B: rings that thank you for tapping ----
+  spin += spinVel * dt;
+  spinVel *= Math.pow(0.15, dt);             // friction → built-in ease-out
+  ctx.globalCompositeOperation = "lighter";
+  const idle = [0.15, -0.1, 0.06];           // barely-alive drift per ring
+  for (let i = 0; i < 3; i++) {
+    const rad = B.r - i * 15;
+    const a0 = t * idle[i] + spin * (i % 2 == 0 ? 1 : -1);
+    ctx.strokeStyle = "rgba(150, 220, 210, 0.85)";
+    ctx.lineWidth = 6;
+    for (let k = 0; k < 3; k++) {            // gaps make rotation visible
+      ctx.beginPath();
+      ctx.arc(B.x, B.y, rad, a0 + k * 2.1, a0 + k * 2.1 + 1.6);
+      ctx.stroke();
+    }
+  }
+  for (const p of pulses) {                  // the luminous thank-you
+    p.r += 90 * dt;  p.a -= 1.4 * dt;
+    if (p.a <= 0) continue;
+    ctx.strokeStyle = "rgba(200,255,245," + p.a + ")";
+    ctx.lineWidth = 3;
+    ctx.beginPath();  ctx.arc(B.x, B.y, p.r, 0, 7);  ctx.stroke();
+  }
+  pulses = pulses.filter(p => p.a > 0);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#D9F2EE";  ctx.font = "12px system-ui, sans-serif";
+  ctx.fillText("TAP", B.x, B.y + 1);
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Two details carry everything: the plasma lives <em>behind</em> the face (so the button stays readable), and the tap adds <em>velocity</em> instead of setting an angle — friction turns that into a natural ease-out for free.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> blob speeds <code>0.7 / 1.1</code> → <code>0.2 / 0.3</code> (lava-lamp calm) · <code>spinVel += 6</code> → <code>30</code> (slot machine) · the leak margin <code>±10</code> → <code>±30</code> (haloed button) · one ring instead of three · plasma colours to a single hue family for an elegant, expensive look.</div>
+<p class="hint"><b>On the real web (DOM):</b> the plasma underlay is a pseudo-element behind the button — an animated <code>conic-gradient</code> with <code>filter: blur(18px)</code> — and the pulse is a keyframed expanding ring; wrap all of it in <code>@media (prefers-reduced-motion: no-preference)</code>. <b>In Godot:</b> a <code>Button</code> with an <code>AnimationPlayer</code> looping a shader/glow child; tap → <code>Tween</code> on rotation with ease-out. <b>In Unity:</b> UI Image + animated material, tap impulse via a coroutine or tween library. <b>In Unreal:</b> UMG widget with an animated material and a Widget Animation for the pulse. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">Chapter 12</a>.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

@@ -55,17 +55,37 @@ life -= dt;                    // draw at alpha = life / maxLife
 - **Ripples:** an expanding, fading ring — one sprite scaling up while its alpha (transparency) tweens down; two lines. Fancy water gets a screen-space distortion shader instead.
 - **Drops on the lens:** a shader offsetting UVs (texture-reading coordinates) under drop-shaped noise — a beloved Shadertoy study genre, searchable as "rain on window."
 
+▶ *See it:* [waterdrops demo](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html) — fall, splash, and ripple, with the "a particle's death is an event" hand-off spelled out.
+
 ## Halo
 
 A soft ring texture in additive blending, floating above the subject, with two tiny motions: slow rotation (or none) and a gentle scale "breath" (±3% on a 3-second sine wave). Alpha modulated by slow noise for shimmer. On the web: a CSS `radial-gradient` ring with `mix-blend-mode: screen` and a slow keyframed scale. Same recipe = auras, selection rings, save-point circles; only colour and speed change.
+
+▶ *See it:* [halo demo](https://esorhizome.github.io/sparks-and-sprites/halo.html) — cover the halo with your thumb and watch the subject stop being holy.
+
+## Shiny metal, chrome & liquid metal
+
+**Mechanism:** metal barely has a colour of its own — it shows a bent picture of its **surroundings**. So the entire game is *value bands*: a dark–light–dark pattern of "reflected world" wrapped around the form, with **sharp transitions** (sharp = polished chrome; softened = brushed or satin metal), plus one or two very bright **glints** where the light source itself is reflected. A smooth grey gradient is the classic miss — it reads as plastic, because real reflections have edges (the horizon is an edge).
+
+- **Pixel art:** choose a 4–5 step ramp (deep dark → near-white); lay the bands *across* the form following its curve — a cylinder reads dark-light-dark-light across its width, a sphere gets curved bands — and spend the brightest step only on 1–2 px glints. Gold and copper are the same value pattern with warm hues; only the most intense glint stays near-white.
+- **Programmatic 2D:** fake a one-dimensional environment (sky band, bright strip, dark horizon line, ground band) and look it up per pixel by the surface normal — this is what 3D artists call a **matcap** (material capture). Ten lines in a shader or canvas loop.
+- **Real 3D:** set metallic to 1 and roughness near 0 — then give it something to reflect (Godot: a sky or `ReflectionProbe`; Unity: Reflection Probes; Unreal: reflection captures; three.js/Babylon: an environment texture). A mirror in an empty world is black — "my metal looks black" almost always means "no environment."
+- **The travelling glint (the traditional-animation trick):** don't re-render the object — keep the base still and animate a *separate* narrow bright band in additive blending sweeping along the surface: dim and narrow entering, peak mid-way, dim leaving, 3–5 frames or one tweened sweep. Fast glint = sword edge; slow broad sweep = polished armour. This layer-above-a-held-base idea is how hand-drawn animation has done metal for a century, and it's also the cheapest possible version in any engine.
+- **Liquid metal / mercury:** wobble the *silhouette* (metaballs, or a few slow sine waves on the radius) while the reflection lookup stays crisp. The eye reads "liquid metal" precisely because the shape is soft while the reflections stay hard.
+
+▶ *See it:* [chrome & liquid metal demo](https://esorhizome.github.io/sparks-and-sprites/metal-chrome.html) — the band world, the normal lookup, the travelling glint, and a `LIQUID` dial, all in one editable loop.
+
+**Unity try-it:** a sphere + default URP lit material; Metallic 1, Smoothness 0.95, and a Reflection Probe in the room — then drag Smoothness down to 0.4 and watch chrome become brushed steel. That one slider is the whole polished↔satin axis.
+**Unreal try-it:** Metallic 1, Roughness 0.05 on any material; then animate a thin additive highlight band across a weapon icon in UMG — the travelling-glint recipe, node form.
 
 ## Trails & afterimages
 
 - **Ribbon trail:** record the last N positions; draw a strip through them that fades with age. Godot: `Line2D` fed points each frame. Unity: the `TrailRenderer` component — zero code; *try it: add it to anything that moves and adjust Time + Width curve.* Unreal: Niagara ribbon emitter.
 - **Afterimages:** every few frames, spawn a frozen, fading copy of the sprite. Fast fade reads as speed; slow desaturated fade reads as haunting.
+- **Fragmented trail:** instead of one continuous ribbon, the moving thing *sheds individual particles* that each live a tiny life — and the fragment can be anything: fire, glowing orbs, waterdrops, stars, sparkles. Same emitter, different costume, different spell. (Unity's *Rate over Distance* emission and Niagara's spawn-per-unit are this idea as a checkbox: fragments appear only while moving.)
 - **Canvas one-liner:** don't clear the canvas each frame — paint a translucent background rectangle instead. Everything that moves smears automatically.
 
-▶ *See it:* [trails demo](https://esorhizome.github.io/sparks-and-sprites/trails.html)
+▶ *See it:* [trails demo](https://esorhizome.github.io/sparks-and-sprites/trails.html) (the smear family) · [fragmented trails demo](https://esorhizome.github.io/sparks-and-sprites/trails-fragments.html) (the particle family — steer the comet with your pointer, then change what a fragment *is*)
 
 ## Shockwave / ripple
 

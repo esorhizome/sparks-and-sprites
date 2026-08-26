@@ -4,3 +4,6 @@ demos/godot/.godot/
 # OS noise
 .DS_Store
 Thumbs.db
+
+# local tooling config
+.claude/

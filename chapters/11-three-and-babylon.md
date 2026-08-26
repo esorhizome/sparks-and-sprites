@@ -84,6 +84,8 @@ renderer.setAnimationLoop(() => {
 ▶ *See it live and editable:* [three.js planet demo](https://esorhizome.github.io/sparks-and-sprites/three-planet.html) — a noise-displaced planet with a starfield, ~60 lines.
 ▶ *And the Babylon flavour:* [Babylon scene demo](https://esorhizome.github.io/sparks-and-sprites/babylon-scene.html) — drag to orbit, with engine-included glow and GUI.
 
+**Chrome in one move:** on any `MeshStandardMaterial`, set `metalness: 1, roughness: 0` (Babylon: `PBRMaterial` with `metallic = 1, roughness = 0`) — then give the scene an **environment texture**, because a mirror in an empty world renders black. three.js: load an HDRI (free ones at [Poly Haven](https://polyhaven.com/)) and set `scene.environment`; Babylon: `scene.createDefaultEnvironment()`. Slide roughness 0 → 0.4 and chrome becomes brushed steel — that one dial is the whole polished↔satin axis. The 2D intuition behind why this reads as metal is in [chapter 06's metal entry](06-vfx-cookbook.md).
+
 ### 2 · Pure 2D (yes, really)
 
 Switch the camera from perspective (far things shrink) to **orthographic** (no shrinking — a flat, technical-drawing view) and a 3D library becomes a GPU-fast 2D engine:

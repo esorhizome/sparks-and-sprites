@@ -6,11 +6,19 @@ Checked against **Godot 4.7 · Unity 6.3 LTS · Unreal 5.8 · the web (2026)**. 
 
 *Generated from [this prompt](PROMPT.md), with formatting cleaned up.*
 
+All external links in this book were last checked on **26 August 2026** (UTC+7).
+
+---
+
 ## Three promises
 
 1. **No chapter assumes you remember any other chapter.** Every technical word is re-explained, in place, every time it matters. Re-reading a definition you've seen before is a feature of this book, not an insult to you.
 2. **Nothing here can break anything.** This is a map, not a machine. Skimming, forgetting, and returning months later are all correct ways to use it.
 3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing.)
+
+[![The Sparks demo mid-burst: three clicks, three showers of warm and cool particles](docs/assets/sparks-demo.png)](https://esorhizome.github.io/sparks-and-sprites/sparks.html)
+
+*The [Sparks demo](https://esorhizome.github.io/sparks-and-sprites/sparks.html) mid-burst — in the gallery, this canvas sits beside its editable four-line physics.*
 
 ## How demos work here
 
@@ -29,12 +37,13 @@ Checked against **Godot 4.7 · Unity 6.3 LTS · Unreal 5.8 · the web (2026)**. 
 | 03 | [Combining VFX with sprites](chapters/03-combining-vfx-with-sprites.md) | Layer, tint, add, mask, outline, dissolve, relight |
 | 04 | [Backgrounds](chapters/04-backgrounds.md) | Gradients, parallax, infinite scroll, noise skies |
 | 05 | [Movement & personality](chapters/05-movement-and-personality.md) | Human, superhuman, alien, emotional, robot, stately — as code |
-| 06 | [The VFX cookbook](chapters/06-vfx-cookbook.md) | Glow, flame, sparks, waterdrops, halo, trails, shake |
+| 06 | [The VFX cookbook](chapters/06-vfx-cookbook.md) | Glow, flame, sparks, waterdrops, halo, metal & chrome, trails, shake |
 | 07 | [Sound effects](chapters/07-sound-effects.md) | Playing, randomizing, and synthesizing sound from code |
 | 08 | [Free & legal sources](chapters/08-free-and-legal-sources.md) | Where assets come from, and what each license asks |
 | 09 | [Web export & browsers](chapters/09-web-export-and-browsers.md) | The six real failure modes, and testing Safari without a Mac |
 | 10 | [If you freeze up](chapters/10-if-you-freeze-up.md) | The four-step un-freezing protocol |
 | 11 | [three.js & Babylon.js](chapters/11-three-and-babylon.md) | 3D, 2D, and every hybrid in the browser — plus Node.js disentangled |
+| 12 | [Responsive cursors & living buttons](chapters/12-cursors-and-living-buttons.md) | Glowing buttons, cursor trails, custom cursors — alive at rest, grateful when touched |
 
 ## The cheatsheets
 

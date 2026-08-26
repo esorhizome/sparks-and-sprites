@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chrome &amp; liquid metal · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>Chrome &amp; liquid metal — a mirror with opinions</h1>
+<p class="lesson">Metal has almost no colour of its own: it shows you the <em>world around it</em>. So we fake a world — sky, a bright strip, a hard dark horizon, warm ground — and every pixel of the ball bounces the camera ray off its surface and asks that world "what do I reflect?" Hard steps between bands are what read as <b>polished</b>; a travelling bright band on top reads as <b>glint</b>; wobbling the rim turns the whole thing <b>liquid</b>.</p>
+
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false">const S = 120;         // coarse grid, scaled up (same trick as the dissolve demo)
+let LIQUID = 0.5;      // 0 = rigid chrome ball · 1 = molten blob
+let TILT   = 0.10;     // how far the reflections slowly swim
+
+// The fake world the metal reflects, top to bottom.
+// Hard steps = polished chrome. Soften them = brushed / satin metal.
+function world(v) {    // v: 0 = sky overhead … 1 = ground below
+  if (v < 0.42) return [186, 220, 252];  // sky
+  if (v < 0.50) return [252, 253, 255];  // bright strip above the horizon
+  if (v < 0.56) return [62, 48, 46];     // the dark "horizon snap"
+  if (v < 0.72) return [196, 172, 148];  // warm ground bounce
+  return [30, 26, 40];                   // deep ground
+}
+
+const cell = Math.min(W, H) / S;
+const ox = (W - S * cell) / 2, oy = (H - S * cell) / 2;
+const R = S * 0.40;
+
+onFrame((dt, t) => {
+  ctx.fillStyle = "#14111F";
+  ctx.fillRect(0, 0, W, H);
+  const tilt  = TILT * Math.sin(t * 0.5);   // the world gently rocks
+  const sweep = (t * 0.45) % 2 - 0.6;       // travelling glint position
+  for (let gy = 0; gy < S; gy++) {
+    for (let gx = 0; gx < S; gx++) {
+      const dx = (gx - S / 2) / R, dy = (gy - S / 2) / R;
+      // liquid: the rim breathes with two slow waves
+      const ang = Math.atan2(dy, dx);
+      const wob = 1 + LIQUID * (0.09 * Math.sin(3 * ang + t * 1.8)
+                              + 0.06 * Math.sin(5 * ang - t * 1.3));
+      const d = Math.hypot(dx, dy) / wob;
+      if (d > 1) continue;                  // outside the blob
+      // the surface normal of a ball at this pixel
+      const nx = dx / wob, ny = dy / wob;
+      const nz = Math.sqrt(Math.max(0, 1 - d * d));
+      // ---- the entire secret of chrome ----
+      const ry = 2 * nz * ny;               // camera ray bounced off the normal
+      let v = 0.5 + ry * 0.5 + tilt;        // → where it lands in the world
+      v = Math.min(1, Math.max(0, v));
+      let [r, g, b] = world(v);
+      // -------------------------------------
+      // travelling glint: a bright diagonal band sweeping past every ~4 s
+      const s = (nx + ny) * 0.5;
+      const glint = Math.max(0, 1 - Math.abs(s - sweep) * 9);
+      const add = glint * glint * 230;
+      r = Math.min(255, r + add);
+      g = Math.min(255, g + add);
+      b = Math.min(255, b + add);
+      ctx.fillStyle = "rgb(" + (r | 0) + "," + (g | 0) + "," + (b | 0) + ")";
+      ctx.fillRect(ox + gx * cell, oy + gy * cell, cell + 0.5, cell + 0.5);
+    }
+  }
+});</textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">Watch the horizon band bend around the ball — that bending is what your eye calls "chrome." The lookup-by-normal trick here is exactly what 3D artists call a <b>matcap</b> (material capture), and the striped fake world is a one-dimensional <b>environment map</b>.</p>
+  </div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> <code>LIQUID</code> 0.5 → 0 (rigid ball) → 1 (molten) · warm every band's red channel up for gold, e.g. <code>[252,253,255]</code> → <code>[255,240,180]</code> · move the horizon from 0.50 to 0.65 · glint speed <code>t * 0.45</code> → <code>t * 1.5</code> (nervous sparkle) · widen the glint by lowering the <code>* 9</code>.</div>
+<p class="hint"><b>In pixel art:</b> the same idea drawn by hand — a dark–light–dark band ramp across the form, then a 3–5 frame glint sweep where only the bright band moves. <b>In Godot (3D):</b> <code>StandardMaterial3D</code> with metallic 1, roughness near 0 — plus a sky or ReflectionProbe, because a mirror with nothing to reflect is black. <b>In Unity:</b> metallic-smoothness + Reflection Probes. <b>In Unreal:</b> Metallic 1, low Roughness; reflection captures are placed for you in most templates. <b>In three.js / Babylon:</b> <code>metalness: 1, roughness: 0</code> + an environment texture. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a> has the full metal entry.</p>
+</div>
+<script src="demo.js"></script>
+</body>
+</html>

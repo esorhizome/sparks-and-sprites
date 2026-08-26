@@ -35,6 +35,8 @@ Take any soft white blob image, set its blend mode (colour mixing rule) to **add
 
 ▶ *See it:* [additive glow demo](https://esorhizome.github.io/sparks-and-sprites/glow-additive.html) — drag the blobs over each other and watch light add up.
 
+Additive layers are also the entire secret of *animated shine*: hold a sprite still and sweep a narrow additive band across it — a metal glint, a UI sheen, a "brand new item" sparkle. [Chapter 06's metal entry](06-vfx-cookbook.md) turns this into a full recipe.
+
 ## 4 · Masks (one image decides where another is visible)
 
 Health-bar fills, portrait frames, spotlight reveals, water only inside the pool.

@@ -1,6 +1,6 @@
 # Cheatsheet · Licenses & sources
 
-Full chapter: [08](../chapters/08-free-and-legal-sources.md). Rule of thumb: **license is per-asset, not per-site.**
+Full chapter: [08](../chapters/08-free-and-legal-sources.md). Rule of thumb: **license is per-asset, not per-site.** Links last checked **26 August 2026** (UTC+7).
 
 ## Licenses in one line each
 
