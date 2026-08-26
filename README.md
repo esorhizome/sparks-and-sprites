@@ -16,9 +16,9 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 2. **Nothing here can break anything.** This is a map, not a machine. Skimming, forgetting, and returning months later are all correct ways to use it.
 3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing.)
 
-[![The Sparks demo mid-burst: three clicks, three showers of warm and cool particles](docs/assets/sparks-demo.png)](https://esorhizome.github.io/sparks-and-sprites/sparks.html)
+[![The Waterdrops demo mid-rain: falling streaks, splash droplets, and overlapping ripple rings on the water line](docs/assets/waterdrops-demo.png)](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html)
 
-*The [Sparks demo](https://esorhizome.github.io/sparks-and-sprites/sparks.html) mid-burst — in the gallery, this canvas sits beside its editable four-line physics.*
+*The [Waterdrops demo](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html) mid-rain — in the gallery, this canvas sits beside its editable code: fall, splash, ripple.*
 
 ## How demos work here
 
