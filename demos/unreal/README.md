@@ -44,6 +44,7 @@ teach the wrong lesson. So this folder has both kinds:
 | Planet (3D) | `Source/.../SSPlanet.*` | C++ actor (ProceduralMesh) |
 | Orbit & glow (3D) | `Source/.../SSOrbitGlow.*` | C++ pawn |
 | Elemental buttons | `recipes/elemental-buttons.md` | UMG anatomy recipe |
+| Cube codex (character VFX) | `Source/.../SSCubeVfx.*` + `recipes/cube-vfx.md` | C++ actor with Niagara effect slots + family map |
 
 The full 104-button bestiary lives on
 [the web page](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)

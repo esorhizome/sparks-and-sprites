@@ -35,6 +35,7 @@ has its Godot twin here:
 | Planet (3D) | `scenes/planet_3d.gd` | three-planet | 11 |
 | Orbit & glow (3D) | `scenes/orbit_glow_3d.gd` | babylon-scene | 11 |
 | Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
+| Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 
 ## The bestiary, in full
 
@@ -59,11 +60,22 @@ spelling differs, the port says so in place:
 Those are translations, not compromises: `_draw()` plus plain arithmetic
 covers the entire 104.
 
+## The cube codex, in full
+
+`scenes/cube_vfx.gd` is the same treatment for **character VFX**: the web
+page's 104 cube effects (firebursts, waterhoses, sky bolts, following
+halos, dash afterimages, hit sparks, capes…), fourteen family files in
+`scenes/cubefx/`, paged in one scene. `scenes/cubefx/kit.gd` owns the
+protagonist — its patrol, shadow, lean, and eyes — and every effect draws
+behind it, calls `draw_cube`, then draws in front: the sandwich is the
+whole layering system, exactly as on the web page.
+
 ## Health checks
 
-Neither of these is a demo — they're how the project verifies itself:
+None of these is a demo — they're how the project verifies itself:
 
 ```
 godot --headless --path . -s res://smoke_test.gd     # every scene + injected input
 godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons: init/tick/press/draw
+godot --headless --path . -s res://codex_test.gd     # all 104 cube effects, same regimen
 ```

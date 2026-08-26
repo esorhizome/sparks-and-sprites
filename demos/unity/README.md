@@ -45,6 +45,8 @@ systems are configured property by property. No prefabs, no imported assets.
 | `Planet3D.cs` | three-planet | displace a sphere's vertices by noise, colour by height |
 | `OrbitGlow.cs` | babylon-scene | orbit rig from drag + emissive material (+ enable Bloom) |
 | `ElementalButtons.cs` | elemental-buttons | the bestiary's two-species anatomy, with sample elements |
+| `CubeVfx2D.cs` | cube-vfx | the codex protagonist in 2D: six equippable effects (keys 1–6) |
+| `CubeVfx3D.cs` | cube-vfx | the same anatomy in real 3D: bursts, a halo light, a waterhose |
 
 `ElementalButtons.cs` ports the bestiary's **anatomy** and a handful of
 ambassador elements; the full 104 live on

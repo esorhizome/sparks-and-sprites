@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The cube codex · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the codex grid (same skeleton as the bestiary) */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:150px; display:block; background:#131020; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:manipulation}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
+<h1>The cube codex — one protagonist, 104 effects</h1>
+<p class="lesson">Meet the cube. It paces its little stage the way a fighting-game character idles on theirs — and every card gives it a different power: a fireburst, a waterhose, a bolt from the sky, a halo that follows it around. Each effect is a <b>static loop</b> (alive while the cube goes about its day) plus a <b>press reaction</b> (the cast, the strike, the pose — click a running card to trigger it; some effects aim at where you click). If the bestiary was <em>buttons</em> possessed by elements, this codex is what those elements look like attached to a <em>character</em>: decorations, neutral energy, and fighting moves. Press <b>▶ Run all</b>, or click any single card to wake just that one. Under each card, <i>open code</i> loads its full source into the editor at the bottom — every effect is ~25–40 lines, self-contained, and editable.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="codex"><!-- cards are built by cube-vfx.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick an effect above</span></h2>
+<p class="lesson">Every effect is one function, <code>make(u)</code>, returning <code>{ frame(dt, t), press(x, y) }</code>. The kit <code>u</code>: <code>ctx, W, H</code> (canvas), <code>G</code> (the ground's y), <code>C</code> (the cube: <code>x, y, s, face, vx, pace…</code>), <code>stage()</code> (backdrop + floor), <code>tickCube(dt)</code> (the patrol — set <code>C.pace = false</code> to take control), <code>drawCube()</code>, <code>glow(x, y, r, colour)</code>, <code>rand(a, b)</code>, <code>TAU</code>. Draw behind the cube, call <code>drawCube()</code>, draw in front — the sandwich is the whole layering system.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the cards, and every effect is written relative to <code>W</code>, <code>H</code>, <code>G</code>, and the cube's size — the same code scales up without edits. Click the preview to trigger the press reaction.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> every effect keeps its magic numbers near the top. The cube's stroll lives in the kit — find <code>tickCube</code> in the editor's loaded code and slow the stroll, or set <code>C.pace = false</code> and drive <code>C.x</code> yourself. Swap an attack's palette (an ice fireburst, a golden shadow clone) and you've invented effect #105.</div>
+<p class="hint"><b>In Godot:</b> <b>all 104 are ported</b> — fourteen family files in <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot/scenes/cubefx"><code>scenes/cubefx/</code></a>, paged by family in <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/cube_vfx.gd"><code>cube_vfx.gd</code></a> (grab the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a> and press its menu's S). The kit's cube patrol, stage, and glow helpers live in <code>scenes/cubefx/kit.gd</code>; on a real character you'd hang the same logic on a <code>CharacterBody2D</code> with <code>GPUParticles2D</code> children and a <code>Tween</code> per move. <b>In Unity:</b> <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unity/Scripts/CubeVfx2D.cs"><code>CubeVfx2D.cs</code></a> (sprite cube + the effect-slot anatomy) and <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unity/Scripts/CubeVfx3D.cs"><code>CubeVfx3D.cs</code></a> (a real 3D cube: particle bursts, a following halo light, an aura) — attach one script, press Play. <b>In Unreal:</b> <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unreal/Source/SparksAndSprites/SSCubeVfx.h"><code>SSCubeVfx</code></a> is the 3D patrol-cube actor with named effect slots (Niagara + a following point light), and <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unreal/recipes/cube-vfx.md">recipes/cube-vfx.md</a> maps each family onto Niagara, materials, and UMG. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a> teaches the ingredients; <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/05-movement-and-personality.md">chapter 05</a> explains why the cube's stroll makes everything feel inhabited.</p>
+</div>
+<script src="cube-vfx.js"></script>
+</body>
+</html>
