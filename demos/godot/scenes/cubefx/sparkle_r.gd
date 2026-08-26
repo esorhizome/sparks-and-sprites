@@ -12,7 +12,7 @@ const RHYMES := {
 	"hearts": { "name": "Broken hearts", "hint": "falling instead of floating, fading twice as fast" },
 	"confetti": { "name": "Leaf pop", "hint": "dressed for autumn — larger leaves, longer drift" },
 	"shooting_star": { "name": "Falling feather", "hint": "unhurried — it settles rather than salutes" },
-	"crown": { "name": "Thorn crown", "hint": "turned solemn — dark spikes, rare red glints" },
+	"wreath": { "name": "Thorn wreath", "hint": "turned solemn — dark spikes, rare red glints" },
 }
 
 static func init(b: Dictionary) -> void:
@@ -186,7 +186,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				n.draw_line(dp, dp + Vector2(-6, 0), Color(0.8, 0.79, 0.88, 0.7), 1.0)
 			if b.flash > 0.0:
 				CubeKit.glow(n, Vector2(c.x, c.y - c.s * 0.6), c.s * 1.2, Color(0.94, 0.93, 0.98, b.flash * 0.5), 3)
-		"crown":
+		"wreath":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
 			var cy: float = c.y - c.s * 1.35 + sin(t * 1.8) * 2.0

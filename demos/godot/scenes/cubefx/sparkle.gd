@@ -13,7 +13,7 @@ const DEFS := [
 	{ "id": "hearts", "name": "Charm hearts", "hint": "a shy heart now and then; press for a whole ring of them" },
 	{ "id": "confetti", "name": "Confetti pop", "hint": "press: confetti with real flutter; idle: one lazy streamer" },
 	{ "id": "shooting_star", "name": "Shooting star", "hint": "stars cross the backdrop; press and one dives to salute" },
-	{ "id": "crown", "name": "Twinkle crown", "hint": "a crown of twinkles bobs above; press and it flares" },
+	{ "id": "wreath", "name": "Twinkle wreath", "hint": "a wreath of twinkles bobs above; press and it flares" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -37,7 +37,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			for i in 18:
 				b.parts.append({ "pos": Vector2(c.x + randf_range(-c.s * 1.6, c.s * 1.6), c.y - c.s * 2.4 - randf_range(0, 20)),
 					"vy": randf_range(40, 90), "life": 1.0, "tw": randf_range(4, 9) })
-		"pixie", "crown":
+		"pixie", "wreath":
 			b.press_v = 1.0
 		"star_twirl":
 			c.spin = 0.001
@@ -191,7 +191,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				CubeKit.glow(n, b.dive.pos, 6.0, Color(1, 0.96, 0.82, 0.95), 2)
 			if b.flash > 0.0:
 				CubeKit.glow(n, Vector2(c.x, c.y - c.s * 0.6), c.s * 1.6, Color(1, 0.96, 0.82, b.flash * 0.6), 3)
-		"crown":
+		"wreath":
 			var cy: float = c.y - c.s * 1.35 + sin(t * 1.8) * 2.0
 			for i in 5:
 				var a: float = t * 0.8 + i / 5.0 * TAU
