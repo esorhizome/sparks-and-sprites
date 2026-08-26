@@ -10,6 +10,12 @@
 ; effects (scenes/cubefx/). Where the web canvas and Godot spell an effect
 ; differently (gradients, additive blending, clipping, trails), the scripts note
 ; the translation in place; none of it is beyond _draw() + math.
+;
+; Rhymes: every one of the 208 effects also has a RHYME — the same effect with
+; two or three dials turned (scenes/elements/*_r.gd, scenes/cubefx/*_r.gd).
+; RIGHT-CLICK any card in the bestiary or the codex to swap original ⇄ rhyme.
+; Each *_r.gd preloads its original as Base and overrides only the branches
+; whose dials moved; diffing the two files is the whole lesson.
 
 config_version=5
 

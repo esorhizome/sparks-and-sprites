@@ -16,6 +16,7 @@
 .bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
 .bcard .meta b{font-size:.92rem}
 .bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .meta a.rhyme{color:var(--good); cursor:pointer}
 .bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
 .toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
 #status{font-size:.85rem; color:var(--soft)}
@@ -29,6 +30,7 @@
 <p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a></p>
 <h1>The cube codex — one protagonist, 104 effects</h1>
 <p class="lesson">Meet the cube. It paces its little stage the way a fighting-game character idles on theirs — and every card gives it a different power: a fireburst, a waterhose, a bolt from the sky, a halo that follows it around. Each effect is a <b>static loop</b> (alive while the cube goes about its day) plus a <b>press reaction</b> (the cast, the strike, the pose — click a running card to trigger it; some effects aim at where you click). If the bestiary was <em>buttons</em> possessed by elements, this codex is what those elements look like attached to a <em>character</em>: decorations, neutral energy, and fighting moves. Press <b>▶ Run all</b>, or click any single card to wake just that one. Under each card, <i>open code</i> loads its full source into the editor at the bottom — every effect is ~25–40 lines, self-contained, and editable.</p>
+<p class="lesson"><b>Every move also hides a rhyme.</b> A rhyme is the same effect with two or three dials turned — a palette, a speed, a direction, a count — and nothing else. Click <b>⇄ its rhyme</b> on any card to swap them in place (104 more demos, folded into the same cards), then <i>open code</i> to read the pair side by side: the rhyme's opening comment names exactly which dials moved. Fireburst becomes Frostburst by swapping a palette and letting the shards hang; the knockback becomes a launcher by aiming the same helplessness upward; the tempest becomes the doldrums by swapping which half is the idle and which is the press. Once a recipe is understood, its neighbours are nearly free. The rhymes travel with the Godot port too: in the downloadable project, <b>right-click any card</b> to swap original ⇄ rhyme — each family file <code>scenes/cubefx/&lt;family&gt;.gd</code> has a sibling <code>&lt;family&gt;_r.gd</code> that overrides only the branches whose dials moved, so diffing the pair is the same lesson in GDScript.</p>
 
 <div class="toolbar">
   <button id="runall" class="primary">▶ Run all</button>
