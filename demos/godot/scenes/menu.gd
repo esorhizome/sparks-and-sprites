@@ -24,7 +24,7 @@ const DEMOS := [
 	["I", "Screen shake — trauma², smooth noise, fast calm", "res://scenes/shake.tscn"],
 	["O", "Planet (3D) — a noise-displaced world", "res://scenes/planet_3d.tscn"],
 	["P", "Orbit & glow (3D) — drag-to-orbit + bloom", "res://scenes/orbit_glow_3d.tscn"],
-	["A", "Elemental buttons — 14 of the web page's 104", "res://scenes/elemental_buttons.tscn"],
+	["A", "Elemental buttons — all 104, paged by family", "res://scenes/elemental_buttons.tscn"],
 ]
 
 func _ready() -> void:

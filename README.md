@@ -25,7 +25,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 - **Web + Godot get direct, runnable demos.**
   - Web: open any page in **[the live demo gallery](https://esorhizome.github.io/sparks-and-sprites/)** — each one shows editable code next to its visual result. Change a number, press *Run*, watch it change. No installs, no build step.
   - Godot: open [`demos/godot/`](demos/godot/) as a Godot 4.x project. **Every web demo has a Godot twin** — each builds its whole scene *from code* in `_ready()`, so the script **is** the demo — heavily commented, tweak and re-run. Each gallery page also links its `.gd` file directly, so you can download one demo without cloning anything.
-- **Unity + Unreal get explained code**, not bundled projects (bundling both would bloat the book past usefulness). Each chapter shows the equivalent Unity/Unreal code or editor recipe, explains *why* it produces the same result, and ends with "try it yourself and tweak." The concepts transfer one-to-one; only the syntax changes accent.
+- **Unity + Unreal get script templates + explained code.** Each chapter shows the equivalent Unity/Unreal code or editor recipe and explains *why* it produces the same result — and the repo now carries starter folders for both: [`demos/unity/`](demos/unity/) (a self-contained C# script per demo) and [`demos/unreal/`](demos/unreal/) (C++ actor templates for the code-natural demos, exact-value editor recipes for the Niagara/material ones). Assets are being imported gradually; until then the scripts are working recipes, not committed projects. The concepts transfer one-to-one; only the syntax changes accent.
 
 ## The chapters
 

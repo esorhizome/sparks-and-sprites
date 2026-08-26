@@ -1,8 +1,8 @@
 extends Node2D
 ## MOVEMENT PERSONALITIES — one dot, eight souls.
 ## Personality is not what moves — it's the SHAPE of the speed.
-## Keys 1–8 choose a personality, Space replays, Esc returns to the menu.
-## Chapter 05 of the book explains every recipe in plain words.
+## Keys 1–8 choose a personality, Space replays, L toggles looping,
+## Esc returns to the menu. Chapter 05 explains every recipe in plain words.
 
 const NAMES := ["human", "superhuman", "alien", "excited",
 				"sad", "emotionless", "robot", "stately"]
@@ -12,6 +12,7 @@ const DUR := {"human": 2.0, "superhuman": 2.2, "alien": 3.4, "excited": 2.4,
 var personality := "human"
 var t := 0.0
 var playing := true
+var looping := false            # L: replay forever — good for comparing souls
 var trail: Array[Vector2] = []
 
 ## Each recipe maps u (journey progress 0→1) to a point:
@@ -62,19 +63,23 @@ func _restart() -> void:
 	t = 0.0
 	playing = true
 	trail.clear()
-	($Hint as Label).text = "Personality: %s   —   1-8 to switch, Space replays, Esc = menu\n%s" \
-		% [personality, "  ".join(NAMES)]
+	($Hint as Label).text = "Personality: %s   —   1-8 to switch, Space replays, L loops (%s), Esc = menu\n%s" \
+		% [personality, "on" if looping else "off", "  ".join(NAMES)]
 
 func _process(delta: float) -> void:
 	if not playing:
 		return
 	t += delta
-	var u: float = minf(1.0, t / DUR[personality])
+	var u: float = clampf(t / DUR[personality], 0.0, 1.0)
 	trail.append(pos_for(u))
 	if trail.size() > 120:
 		trail.pop_front()
 	if u >= 1.0:
-		playing = false
+		if looping:                 # a short breath at the end, then again
+			t = -0.4
+			trail.clear()
+		else:
+			playing = false
 	queue_redraw()
 
 func _draw() -> void:
@@ -100,6 +105,9 @@ func _input(event: InputEvent) -> void:
 		if event.keycode == KEY_ESCAPE:
 			get_tree().change_scene_to_file("res://scenes/menu.tscn")
 		elif event.keycode == KEY_SPACE:
+			_restart()
+		elif event.keycode == KEY_L:
+			looping = not looping
 			_restart()
 		elif event.keycode >= KEY_1 and event.keycode <= KEY_8:
 			personality = NAMES[event.keycode - KEY_1]

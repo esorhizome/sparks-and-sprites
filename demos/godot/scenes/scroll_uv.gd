@@ -8,11 +8,12 @@ extends Node2D
 func _ready() -> void:
 	var size := get_viewport_rect().size
 	# generate a seamless "cloudy" tile in code (no image files needed)
-	_layer(_make_tile(Color(0.61, 0.63, 0.87)), 0.015, size)   # slow = far
-	_layer(_make_tile(Color(0.45, 0.38, 0.62)), 0.05, size)    # fast = near
+	# speeds are in tiles-per-second: keep them far apart — the GAP is the depth
+	_layer(_make_tile(Color(0.61, 0.63, 0.87)), 0.06, size)   # slow = far
+	_layer(_make_tile(Color(0.45, 0.38, 0.62)), 0.22, size)   # fast = near
 
 	var l := Label.new()
-	l.text = "Infinite scroll: one tile, endless sky. Esc = menu.\nOpen shaders/scroll_uv.gdshader — the whole trick is one line."
+	l.text = "Infinite scroll: one tile, endless sky (two layers, two speeds). Esc = menu.\nOpen shaders/scroll_uv.gdshader — the whole trick is one line. Try speeds 0.02 vs 0.8."
 	l.position = Vector2(24, 16)
 	add_child(l)
 

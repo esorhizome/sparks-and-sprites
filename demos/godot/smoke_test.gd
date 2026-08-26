@@ -46,7 +46,15 @@ func _tick() -> void:
 		mm.position = Vector2(420, 260)
 		mm.relative = Vector2(30, 12)
 		Input.parse_input_event(mm)
-	if frame >= 45:
+	# the bestiary has 14 family pages: turn through every one, clicking twice
+	if SCENES[i] == "elemental_buttons" and frame > 40 and frame % 20 == 0 and frame < 340:
+		var k := InputEventKey.new()
+		k.keycode = KEY_RIGHT
+		k.pressed = true
+		Input.parse_input_event(k)
+		_click(Vector2(110, 140), MOUSE_BUTTON_LEFT)     # first card of the page
+		_click(Vector2(480, 300), MOUSE_BUTTON_LEFT)     # a second spot
+	if frame >= (360 if SCENES[i] == "elemental_buttons" else 45):
 		i += 1
 		if i >= SCENES.size():
 			print("SMOKE TEST COMPLETE — all %d scenes survived input" % SCENES.size())
