@@ -34,15 +34,36 @@ has its Godot twin here:
 | Screen shake | `scenes/shake.gd` | shake | 06 |
 | Planet (3D) | `scenes/planet_3d.gd` | three-planet | 11 |
 | Orbit & glow (3D) | `scenes/orbit_glow_3d.gd` | babylon-scene | 11 |
-| Elemental buttons (sampler) | `scenes/elemental_buttons.gd` | elemental-buttons | 12 |
+| Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
 
-The elemental-buttons scene ports **one button per element family** (14 of
-the web page's 104) — enough to show the anatomy in GDScript; the web page
-remains the full bestiary.
+## The bestiary, in full
 
-`smoke_test.gd` is not a demo — it's the project's health check. It cycles
-every scene headlessly and injects clicks/keys/drags:
+`scenes/elemental_buttons.gd` is the **complete port of the web page's 104
+elemental buttons** — fourteen element families, one GDScript file per
+family in `scenes/elements/`, paged by family in the scene (←/→ turns the
+page). Every button keeps the same anatomy as the web original: `init()`
+seeds state, `tick()` advances it, `draw()` paints it, `press()` reacts.
+
+**A note on capability, since it's worth saying plainly:** nothing in the
+web bestiary is beyond Godot. Everything the HTML canvas does — gradients,
+additive light, clipping, trails — has a Godot spelling, and where the
+spelling differs, the port says so in place:
+
+- canvas radial gradients → layered translucent circles (`elements/kit.gd`);
+- the `lighter` composite blend → the same layering, or a
+  `CanvasItemMaterial` with `BLEND_MODE_ADD` per node;
+- canvas `clip()` → bounded drawing (or a `SubViewport` when you need it);
+- trail-by-not-clearing → an explicit history array, redrawn with fading
+  alpha — Godot clears every frame, so the trail's memory is made visible.
+
+Those are translations, not compromises: `_draw()` plus plain arithmetic
+covers the entire 104.
+
+## Health checks
+
+Neither of these is a demo — they're how the project verifies itself:
 
 ```
-godot --headless --path . -s res://smoke_test.gd
+godot --headless --path . -s res://smoke_test.gd     # every scene + injected input
+godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons: init/tick/press/draw
 ```

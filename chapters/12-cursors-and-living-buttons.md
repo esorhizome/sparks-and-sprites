@@ -52,7 +52,7 @@ The same three lines welcome a press anywhere: cards, list rows, map pins, save 
 
 The two species above — the static loop and the thank-you — are a recipe, and recipes want variations. The **[elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)** is 104 of them: buttons possessed by fire, lightning, water, mercury, frost, stone, wind, light, sparks, deep space, growing things, dubious green liquids, crystal, and whole compressed weather systems. Every one idles with its own loop and answers a press with its own reaction, every one is ~20–35 lines of canvas code you can open in the page's editor, and every one is built from ingredients this book already taught: particles ([chapter 06](06-vfx-cookbook.md)), additive light, gradients, cracks-as-jagged-lines, trails-by-not-clearing, springs and friction ([chapter 05](05-movement-and-personality.md)). None of it is new machinery — it's the same eight tricks wearing 104 costumes, which is the most encouraging thing a demo page can possibly tell you.
 
-▶ *See it:* [the elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html) — press *Run all*, or wake buttons one at a time.
+▶ *See it:* [the elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html) — press *Run all*, or wake buttons one at a time. All 104 are also ported to GDScript in the repo's Godot project ([`demos/godot/scenes/elements/`](../demos/godot/scenes/elements/), one file per element family, paged by family in the `elemental_buttons` scene) — same anatomy, different accent.
 
 ## Cursor trails (motion-reactive)
 
