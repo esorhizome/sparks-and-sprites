@@ -17,3 +17,12 @@
 
 Wrap idle motion behind a "reduce motion" setting; keep the press
 reactions — the user asked for those. Chapter 12 of the book.
+
+## The 2D spelling
+
+This one was already 2D — UMG **is** Unreal's 2D UI layer. The in-world
+variant (a glowing button on a Paper2D vending machine, say) moves the same
+anatomy onto sprites: the plasma underlay is an additive sprite behind the
+face sprite, the press-spin is the sprite's rotation driven by the same
+velocity-and-friction floats, and the pulse ring is a one-shot Niagara
+burst or a scaling ring sprite.

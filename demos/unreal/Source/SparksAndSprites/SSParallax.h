@@ -3,6 +3,12 @@
 // with a factor; every tick each layer moves by CameraOffset × Factor.
 // Far layers get small factors, near layers get big ones — the GAP between
 // the factors is the depth. Chapter 04 of the book.
+// 2D: this is parallax's native home. Register PaperSpriteComponents as
+// the layers under an orthographic camera (a side-scroller's background
+// stack), or in UMG give each layer Image a Render Transform translation
+// of CameraOffset × Factor. The multiplication doesn't change; 3D just
+// lets real depth do the multiplying for you (which is why this actor
+// exists — to fake it when you want control).
 #pragma once
 
 #include "CoreMinimal.h"

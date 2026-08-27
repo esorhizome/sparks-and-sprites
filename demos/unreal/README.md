@@ -1,4 +1,4 @@
-# Unreal demos (C++ templates + editor recipes)
+# Unreal demos (C++ templates + editor recipes, 2D and 3D)
 
 Unreal splits its craft differently from the web, Godot, or Unity: some of
 this book's demos are naturally **C++** (camera math, procedural meshes,
@@ -18,6 +18,30 @@ teach the wrong lesson. So this folder has both kinds:
 > the book's chapter text, but not yet part of a committed .uproject —
 > that arrives as assets are imported gradually. Every file names the
 > intent of each line, so version drift is a local fix.
+
+## Unreal does 2D too — the three routes
+
+Every demo here now names its **2D spelling** as well as its 3D one
+(each recipe ends with a "The 2D spelling" section; each C++ header
+carries a 2D note). Unreal's 2D lives in three places, and knowing which
+one a demo wants is most of the work:
+
+1. **UMG** — the widget/UI layer. Screen-space, composited like a web
+   page. Buttons, HUD text, per-letter Render Transforms. No scene bloom;
+   bake softness into brushes.
+2. **Paper2D** — in-world sprites and flipbooks under (usually) an
+   orthographic camera. Everything scene-side still works: Niagara,
+   materials, lights, `SSTraumaShake` — just flatten velocities to the
+   sprite plane.
+3. **Ortho 3D** — ordinary 3D actors (`SSCubeVfx`, `SSTextFx`, textured
+   planes) in front of an orthographic camera at a fixed depth. Reads as
+   pure 2D, keeps bloom, lights, and depth tricks. Paper2D is a
+   convenience wrapper over exactly this.
+
+The rule that falls out, worth saying once: **Niagara, materials, and
+trauma² don't care about dimension** — they read UVs, Time, and floats.
+Only the *container* changes (mesh ↔ sprite ↔ widget), so every family
+table in `recipes/` holds in both dimensions unless a row says otherwise.
 
 ## The demos
 
@@ -45,6 +69,7 @@ teach the wrong lesson. So this folder has both kinds:
 | Orbit & glow (3D) | `Source/.../SSOrbitGlow.*` | C++ pawn |
 | Elemental buttons | `recipes/elemental-buttons.md` | UMG anatomy recipe |
 | Cube codex (character VFX) | `Source/.../SSCubeVfx.*` + `recipes/cube-vfx.md` | C++ actor with Niagara effect slots + family map |
+| Glyph grimoire (text FX) | `Source/.../SSTextFx.*` + `recipes/text-fx.md` | C++ per-letter TextRender actor + a 2D (UMG) & 3D family map |
 
 The full 104-button bestiary lives on
 [the web page](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)

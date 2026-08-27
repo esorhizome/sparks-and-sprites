@@ -24,3 +24,13 @@ Spawn Rate ~90. That's fire. Then the retunes — change ONLY what's listed:
 
 Same lesson as everywhere else in the book: particles are one recipe with
 many dials, and each costume is a handful of dial turns.
+
+## The 2D spelling
+
+The same emitter reads as 2D the moment the camera is orthographic and the
+velocities live in one plane: cone axis up, X (depth) velocity zero, sprite
+renderer camera-facing. In a Paper2D level, parent the system to the
+`PaperSpriteComponent`'s socket (a torch tip, a chimney). In UMG, a flame
+this soft is usually a **material**, not particles: 2–3 radial blobs rising
+via `Time`-panned noise in an additive Image brush — cheaper, and the
+flicker lives in the shader.

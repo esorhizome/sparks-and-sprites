@@ -6,13 +6,15 @@
 ;  whenever it saves settings — README.md in this folder is the durable home.)
 ;
 ; Capability note: every web-gallery demo has a full Godot twin here, including
-; all 104 elemental buttons (scenes/elements/) and all 104 cube-codex character
-; effects (scenes/cubefx/). Where the web canvas and Godot spell an effect
-; differently (gradients, additive blending, clipping, trails), the scripts note
-; the translation in place; none of it is beyond _draw() + math.
+; all 104 elemental buttons (scenes/elements/), all 104 cube-codex character
+; effects (scenes/cubefx/), and all 104 glyph-grimoire text effects
+; (scenes/textfx/). Where the web canvas and Godot spell an effect
+; differently (gradients, additive blending, clipping, trails, font weights),
+; the scripts note the translation in place; none of it is beyond _draw() + math.
 ;
-; Rhymes: every one of the 208 effects also has a RHYME — the same effect with
-; two or three dials turned (scenes/elements/*_r.gd, scenes/cubefx/*_r.gd).
+; Rhymes: every one of the 312 effects also has a RHYME — the same effect with
+; two or three dials turned (scenes/elements/*_r.gd, scenes/cubefx/*_r.gd,
+; scenes/textfx/*_r.gd).
 ; RIGHT-CLICK any card in the bestiary or the codex to swap original ⇄ rhyme.
 ; Each *_r.gd preloads its original as Base and overrides only the branches
 ; whose dials moved; diffing the two files is the whole lesson.

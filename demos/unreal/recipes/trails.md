@@ -14,3 +14,12 @@ version is a **Niagara Ribbon**:
 
 The chapter-06 lesson holds: the *only* state a trail needs is where it has
 recently been.
+
+## The 2D spelling
+
+Ribbons work under an orthographic camera unchanged — attach the system to
+a Paper2D character and the ribbon remembers its path in the sprite plane.
+The UMG spelling has no ribbons, so write the memory out (the web demo's
+actual lesson): a ring buffer of the cursor's last ~12 screen positions,
+redrawn each tick as Images (or one `OnPaint` polyline) with width and
+alpha fading by age.

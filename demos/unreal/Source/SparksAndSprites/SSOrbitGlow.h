@@ -3,6 +3,11 @@
 // a SpringArm (the stick) on a Pawn, rotated by mouse drag. The glow is an
 // emissive material (HDR emissive colour) — bloom is on by default.
 // Possess this pawn (Auto Possess Player = Player 0) and drag the mouse.
+// 2D: orbiting is the one verb 2D cannot truly do — the 2D cousins are
+// pan and zoom: keep the SpringArm but lock rotation, drag to move the
+// target (pan) and scroll TargetArmLength (zoom) over a Paper2D scene.
+// The glow half is dimensionless: the same HDR emissive material on a
+// sprite blooms identically under an ortho camera.
 // Chapter 11 of the book.
 #pragma once
 

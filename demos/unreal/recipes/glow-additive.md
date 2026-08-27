@@ -10,3 +10,13 @@
    automatically — bloom is on by default in Unreal.
 
 Chapter 03 of the book; the halo and flame recipes both lean on this.
+
+## The 2D spelling
+
+Identical material, flatter stage: put the additive material on UMG
+**Image** brushes (or Paper2D sprites) and drift them across each other —
+UMG composites in screen space, so the summing behaves exactly like the
+web canvas's `lighter`. HDR emissive still blooms under an ortho camera;
+in pure UMG there is no scene bloom, so fake the halo with an oversized
+soft-dot brush behind the bright one (the bestiary's plasma underlay
+trick).

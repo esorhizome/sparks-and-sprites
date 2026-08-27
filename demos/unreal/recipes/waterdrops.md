@@ -15,3 +15,13 @@ ripple ring. Niagara spells this hand-off with **events**:
 
 Unity calls the same idea Sub Emitters; the web and Godot versions write it
 out with two lists. Same hand-off, four accents.
+
+## The 2D spelling
+
+Constrain the drops to the sprite plane (velocity X = 0) under an ortho
+camera and the event hand-off is unchanged — death still spawns splash and
+ripple, Niagara doesn't care that everything shares one depth. The ripple's
+floor-aligned sprite becomes a camera-facing ring scaled in Y ≈ 0.3 (the
+squash reads as perspective even in 2D). In UMG the whole demo is the web
+version verbatim: two arrays (drops, ripples) advanced in `NativeTick`,
+drawn as Images.

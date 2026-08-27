@@ -3,6 +3,11 @@
 // rise, seas stay round), colour by height, hand it to the mesh component,
 // spin it slowly. The same recipe as the three.js / Godot / Unity versions.
 // Requires "ProceduralMeshComponent" in your module's dependency list.
+// 2D: a genuinely 3D demo — the honest 2D spellings are (a) render this
+// planet to a SceneCaptureComponent2D and show the RenderTarget in UMG or
+// on a sprite (a spinning planet in a 2D game's sky), or (b) fake it flat:
+// a disc sprite with a scrolling noise material and a shaded rim, which is
+// how 2D games have always drawn planets. Both are noted in chapter 11.
 // Chapter 11 of the book.
 #pragma once
 

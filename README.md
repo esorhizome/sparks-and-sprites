@@ -25,7 +25,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 - **Web + Godot get direct, runnable demos.**
   - Web: open any page in **[the live demo gallery](https://esorhizome.github.io/sparks-and-sprites/)** — each one shows editable code next to its visual result. Change a number, press *Run*, watch it change. No installs, no build step.
   - Godot: open [`demos/godot/`](demos/godot/) as a Godot 4.x project. **Every web demo has a Godot twin** — each builds its whole scene *from code* in `_ready()`, so the script **is** the demo — heavily commented, tweak and re-run. Each gallery page also links its `.gd` file directly, so you can download one demo without cloning anything.
-- **Unity + Unreal get script templates + explained code.** Each chapter shows the equivalent Unity/Unreal code or editor recipe and explains *why* it produces the same result — and the repo now carries starter folders for both: [`demos/unity/`](demos/unity/) (a self-contained C# script per demo) and [`demos/unreal/`](demos/unreal/) (C++ actor templates for the code-natural demos, exact-value editor recipes for the Niagara/material ones). Assets are being imported gradually; until then the scripts are working recipes, not committed projects. The concepts transfer one-to-one; only the syntax changes accent.
+- **Unity + Unreal get script templates + explained code.** Each chapter shows the equivalent Unity/Unreal code or editor recipe and explains *why* it produces the same result — and the repo now carries starter folders for both: [`demos/unity/`](demos/unity/) (a self-contained C# script per demo) and [`demos/unreal/`](demos/unreal/) (C++ actor templates for the code-natural demos, exact-value editor recipes for the Niagara/material ones — **each covering both Unreal 2D and 3D**: every recipe names its UMG/Paper2D spelling alongside the 3D one). Assets are being imported gradually; until then the scripts are working recipes, not committed projects. The concepts transfer one-to-one; only the syntax changes accent.
 
 ## The chapters
 
@@ -44,6 +44,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 | 10 | [If you freeze up](chapters/10-if-you-freeze-up.md) | The four-step un-freezing protocol |
 | 11 | [three.js & Babylon.js](chapters/11-three-and-babylon.md) | 3D, 2D, and every hybrid in the browser — plus Node.js disentangled |
 | 12 | [Responsive cursors & living buttons](chapters/12-cursors-and-living-buttons.md) | Glowing buttons, cursor trails, custom cursors — alive at rest, grateful when touched |
+| 13 | [Text that moves](chapters/13-text-that-moves.md) | Programmatic text animation: typewriters, glows, scrambles, waves — the fourteen families |
 
 ## The cheatsheets
 
@@ -55,6 +56,7 @@ One-page quick references for the days you just need the answer:
 - [VFX](cheatsheets/vfx.md) — effect → mechanism → engine pointer
 - [Sound](cheatsheets/sound.md) — play, randomize, synthesize
 - [Backgrounds](cheatsheets/backgrounds.md) — the five background patterns
+- [Text](cheatsheets/text.md) — the per-letter anatomy, family → mechanism, the numbers that keep working
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
 - [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes

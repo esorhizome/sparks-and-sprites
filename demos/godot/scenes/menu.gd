@@ -26,6 +26,7 @@ const DEMOS := [
 	["P", "Orbit & glow (3D) — drag-to-orbit + bloom", "res://scenes/orbit_glow_3d.tscn"],
 	["A", "Elemental buttons — all 104, paged by family", "res://scenes/elemental_buttons.tscn"],
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
+	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
 ]
 
 func _ready() -> void:

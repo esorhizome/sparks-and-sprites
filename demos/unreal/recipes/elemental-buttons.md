@@ -32,3 +32,14 @@ Port one button per family first (the Godot sampler order is a good tour:
 candleflame, static charge, bubble tank, chrome sweep, frozen core, fault
 line, smoke signal, breath, flint, galaxy, swarm, acid bath, facet glint,
 monsoon) — after those fourteen, the remaining ninety are dial turns.
+
+## 2D and 3D, plainly
+
+The bestiary is native 2D — UMG buttons on the HUD, as above. The 3D
+spellings, when a button lives in the world: **in-world widgets**
+(WidgetComponent on an actor — same UMG assets, now with depth and scene
+bloom), or a **Paper2D / mesh button**: the idle-loop material goes on the
+sprite or face mesh unchanged (materials only ever read UVs and Time), the
+press reaction becomes a Niagara burst plus a scale-punch on the component.
+Materials and trauma² care nothing for dimension; only the container
+changes.

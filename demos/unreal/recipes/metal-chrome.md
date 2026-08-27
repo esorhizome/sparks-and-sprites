@@ -22,3 +22,12 @@ VertexNormalWS.Z (−1..1) → remap 0..1 → sample a 1-D "band ramp" texture
 
 Chapter 06 has the full metal entry; `demos/godot/scenes/metal_chrome.gd`
 is the same lookup written as scanlines.
+
+## The 2D spelling
+
+The matcap-band trick is *born* 2D — the web demo fakes normals from UV
+position, and the same works on a sprite: replace `VertexNormalWS.Z` with a
+gradient built from `TexCoord.V` (or a painted "fake normal" channel in the
+sprite's texture), then the identical band-ramp lookup, wobble, and glint.
+Apply to a Paper2D sprite material or a UMG Image brush; the glint sweep is
+pure `Time` math either way.

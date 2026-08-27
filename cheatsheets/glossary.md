@@ -29,3 +29,8 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Spring | A value pulled toward a target with momentum; stiffness + damping = personality |
 | Pointer events | The web's unified mouse + pen + finger input events |
 | Hotspot | The one pixel of a cursor image that actually points |
+| Glyph | One drawn character — the visual form of a letter |
+| Baseline | The invisible line letters sit on (descenders hang below it) |
+| Tracking / kerning | The little horizontal gaps between letters (overall / per-pair) |
+| Variable font | One font file rendering a whole range of weights (300–700…) from one axis number |
+| Caret | The text cursor: the blinking block or bar marking where the next letter lands |

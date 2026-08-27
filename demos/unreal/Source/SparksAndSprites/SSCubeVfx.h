@@ -10,6 +10,11 @@
 // The full 104 live on the web page (cube-vfx.html) and in the Godot
 // project (demos/godot/scenes/cubefx/); recipes/cube-vfx.md maps each
 // family onto Niagara, materials, and UMG.
+// 2D: swap the cube for a PaperSpriteComponent (or flipbook), flatten the
+// patrol and every Niagara velocity to the sprite plane under an ortho
+// camera, and the anatomy survives whole — the following halo becomes an
+// additive ring sprite with the same lag/bob/breath numbers. The full 2D
+// family map lives at the end of recipes/cube-vfx.md.
 #pragma once
 
 #include "CoreMinimal.h"
