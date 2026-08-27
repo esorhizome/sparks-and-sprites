@@ -21,3 +21,12 @@ S->RegisterComponent();
 S->SetRelativeLocation(FVector(0, X, Y));   // place = the whole secret
 ```
 Chapter 02 shows the same recipe in all four accents.
+
+## And the 3D spelling, for symmetry
+
+The same three verbs on a mesh: load a `UStaticMesh` (or a plane with your
+texture on an unlit material), attach a `UStaticMeshComponent`, place with
+`SetRelativeLocation`. A textured plane facing an orthographic camera is
+pixel-for-pixel the Paper2D result — Paper2D is a convenience wrapper, not
+a different universe. Chapter 02's load → attach → place survives every
+dimension.

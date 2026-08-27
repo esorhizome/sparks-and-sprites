@@ -28,3 +28,14 @@ Working order that keeps the anatomy honest: idle loop first (it must read
 as alive with nobody touching it), then the press reaction as one function
 call, then the polish (recoil, shake, flash) — chapter 06's recipes, worn
 by a character.
+
+## The 2D spelling
+
+`SSCubeVfx` is written 3D, but the codex anatomy ports to Paper2D directly:
+the cube becomes a `PaperSpriteComponent` (or flipbook), the patrol drives
+Y instead of the camera-relative axis, the following halo is an additive
+ring sprite lerping after it, and every Niagara slot spawns with velocities
+flattened to the sprite plane under the ortho camera. The family table
+above holds in 2D as-is — Niagara, materials, and UMG are all
+dimension-agnostic; only "mesh" rows swap in sprites (afterimages = ghost
+sprite copies fading; frost armour = a material overlay on the sprite).

@@ -20,3 +20,12 @@ Threshold  ────┘         (scalar parameter)
 
 Chapter 03 of the book; the same 3-line shader ships in the Godot project
 (`demos/godot/shaders/dissolve.gdshader`) for comparison.
+
+## The 2D spelling
+
+The material is already 2D — it only ever reads UVs. Apply the same Masked
+graph to a Paper2D sprite's material (start from `MaskedUnlitSpriteMaterial`
+so the sprite's own alpha still counts) or to a UMG Image brush; drive
+`Threshold` from the widget's `NativeTick` or a Blueprint timeline. The
+burning-edge emissive lerp carries over unchanged — on a UI brush it simply
+renders as a bright rim instead of blooming.

@@ -15,3 +15,11 @@ feel the web demo teaches.
 Costumes are sprite + colour swaps: ember (orange dot), star (star sprite,
 warm yellow), drop (blue, more gravity), sparkle (white cross sprite).
 Chapter 12 deploys exactly this as a cursor trail.
+
+## The 2D spelling
+
+**Spawn Per Unit works in any plane** — attach the emitter to a Paper2D
+character and fragments shed only while it runs, exactly like the web
+demo's cursor. For UMG, spawn pooled Image widgets when the pointer has
+moved more than N pixels since the last spawn (that IS spawn-per-unit,
+hand-rolled), then let each fall and fade in `NativeTick`.

@@ -3,6 +3,10 @@
 // sine arithmetic as the web AudioContext and Godot AudioStreamGenerator
 // versions. Call PlayCoin()/PlayLaser()/PlayHit() from Blueprint or bind
 // them to keys. Chapter 07 of the book.
+// 2D: sound is dimensionless — this works verbatim in a Paper2D game or
+// behind a UMG menu. The only spatial choice is whether to spawn the
+// AudioComponent 2D (UGameplayStatics::PlaySound2D-style, UI blips) or at
+// a world location for attenuation in the scene.
 #pragma once
 
 #include "CoreMinimal.h"

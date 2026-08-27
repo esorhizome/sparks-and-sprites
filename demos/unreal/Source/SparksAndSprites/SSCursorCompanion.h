@@ -4,6 +4,11 @@
 // looks alive; fighting it looks laggy. Assign a small emissive sphere as
 // the Body, and (optionally) a Niagara system for the press-pop.
 // Chapter 12 of the book.
+// 2D: the chase math is already 2D (the pointer is a 2D fact). For a UMG
+// companion, lerp an Image widget's screen position toward the pointer
+// each NativeTick with the same lag constant; for Paper2D, deproject the
+// cursor to the sprite plane and let this actor's Body be a sprite. The
+// press-pop Niagara slot works in both (UI Renderer plugin for pure UMG).
 #pragma once
 
 #include "CoreMinimal.h"

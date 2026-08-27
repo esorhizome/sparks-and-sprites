@@ -2,6 +2,10 @@
 // Personality is not what moves — it's the SHAPE of the speed. PosFor()
 // maps journey-progress u (0→1) to a position; the actor replays it.
 // Set Soul in the details panel (0–7), tick bLoop to replay forever.
+// 2D: identical — easing has no dimension. Drive a Paper2D sprite's
+// location with the same PosFor() (flatten to the sprite plane), or a UMG
+// widget's Render Transform translation from NativeTick. The eight souls
+// survive unchanged; only the thing being moved swaps.
 // Chapter 05 of the book.
 #pragma once
 

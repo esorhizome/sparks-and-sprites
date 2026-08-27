@@ -7,6 +7,10 @@
 // Material setup (once, in the editor):
 //   TexCoord → Add( TexCoord, AppendVector(Offset, 0) ) → Frac → sampler UV
 //   where "Offset" is a Scalar Parameter. Sampler addressing: Wrap.
+// 2D: materials only ever read UVs — the same graph goes on a Paper2D
+// sprite's material or a UMG Image brush unchanged, and this actor's MID
+// scalar-driving works wherever the material lives. The endless-runner
+// ground is exactly this on a screen-wide sprite.
 // Chapter 04 of the book.
 #pragma once
 

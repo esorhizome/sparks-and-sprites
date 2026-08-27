@@ -36,6 +36,7 @@ has its Godot twin here:
 | Orbit & glow (3D) | `scenes/orbit_glow_3d.gd` | babylon-scene | 11 |
 | Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
+| Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
 
 ## The bestiary, in full
 
@@ -70,16 +71,31 @@ protagonist — its patrol, shadow, lean, and eyes — and every effect draws
 behind it, calls `draw_cube`, then draws in front: the sandwich is the
 whole layering system, exactly as on the web page.
 
-## The rhymes — 208 more effects, one right-click away
+## The glyph grimoire, in full
 
-Every button in the bestiary and every card in the codex hides a **rhyme**:
+`scenes/text_fx.gd` is the same treatment for **text animation**: the web
+page's 104 text effects (typewriters, scrambles, glows, split-flaps,
+waves, long shadows…), fourteen family files in `scenes/textfx/`, paged
+in one scene. `scenes/textfx/kit.gd` owns the phrase — its per-letter
+layout, its glow, its wrong glyphs — and every effect is a loop over the
+layout deciding, per letter, *where, how big, what colour, and whether
+yet*. Two Godot-specific translations worth knowing (both noted in the
+kit): the fallback font has **one weight**, so "bolder" is spelled as a
+growing `draw_string_outline` (fake bold); and canvas `clip()` reveals
+become alpha ramps or scale-y reveals, named in place wherever they occur.
+
+## The rhymes — 312 more effects, one right-click away
+
+Every button in the bestiary, every card in the codex, and every card in
+the grimoire hides a **rhyme**:
 a secondary offshoot of the original with **two or three dials turned** —
 a palette warmed or frozen, a speed halved, a gravity flipped, a count
 doubled. **Right-click any card** to swap original ⇄ rhyme (right-click
 again to swap back); the caption turns green and names the moved dials.
 
 The point is pedagogical. Each family file `scenes/elements/<family>.gd`
-(or `scenes/cubefx/<family>.gd`) has a sibling `<family>_r.gd` that:
+(or `scenes/cubefx/<family>.gd`, or `scenes/textfx/<family>.gd`) has a
+sibling `<family>_r.gd` that:
 
 1. preloads the original as `const Base := preload(...)`;
 2. declares `const RHYMES := { id: { name, hint } }` for its family;
@@ -94,9 +110,10 @@ and dividing a speed by three. A foundational understanding, tweaked ever
 so slightly, gives you a similar-yet-different effect — that's the whole
 lesson, and the file layout makes it diffable.
 
-The same 104+104 rhymes exist on the web pages
+The same rhymes exist on the web pages
 ([elemental-buttons](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html),
-[cube-vfx](https://esorhizome.github.io/sparks-and-sprites/cube-vfx.html)) —
+[cube-vfx](https://esorhizome.github.io/sparks-and-sprites/cube-vfx.html),
+[text-fx](https://esorhizome.github.io/sparks-and-sprites/text-fx.html)) —
 there the toggle is the "⇄ its rhyme" link on each card.
 
 ## Health checks
@@ -107,4 +124,5 @@ None of these is a demo — they're how the project verifies itself:
 godot --headless --path . -s res://smoke_test.gd     # every scene + injected input
 godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 104 rhymes: init/tick/press/draw
 godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
+godot --headless --path . -s res://grimoire_test.gd  # all 104 text effects + their 104 rhymes, same regimen
 ```

@@ -7,6 +7,10 @@
 // (Unreal also ships this idea packaged: UPerlinNoiseCameraShakePattern.
 //  This template writes it out so the three rules stay visible.)
 // Chapter 06 of the book.
+// 2D: trauma² reads floats, not dimensions. Attach to the camera of a
+// Paper2D scene unchanged (shake the ortho camera's Y/Z), or apply the
+// same Offset/Roll to a UMG root widget's Render Transform for HUD shake.
+// Keep rule 3 everywhere: 2D shakes with slow decay read as broken vsync.
 #pragma once
 
 #include "CoreMinimal.h"
