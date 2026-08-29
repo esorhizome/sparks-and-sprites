@@ -45,6 +45,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 | 11 | [three.js & Babylon.js](chapters/11-three-and-babylon.md) | 3D, 2D, and every hybrid in the browser — plus Node.js disentangled |
 | 12 | [Responsive cursors & living buttons](chapters/12-cursors-and-living-buttons.md) | Glowing buttons, cursor trails, custom cursors — alive at rest, grateful when touched |
 | 13 | [Text that moves](chapters/13-text-that-moves.md) | Programmatic text animation: typewriters, glows, scrambles, waves — the fourteen families |
+| 14 | [Procedural animation & the maths of movement](chapters/14-procedural-animation.md) | Springs, steering, IK, verlet, gait — every movement recipe and its maths, in plain words |
 
 ## The cheatsheets
 
@@ -57,6 +58,7 @@ One-page quick references for the days you just need the answer:
 - [Sound](cheatsheets/sound.md) — play, randomize, synthesize
 - [Backgrounds](cheatsheets/backgrounds.md) — the five background patterns
 - [Text](cheatsheets/text.md) — the per-letter anatomy, family → mechanism, the numbers that keep working
+- [Procedural animation](cheatsheets/procedural-animation.md) — the A–Z of movement maths, the four load-bearing snippets, enemy brains cheapest-first
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
 - [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes

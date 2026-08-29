@@ -27,6 +27,7 @@ const DEMOS := [
 	["A", "Elemental buttons — all 104, paged by family", "res://scenes/elemental_buttons.tscn"],
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
 	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
+	["F", "Locomotion lexicon — 26 movement styles, A to Z", "res://scenes/locomotion.tscn"],
 ]
 
 func _ready() -> void:
