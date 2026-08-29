@@ -37,6 +37,7 @@ has its Godot twin here:
 | Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 | Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
+| Locomotion lexicon (all 26) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
 
 ## The bestiary, in full
 
@@ -84,6 +85,19 @@ kit): the fallback font has **one weight**, so "bolder" is spelled as a
 growing `draw_string_outline` (fake bold); and canvas `clip()` reveals
 become alpha ramps or scale-y reveals, named in place wherever they occur.
 
+## The locomotion lexicon, in full
+
+`scenes/locomotion.gd` is the same treatment for **procedural animation
+maths**: the web page's 26 movement styles, A to Z (springs, steering
+brains, IK three ways, verlet bodies, a walking gait), five family files
+in `scenes/motion/`, paged in one scene. `scenes/motion/kit.gd` owns the
+stage, the ground line, the vector arrows, and the mote protagonist. One
+port-specific note: all demo maths is **card-local** (0,0 at the card's
+corner, exactly like the web version's canvas coordinates) — the scene
+adds the offset with a draw transform, so the web and GDScript versions
+of every formula match line for line. No rhymes on this one: the cards
+*are* the dials, and the chapter's tweaking box says which to turn.
+
 ## The rhymes — 312 more effects, one right-click away
 
 Every button in the bestiary, every card in the codex, and every card in
@@ -125,4 +139,5 @@ godot --headless --path . -s res://smoke_test.gd     # every scene + injected in
 godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 104 rhymes: init/tick/press/draw
 godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://grimoire_test.gd  # all 104 text effects + their 104 rhymes, same regimen
+godot --headless --path . -s res://lexicon_test.gd   # all 26 movement styles: tick, press, draw, A-to-Z census
 ```

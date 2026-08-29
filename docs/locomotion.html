@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The locomotion lexicon · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the lexicon grid (same skeleton as the bestiary, codex, and grimoire) */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:170px; display:block; background:#131020; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:manipulation}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/14-procedural-animation.md">chapter 14</a></p>
+<h1>The locomotion lexicon — 26 movement styles, A to Z</h1>
+<p class="lesson">Meet the mote: a small blue creature with one eye and no keyframes. Every card below is a different way for a thing to <em>move</em> — the maths of procedural animation, one letter of the alphabet at a time, from <b>A</b>rrive to <b>Z</b>igzag. Where the bestiary was buttons, the codex a character, and the grimoire a phrase, the lexicon is a tour of the machinery itself: sines and polar coordinates, springs and damping ratios, steering brains, joint chains, verlet bodies, raycasts — ending with <b>G · Gait</b>, a two-legged walker that spends everything the other twenty-five cards earn. Each style is a <b>living loop</b> (it keeps moving with nobody touching it) plus a <b>press reaction</b> (click a running card to aim it, excite it, or shove it — most cards use <em>where</em> you click). Press <b>▶ Run all</b>, or wake one card at a time. Under each card, <i>open code</i> loads its full source into the editor at the bottom — every style is one self-contained function, written to be read.</p>
+<p class="lesson"><b>The maths is the cast list, not the obstacle.</b> Five families, five kinds of memory: <em>Clocks &amp; circles</em> compute position straight from the clock (nothing stored, nothing can drift); <em>Slopes &amp; springs</em> remember a velocity and bend it (that's all calculus is here); <em>Brains &amp; steering</em> subtract two vectors and call the difference intention; <em>Chains &amp; joints</em> solve where limbs must be (the Law of Cosines and FABRIK, side by side); <em>Bodies &amp; ground</em> let position-minus-last-position do the physics. Every formula on the cards — <code>v₀ = √(2gh)</code>, <code>cos A = (a² + d² − b²)/2ad</code>, <code>force = k/d²</code> — is drawn on the canvas where it acts, so the symbol and the motion arrive together.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="lexicon"><!-- cards are built by locomotion.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick a style above</span></h2>
+<p class="lesson">Every style is one function, <code>make(u)</code>, returning <code>{ frame(dt, t), press(x, y) }</code>. The kit <code>u</code>: <code>ctx, W, H</code> (canvas), <code>GY</code> (the standard ground line), the palette (<code>MOVER</code> blue for the protagonist, <code>TARGET</code> amber for where it wants to be, <code>BONE</code>, <code>GOOD</code>, <code>HOT</code>), and the drawing kit: <code>stage()</code> (night backdrop + graph paper), <code>ground()</code>, <code>dot()</code>, <code>ring()</code>, <code>arrow(x1,y1,x2,y2,c)</code> — vectors drawn honestly — <code>mote(x,y,angle)</code> (the protagonist), <code>label()</code>, plus the little maths drawer: <code>len(x,y)</code>, <code>clamp</code>, <code>ease</code>, <code>wrapAngle</code> (fold any angle into −π..π), <code>rand(a,b)</code>, <code>TAU</code>. Everything else — every spring constant, threshold, and turn rate — lives in plain sight near the top of each function.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the cards, and every style is written relative to <code>W</code>, <code>H</code>, and <code>GY</code> — the same code scales up without edits. Click the preview to trigger the press reaction; most styles aim at your click.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> every style keeps its magic numbers near the top. Set the Damp card's <code>ζ</code> rows to <code>0.1</code> and watch it ring like a bell; give Arrive a tiny slow radius and it becomes plain Seek; raise the Gait walker's step threshold and it takes long lazy strides; drop Swarm's separation radius and the flock becomes a mob. The universal anatomy: <em>decide what the thing wants (a target, a height, a heading), measure the gap between wanting and having, and close a fraction of that gap every frame.</em> That one sentence is most of procedural animation.</div>
+<p class="hint"><b>In Godot:</b> <b>all 26 are ported</b> — five family files in <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot/scenes/motion"><code>scenes/motion/</code></a>, paged by family in <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/locomotion.gd"><code>locomotion.gd</code></a> (grab the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a> and press its menu's F). The same maths runs unchanged — GDScript spells <code>Math.atan2</code> as <code>atan2</code>, gives you <code>lerp_angle</code> for free, and <code>Vector2</code> makes the vector code <em>shorter</em> than the JS. <b>In Unity and Unreal</b> the concepts land one-to-one on <code>Vector3.SmoothDamp</code>, <code>Quaternion.Slerp</code>, <code>Physics.Raycast</code> / <code>FMath::VInterpTo</code>, <code>FQuat::Slerp</code>, <code>LineTraceSingleByChannel</code> — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/14-procedural-animation.md">chapter 14</a> is the full encyclopaedia entry: the maths in plain words, the ten vocabulary clusters decoded, and every engine's spelling.</p>
+</div>
+<script src="locomotion.js"></script>
+</body>
+</html>

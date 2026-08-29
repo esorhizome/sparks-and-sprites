@@ -96,3 +96,5 @@ Grand is mostly *restraint plus duration* — the cheapest personality to progra
 ---
 
 *Timing curve + detour + imperfection: three dials, every personality. You could have invented most of this chapter — these recipes are observations you've already made about how things move, written as arithmetic.*
+
+*When you're ready for the maths underneath these dials — springs with damping ratios, steering brains, joint chains, walking — that's [chapter 14: procedural animation](14-procedural-animation.md), and its 26-demo gallery, [the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html).*

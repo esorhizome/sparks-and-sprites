@@ -34,3 +34,22 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Tracking / kerning | The little horizontal gaps between letters (overall / per-pair) |
 | Variable font | One font file rendering a whole range of weights (300–700…) from one axis number |
 | Caret | The text cursor: the blinking block or bar marking where the next letter lands |
+| Procedural animation | Motion computed at runtime from formulas, not played back from keyframes |
+| Vector | An x and a y that together mean "this far, that way" — subtract points to get one |
+| Polar coordinates | A point named by (angle, radius); `x = cos(θ)·r, y = sin(θ)·r` converts back |
+| atan2 | The inverse-trig function that names the angle from here to there (handles all quadrants) |
+| Damping ratio (ζ) | A spring's manners: <1 overshoots, =1 critically damped (no overshoot), >1 sluggish |
+| Steering | AI motion as `desired velocity − current velocity`, clamped — banks and drifts like an animal |
+| Boids | Flocking from three neighbour averages: separation, alignment, cohesion |
+| Inverse kinematics (IK) | "The hand must be here — where do the joints go?" (forward kinematics is the easy other way) |
+| Law of Cosines | `cos A = (a²+d²−b²)/2ad` — solves the two-bone elbow triangle exactly |
+| FABRIK | IK by sliding joints along lines to bone length, backward pass then forward — no trig |
+| Quaternion | Rotation stored as axis + twist in four numbers; blends cleanly where angle triples wobble |
+| Slerp | Spherical lerp: blends two rotations along the one shortest arc at constant speed |
+| Verlet integration | Physics storing position + last position; the difference IS the velocity |
+| Distance constraint | Two points promising to stay a fixed length apart; restored by nudging, half each |
+| Impulse | A one-off velocity change (a hit, a blast) — a force is the nagging version |
+| Raycast | "Where does this line first hit the world?" — nearest intersection wins |
+| Surface normal | "Straight up off the surface": the slope turned 90° (cross product, in 3D) |
+| Restitution (e) | Bounciness: speed kept per bounce; height kept is e² |
+| Gait | Walking as rules: foot homes, step thresholds, arcs, hips over the planted foot |
