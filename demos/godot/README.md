@@ -38,6 +38,7 @@ has its Godot twin here:
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 | Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
 | Locomotion lexicon (all 26) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
+| Flipbook folio (all 26) | `scenes/flipbook.gd` | flipbook | 15 |
 
 ## The bestiary, in full
 
@@ -98,6 +99,24 @@ adds the offset with a draw transform, so the web and GDScript versions
 of every formula match line for line. No rhymes on this one: the cards
 *are* the dials, and the chapter's tweaking box says which to turn.
 
+## The flipbook folio, in full
+
+`scenes/flipbook.gd` is the same treatment for **baked VFX**: the web
+page's 26 transparent sprite sheets, A to Z (auras, bursts, poofs, magic
+circles, lightning, confetti), five families paged in one scene. The port
+is deliberately end-to-end Godot: each sheet is drawn ONCE into a
+`SubViewport` with `transparent_bg`, captured to an `ImageTexture`, sliced
+by `AtlasTexture` regions, stacked into `SpriteFrames`, and played by an
+`AnimatedSprite2D` — the exact pipeline you'd feed an artist's PNG
+sequence, with `_draw()` standing in for the artist. The filmstrip under
+each card is the actual baked texture; the amber cell is the frame being
+shown. One translation note: canvas radial gradients become layered
+translucent circles (as everywhere in these ports), and additive playback
+is a per-sprite `CanvasItemMaterial` with `BLEND_MODE_ADD`. No rhymes on
+this one: every card's caption already prints its dials (frames × size,
+fps, loop/one-shot, blend), and the chapter's tweaking box says which to
+turn.
+
 ## The rhymes — 312 more effects, one right-click away
 
 Every button in the bestiary, every card in the codex, and every card in
@@ -140,4 +159,5 @@ godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 1
 godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://grimoire_test.gd  # all 104 text effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://lexicon_test.gd   # all 26 movement styles: tick, press, draw, A-to-Z census
+godot --headless --path . -s res://flipbook_test.gd  # all 26 sheets: defs census + the bake→slice→play pipeline
 ```

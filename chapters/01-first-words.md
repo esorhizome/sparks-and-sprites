@@ -41,7 +41,7 @@ The rule for how a sprite's colours combine with whatever is already drawn behin
 ▶ *See it:* [additive glow demo](https://esorhizome.github.io/sparks-and-sprites/glow-additive.html)
 
 ## Sprite sheet / atlas
-Many small images packed into one big texture, with the engine told "frame 1 is this rectangle, frame 2 is that one." Used for frame-by-frame animation (a run cycle) and for performance. "Flipbook" is the same idea, said by Unreal people.
+Many small images packed into one big texture, with the engine told "frame 1 is this rectangle, frame 2 is that one." Used for frame-by-frame animation (a run cycle) and for performance. "Flipbook" is the same idea, said by Unreal people — and [chapter 15](15-transparent-flipbooks.md) turns that one word into a whole VFX toolbox.
 
 ## UV coordinates
 A position *within* a texture, from (0,0) at one corner to (1,1) at the opposite corner. Shaders (per-pixel colour programs) use UVs to ask "which bit of the image am I colouring right now?" Scrolling a background forever is just adding time to its UVs.

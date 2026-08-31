@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The flipbook folio · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the folio grid (same skeleton as the bestiary, codex, grimoire, and lexicon) */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:190px; display:block; background:#131020; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:manipulation}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/15-transparent-flipbooks.md">chapter 15</a></p>
+<h1>The flipbook folio — 26 baked VFX, A to Z</h1>
+<p class="lesson">Every gallery before this one drew its effects <em>live</em>, formula by formula, every frame. This page teaches the other half of how real games ship VFX: draw the animation <b>once</b>, into a strip of transparent frames — a <b>sprite sheet</b> ("flipbook", if you learned the word from Unreal) — and then play it back by doing nothing cleverer than choosing which rectangle to copy. Explosions, smoke, magic circles, lightning, confetti: from <b>A</b>ura to <b>Z</b>ap, each card bakes its own sheet from code the moment it wakes (no image files anywhere), then never draws the effect again. The <b>filmstrip under each card is the actual baked texture</b>, checkerboarded so you can see the transparency; the amber cell is the frame being copied right now. Press <b>▶ Run all</b>, or wake one card at a time — click a running card to move a loop or retrigger a one-shot where you point.</p>
+<p class="lesson"><b>The whole technique is two lines.</b> A loop plays frame <code>⌊t·fps⌋ mod N</code>; a one-shot plays <code>min(N−1, ⌊(t−t₀)·fps⌋)</code> and bakes its last frame empty so "holding on the end" and "the effect is over" are the same statement. Everything else is bake-time craft, and the five families each teach one piece of it: seamless loops phase on <code>i/N</code> (never <code>i/(N−1)</code>); one-shots clamp instead of wrapping; smoke plays <em>source-over</em> while light plays <em>additive</em>; magic runs many offset clocks through one strip — and lightning re-rolls its dice every frame, because chaos reads as energy. A transparent flipbook is the closest thing VFX has to a universal shipping container: the same sheet works in every engine made this century.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="folio"><!-- cards are built by flipbook.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick an effect above</span></h2>
+<p class="lesson">Every effect is one function, <code>make(u)</code>, returning <code>{ frame(dt, t), press(x, y) }</code>. The star of the kit <code>u</code> is <code>bake(N, size, draw)</code> — it hands your <code>draw</code> function a frame kit <code>f</code> once per frame (<code>f.g</code> the pen, <code>f.S</code>/<code>f.c</code> cell size and centre, <code>f.k = i/(N−1)</code> for one-shots, <code>f.kl = i/N</code> for seamless loops, plus <code>dot</code>, <code>glow</code>, <code>ring</code>, <code>streak</code>, <code>wedge</code>, <code>star</code>, <code>poly</code>) and returns the finished sheet. Playback is <code>blit(sheet, i, x, y, scale, "add"?)</code> — one rectangle copy — and <code>strip(sheet, i)</code> draws the filmstrip. Also in the kit: <code>scene()</code>, <code>mote(x, y)</code> (the hero, back from the lexicon), <code>rng(seed)</code> (seeded random — same seed, same numbers, coherent frames), <code>clamp</code>, <code>ease</code>, <code>TAU</code>. Edit a number, press <b>▶ Run</b> — the sheet re-bakes fresh from your code.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the cards, and playback is just a rectangle copy — the same sheet at any scale. Click the preview to move a loop or retrigger a one-shot where you point.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> every sheet keeps its numbers near the top. Drop Aura's <code>N</code> to 4 and watch the breath turn into a stutter — frame count is the resolution of <em>time</em>. Change a loop's phase from <code>f.kl</code> to <code>f.k</code> and the loop pops once per lap (now you know what a loop seam looks like; change it back). Play Dustkick with <code>"add"</code> and the dirt becomes holy. Halve a one-shot's <code>FPS</code> and the same 10 frames become slow motion — the sheet never changes, only the reading speed. The universal anatomy: <em>bake the drawing once, choose a frame with arithmetic, copy a rectangle.</em> That one sentence is the entire technology.</div>
+<p class="hint"><b>In Godot:</b> <b>all 26 are ported</b> — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/flipbook.gd"><code>flipbook.gd</code></a> bakes every sheet in a <code>SubViewport</code> at startup, slices it into <code>AtlasTexture</code> regions, and plays them through <code>SpriteFrames</code> + <code>AnimatedSprite2D</code> — the engine's native flipbook machinery, fed entirely from code (grab the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a> and press its menu's G). <b>In Unity</b> the same sheet becomes multiple <code>Sprite</code>s over one <code>Texture2D</code> (or the Particle System's <em>Texture Sheet Animation</em> module, or Shader Graph's <em>Flipbook</em> node) — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unity/Scripts/FlipbookVfx.cs"><code>FlipbookVfx.cs</code></a> bakes and plays one in ~200 lines. <b>In Unreal</b> it's Paper2D's literal <code>PaperFlipbook</code> in 2D and <em>SubUV</em> (materials and Niagara both speak it) in 3D — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unreal/recipes/flipbook-vfx.md">the recipe</a> and <code>SSFlipbookVfx.*</code> cover both spellings. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/15-transparent-flipbooks.md">Chapter 15</a> is the full encyclopaedia entry: where flipbooks beat live drawing, the four platforms' native machinery, and how to bake, import, and premultiply without tears.</p>
+</div>
+<script src="flipbook.js"></script>
+</body>
+</html>
