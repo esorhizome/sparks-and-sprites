@@ -1,12 +1,16 @@
 # Cheatsheet · Transparent flipbooks
 
-Everything = **bake the drawing once, choose a frame with arithmetic, copy a rectangle.** Full chapter: [15](../chapters/15-transparent-flipbooks.md). Live demos: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (52 sheets — the alphabet twice — all editable).
+Everything = **bake the drawing once, choose a frame with arithmetic, copy a rectangle.** Full chapter: [15](../chapters/15-transparent-flipbooks.md). Live demos: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (104 sheets — the alphabet four times: two teaching laps, two genre laps — all editable).
 
-## The two index lines (the entire technology)
+## The four index lines (now the entire technology)
 
 ```
 // loop                              // one-shot (last frame baked EMPTY)
 i = floor(t * fps) % N               i = min(N - 1, floor((t - t0) * fps))
+
+// ping-pong (Waddle)                // reversed = arrival (Teleport)
+p = floor(t * fps) % (2*N - 2)       i = N - 1 - min(N - 1, floor((t - t0) * fps))
+i = p < N ? p : 2*N - 2 - p
 ```
 
 ## The A–Z, first lap, one line each
@@ -70,6 +74,12 @@ i = floor(t * fps) % N               i = min(N - 1, floor((t - t0) * fps))
 | X | Xstamp | an X slams down: oversized → squash → settle, dust ring on the land |
 | Y | Yoyo | drop / sleep / snap / rest — four acts on one piecewise kl clock |
 | Z | Zzz | Z glyphs climb a sleepy sine at 10 fps — the one effect that WANTS low fps |
+
+## The genre laps (3 & 4) — skim, recognise, open, modify
+
+Lap three: **A**·Axolotl (a 2nd sheet TRACKS the swimmer, synced to its turns) · **B**·Beam (start/loop/end, three segments in one strip) · C·Chargeup (Burst reversed = anticipation) · D·Dash (smear frames) · E·Explosion (two sheets as layers: add fire under over smoke) · F·Fireworks (three staggered children) · **G**·Glitch (per-frame `DUR[]` clocks) · H·Hologram (dropout dice + rolling band) · I·Itemget (`|cos|` width = a spinning gem) · J·Jackpot (reels stop on staggered clocks) · K·Kettle (scheduled whistle: a guest in frames 0–1 of 8) · L·Levelup (rising light column + chevrons) · M·Mist (three drift speeds = baked parallax) · N·Neon (a loop hiding its own intro) · O·Oldfilm (age = chaos re-rolled per frame) · P·Pixelate (resolution as an animation dial) · Q·Quicksand (a clip region eats the crate) · **R**·Runner (TWO clips in one atlas, switched at the edges) · S·Shield (flash + a ripple running the rim) · **T**·Tempo (one sheet at 6/12/24 fps side by side) · U·UFO (three clocks on one kl) · V·Vapor (a palette rotating one slot per lap) · **W**·Waddle (the ping-pong index) · X·Xylophone (an `order[]` array is a melody) · Y·Yarn (a paw that exists only in frames 11–13) · Z·Zoom (converging lines + scale = a lens).
+
+Lap four: A·Anticipation (holds = repeated frames, "on threes") · B·Bounceball (the shadow sells the altitude) · C·Cauldron (a simmer with a schedule) · D·Doorway (width IS the swing angle) · E·Enchant (a sequence walking a line) · F·Frostcreep (a crack that remembers itself, grown into frost) · G·Gears (whole tooth-pitches per lap) · H·Heartbeat (a write-head + alpha-per-age trail) · I·Invaders (N=2 conquered Earth) · J·Jump (three identical apex frames = hang time) · K·Kaleido (draw a sixth, get a mandala) · L·Lantern (Embers in paper coats) · M·Mushroom (overshoot gone botanical) · N·Nebula (integer spin ratios 1/2/−1) · O·Odometer (sliding glyphs in clip windows — every score counter) · P·Portalhop (exit scale = 1 − entry scale) · Q·Quill (a reveal played as writing) · R·Retrowave (`horizon + p²` — the square is the depth) · S·Springcoil (`sin·e^−t`, four frames of damping) · **T**·Teleport (one sheet, two directions: reversed = arrive) · U·Umbrella (rain interrupted by geometry) · V·Victory (a finale is a chord of old parts) · W·Wormhole (`p^2.2` growth = flying into it) · X·Xray (the two-frame damage flash) · Y·Yolk (Drip with comedic casting) · Z·Zen (the folio closes at 8 fps, on purpose).
 
 ## The rules that keep working
 

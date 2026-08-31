@@ -1,5 +1,5 @@
 /* Sparks & Sprites — the flipbook folio.
-   52 VFX baked into transparent sprite sheets, A to Z twice — the fifth gallery
+   104 VFX baked into transparent sprite sheets, A to Z four times — the fifth gallery
    after the elemental button bestiary, the cube codex, the glyph grimoire,
    and the locomotion lexicon. Everything before this page drew its effects
    LIVE, every frame. This page teaches the other half of real-world VFX:
@@ -2042,6 +2042,1991 @@ def("Z", "Zzz", "speech", "three Z glyphs climb a sleepy sine, each bigger than 
   };
 });
 
+/* ============================== THE GENRE LAPS (3 & 4) ==============================
+   The alphabet twice more — 52 sheets flavoured by genre: sci-fi & glitch,
+   fantasy & adventure, action & arcade, cozy & minimal, goofy & playful.
+   This half of the folio is a picture-book first: find the visual you were
+   imagining, open its code, turn its numbers. Only a handful of cards
+   introduce genuinely new machinery (Axolotl's attach-and-sync, Beam's
+   start/loop/end triple, Runner's two-clip atlas, Waddle's ping-pong index,
+   Glitch's per-frame clocks, Tempo's three read speeds) — every other card
+   names the older card it borrows from. */
+
+/* ---- lap three ---- */
+
+def("A", "Axolotl", "cozy", "a swimmer crosses on a loop while a SECOND sheet tracks it — sparkles synced to its turns", function make(u) {
+  var CN = 8, S = 96, FPS = 10;
+  var critter = u.bake(CN, S, function (f) {          // the swimmer, facing right
+    var w = Math.sin(f.kl * u.TAU);
+    for (var s = 0; s < 5; s++) {                     // the tail, wiggling behind
+      var q = s / 4;
+      f.dot(f.c - 6 - s * 5, f.c + Math.sin(f.kl * u.TAU - q * 2.4) * (2 + q * 5),
+        5 - s, "rgba(245,182,193," + (0.9 - q * 0.4) + ")");
+    }
+    f.dot(f.c + 6, f.c + w * 1.5, 9, "rgba(245,182,193,0.95)");     // the head
+    for (var g = -1; g <= 1; g++) {                   // the famous gills
+      f.streak(f.c + 9, f.c - 6 + w, f.c + 15 + g * 2, f.c - 11 + g * 3 + w, "rgba(240,130,150,0.9)", 2);
+      f.streak(f.c + 9, f.c + 6 + w, f.c + 15 + g * 2, f.c + 11 + g * 3 + w, "rgba(240,130,150,0.9)", 2);
+    }
+    f.dot(f.c + 9, f.c - 2 + w * 1.5, 1.5, "#131020");
+    f.dot(f.c + 4, f.c + 4 + w * 1.5, 1.8, "rgba(255,220,228,0.8)"); // a happy cheek
+  });
+  var SPN = 10;
+  var spark = u.bake(SPN, S, function (f) {           // the second sheet — a passenger
+    for (var j = 0; j < 5; j++) {
+      var p = (f.kl + j / 5) % 1;
+      var a = Math.pow(Math.sin(p * Math.PI), 2);
+      f.star(f.c + Math.cos(j * 2.4) * 18, f.c + Math.sin(j * 2.9) * 12 - p * 8,
+        4 * a, 1.2 * a, 4, "rgba(245,241,220," + a + ")", p * 3);
+    }
+  });
+  var burstT = -9, wantBurst = false;
+  return {
+    frame: function (dt, t) {
+      if (wantBurst) { burstT = t; wantBurst = false; }
+      u.scene();
+      var P = 8;                                      // one full crossing = 8 s
+      var ph = (t % P) / P;
+      var tri = ph < 0.5 ? ph * 2 : 2 - ph * 2;       // there and back again
+      var x = 34 + tri * (u.W - 68);
+      var y = u.GY - 34 + Math.sin(t * 2) * 4;
+      var dir = ph < 0.5 ? 1 : -1;
+      u.ctx.save();                                   // face the way you swim
+      if (dir < 0) { u.ctx.translate(x * 2, 0); u.ctx.scale(-1, 1); }
+      u.blit(critter, Math.floor(t * FPS) % CN, x, y, 1.15);
+      u.ctx.restore();
+      // THE SYNC: the sparkle sheet borrows the swimmer's x, y, AND clock —
+      // it lights for 0.6 s after each turn (and whenever you click)
+      var since = Math.min(ph, Math.abs(ph - 0.5), 1 - ph) * P;
+      if (since < 0.6 || t - burstT < 0.6)
+        u.blit(spark, Math.floor(t * 16) % SPN, x, y - 4, 1.2, "add");
+      u.strip(critter, Math.floor(t * FPS) % CN);
+      u.label("two sheets, one clock: position AND timing are just shared variables", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function () { wantBurst = true; }          // sparkles on demand, too
+  };
+});
+
+def("B", "Beam", "scifi", "start → loop → end, three segments in ONE strip — the industry anatomy of a sustained effect", function make(u) {
+  var NI = 6, NL = 8, NO = 6, N = NI + NL + NO, S = 96, FPS = 14;
+  var Y = 48, X0 = 12, X1 = 86;
+  var sheet = u.bake(N, S, function (f) {
+    var i = f.i;
+    if (i < NI) {                                     // START: gather + extend
+      var p = i / (NI - 1);
+      f.glow(X0, Y, 5 + p * 7, "rgba(138,217,245,", 0.5 + p * 0.5);
+      f.streak(X0, Y, X0 + p * (X1 - X0), Y, "rgba(138,217,245," + p * 0.8 + ")", 1 + p * 2);
+    } else if (i < NI + NL) {                         // LOOP: seamless pulse + ridges
+      var q = (i - NI) / NL;
+      var w = 3.4 + Math.sin(q * u.TAU) * 0.8;
+      f.streak(X0, Y, X1, Y, "rgba(138,217,245,0.45)", w * 2.6);
+      f.streak(X0, Y, X1, Y, "rgba(232,240,250,0.95)", w);
+      for (var j = 0; j < 4; j++) {                   // travelling energy ridges
+        var rp = (q + j / 4) % 1;
+        f.glow(X0 + rp * (X1 - X0), Y, 6, "rgba(232,240,250,", 0.8 * (1 - rp * 0.3));
+      }
+      f.glow(X0, Y, 11, "rgba(138,217,245,", 0.9);
+      f.glow(X1, Y, 8, "rgba(232,240,250,", 0.85);    // the hit point blooms
+    } else {                                          // END: thin + break to motes
+      var r = (i - NI - NL) / (NO - 1);
+      f.streak(X0, Y, X1, Y, "rgba(138,217,245," + (1 - r) * 0.8 + ")", 3.4 * (1 - r) + 0.3);
+      for (var m = 0; m < 6; m++)
+        f.dot(X0 + (m / 5) * (X1 - X0), Y + (m % 2 ? -1 : 1) * r * 8,
+          1.8 * (1 - r) + 0.2, "rgba(138,217,245," + (1 - r) + ")");
+      f.glow(X0, Y, 8 * (1 - r), "rgba(138,217,245,", (1 - r) * 0.7);
+    }
+  });
+  var mode = 0, m0 = 0, wantOut = false;              // 0 in · 1 loop · 2 out · 3 rest
+  return {
+    frame: function (dt, t) {
+      if (wantOut && mode === 1) { mode = 2; m0 = t; wantOut = false; }
+      var ts = t - m0, i;
+      if (mode === 0 && ts * FPS >= NI) { mode = 1; m0 = t; ts = 0; }
+      if (mode === 2 && ts * FPS >= NO + 0.5 * FPS) { mode = 3; m0 = t; ts = 0; }
+      if (mode === 3 && ts > 0.9) { mode = 0; m0 = t; ts = 0; }
+      if (mode === 0) i = Math.min(NI - 1, Math.floor(ts * FPS));
+      else if (mode === 1) i = NI + Math.floor(ts * FPS) % NL;
+      else if (mode === 2) i = NI + NL + Math.min(NO - 1, Math.floor(ts * FPS));
+      else i = N - 1;
+      u.scene(); u.mote(u.W * 0.82, u.GY - 12);
+      u.blit(sheet, i, u.W * 0.45, u.GY - 40, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("watch the read head: intro once, loop while held, outro on click", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function () { wantOut = true; }            // click = release the trigger
+  };
+});
+
+def("C", "Chargeup", "fantasy", "motes fall INWARD and the core brightens — a burst with the film run backwards", function make(u) {
+  var N = 12, S = 96, FPS = 16;
+  var R = u.rng(211);
+  var motes = [];
+  for (var j = 0; j < 10; j++)
+    motes.push({ a: R() * u.TAU, r0: 26 + R() * 14, off: R() * 0.3 });
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    for (var j = 0; j < motes.length; j++) {
+      var m = motes[j];
+      var p = u.clamp((k - m.off) / (1 - m.off), 0, 1);
+      var r = m.r0 * (1 - p);                         // anticipation = convergence
+      if (r < 2) continue;
+      var a = m.a + p * 1.6;
+      f.dot(f.c + Math.cos(a) * r, f.c + Math.sin(a) * r, 1.6 + p, "rgba(201,160,245," + (0.4 + p * 0.6) + ")");
+    }
+    f.glow(f.c, f.c, 4 + k * 13, "rgba(201,160,245,", 0.3 + k * 0.7);
+    if (k > 0.85) f.star(f.c, f.c, 12, 4, 4, "rgba(245,241,220," + (k - 0.85) / 0.15 + ")", 0.3);
+  });
+  var px = u.W * 0.5, py = u.GY - 34, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.2) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Burst's arithmetic with (1−p) where p was — reverse the radius, get anticipation", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("D", "Dash", "arcade", "smear frames: the middle of the strip is one long stretched drawing, not a blur filter", function make(u) {
+  var N = 10, S = 96, FPS = 22;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var x0 = 16, x1 = f.S - 18;
+    var x = x0 + u.ease(k) * (x1 - x0);
+    if (k > 0.2 && k < 0.7) {                         // THE SMEAR: body becomes a streak
+      var st = x0 + u.ease(Math.max(0, k - 0.25)) * (x1 - x0);
+      f.streak(st, f.c, x, f.c, "rgba(138,217,245,0.55)", 12);
+      f.streak(st, f.c, x, f.c, "rgba(232,240,250,0.8)", 5);
+    } else if (k >= 0.7) {
+      f.dot(x1, f.c, 8, "rgba(138,217,245,0.95)");    // arrived, whole again
+      f.dot(x1 + 2.5, f.c - 2.5, 1.8, "#131020");
+      var q = (k - 0.7) / 0.3;
+      for (var s = 0; s < 3; s++)                     // settling speed ticks
+        f.streak(x1 - 14 - s * 6, f.c - 6 + s * 6, x1 - 20 - s * 6 - q * 6, f.c - 6 + s * 6,
+          "rgba(232,240,250," + (1 - q) * 0.6 + ")", 1.5);
+    } else {
+      f.dot(x, f.c, 8, "rgba(138,217,245,0.95)");     // wind-up
+      f.dot(x + 2.5, f.c - 2.5, 1.8, "#131020");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 30, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.1) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("hand-drawn animation's oldest cheat, sitting plainly in the filmstrip", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("E", "Explosion", "arcade", "TWO sheets, one event: an additive fireball under a source-over smoke ring", function make(u) {
+  var N = 12, S = 96, FPS = 16;
+  var fire = u.bake(N, S, function (f) {
+    var k = f.k;
+    if (k > 0.7) return;
+    var p = k / 0.7;
+    f.glow(f.c, f.c, 10 + p * 22, "rgba(245,138,90,", (1 - p) * 0.9);
+    f.glow(f.c, f.c - p * 6, 7 + p * 12, "rgba(245,193,105,", (1 - p));
+    if (p < 0.3) f.glow(f.c, f.c, 14 * (1 - p / 0.3), "rgba(245,241,220,", 0.95);
+    for (var j = 0; j < 6; j++) {
+      var a = (j / 6) * u.TAU + 0.5;
+      f.dot(f.c + Math.cos(a) * p * 30, f.c + Math.sin(a) * p * 26 - p * 4,
+        2.2 * (1 - p), "rgba(245,161,90," + (1 - p) + ")");
+    }
+  });
+  var smoke = u.bake(N, S, function (f) {
+    var k = f.k;
+    var p = u.clamp((k - 0.25) / 0.75, 0, 1);         // the smoke arrives late
+    if (p <= 0) return;
+    for (var j = 0; j < 7; j++) {
+      var a = (j / 7) * u.TAU + 0.2;
+      var d = 8 + p * 24;
+      f.dot(f.c + Math.cos(a) * d, f.c + Math.sin(a) * d * 0.8 - p * 8,
+        (5 + j % 3 * 2) * (0.5 + p * 0.8), "rgba(120,112,125," + (1 - p) * 0.55 + ")");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 36, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.3) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5 + 38, u.GY - 12);
+      u.blit(smoke, i, px, py, 1.7);                  // matter first,
+      u.blit(fire, i, px, py, 1.7, "add");            // light on top
+      u.strip(fire, i);
+      u.label("real explosions ship as layers — each sheet keeps its own blend", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("F", "Fireworks", "arcade", "a rocket, then a burst whose sparks droop and twinkle — three staggered children in one strip", function make(u) {
+  var N = 16, S = 96, FPS = 15;
+  var R = u.rng(223);
+  var sparks = [];
+  for (var j = 0; j < 14; j++)
+    sparks.push({ a: (j / 14) * u.TAU + R() * 0.3, sp: 0.7 + R() * 0.5, tw: R() });
+  var AX = 48, AY = 26;                               // the apex
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    if (k < 0.3) {                                    // child 1: the rocket
+      var p = k / 0.3;
+      var y = f.S - 10 - p * (f.S - 10 - AY);
+      f.streak(AX - 2, y + 4, AX - 2 + Math.sin(p * 9) * 1.5, y + 12, "rgba(245,193,105,0.8)", 2);
+      f.dot(AX, y, 2.2, "rgba(245,241,220,0.95)");
+    } else if (k < 0.45) {                            // child 2: the flash
+      f.glow(AX, AY, 14 * (1 - (k - 0.3) / 0.15 * 0.4), "rgba(245,241,220,", 0.95);
+    }
+    if (k >= 0.38) {                                  // child 3: the bloom
+      var q = (k - 0.38) / 0.62;
+      for (var j2 = 0; j2 < sparks.length; j2++) {
+        var s = sparks[j2];
+        var d = 30 * s.sp * Math.pow(q, 0.6);
+        var x = AX + Math.cos(s.a) * d;
+        var y2 = AY + Math.sin(s.a) * d * 0.9 + q * q * 16;      // gravity droops
+        var tw = q > 0.5 ? Math.pow(0.5 + 0.5 * Math.sin(q * 40 + s.tw * 9), 2) : 1;
+        f.dot(x, y2, 1.7 * (1 - q * 0.7), "rgba(245,138,160," + (1 - q) * tw + ")");
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 44, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.4) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("Xslash staggered two timelines; this strip conducts three", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("G", "Glitch", "scifi", "frames own their own clocks: long calm holds, then 60-millisecond corruption", function make(u) {
+  var N = 8, S = 96;
+  var DUR = [0.55, 0.5, 0.06, 0.09, 0.45, 0.06, 0.08, 0.5];   // seconds PER FRAME
+  var TOTAL = DUR.reduce(function (a, b) { return a + b; }, 0);
+  function glyph(f, dx, dy, col) {                    // the "signal" being broken
+    f.ring(f.c + dx, f.c + dy, 16, col, 3);
+    f.streak(f.c - 8 + dx, f.c + 6 + dy, f.c + 8 + dx, f.c + 6 + dy, col, 3);
+    f.dot(f.c - 6 + dx, f.c - 4 + dy, 2.5, col);
+    f.dot(f.c + 6 + dx, f.c - 4 + dy, 2.5, col);
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var R = u.rng(700 + f.i);
+    if (f.i === 2) {                                  // RGB split
+      glyph(f, -3, 0, "rgba(245,90,120,0.8)");
+      glyph(f, 3, 0, "rgba(90,245,230,0.8)");
+      glyph(f, 0, 0, "rgba(232,229,244,0.9)");
+    } else if (f.i === 3) {                           // sliced + shoved
+      glyph(f, 0, 0, "rgba(232,229,244,0.9)");
+      for (var s = 0; s < 3; s++) {
+        var y = 20 + R() * 56, h = 4 + R() * 6;
+        f.g.save();
+        f.g.beginPath(); f.g.rect(0, y, f.S, h); f.g.clip();
+        f.g.translate((R() - 0.5) * 18, 0);
+        glyph(f, 0, 0, "rgba(138,217,245,0.9)");
+        f.g.restore();
+      }
+    } else if (f.i === 5) {                           // negative flash
+      f.g.fillStyle = "rgba(232,229,244,0.85)";
+      f.g.fillRect(8, 8, f.S - 16, f.S - 16);
+      glyph(f, 0, 0, "rgba(19,16,32,0.95)");
+    } else if (f.i === 6) {                           // whole-frame shove + static
+      glyph(f, 6, -3, "rgba(232,229,244,0.8)");
+      for (var d = 0; d < 40; d++)
+        f.dot(R() * f.S, R() * f.S, 0.8, "rgba(232,229,244," + R() * 0.5 + ")");
+    } else {                                          // the calm frames
+      glyph(f, 0, 0, "rgba(232,229,244,0.9)");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var tt = t % TOTAL, i = 0;                      // scan the uneven clocks
+      while (i < N - 1 && tt >= DUR[i]) { tt -= DUR[i]; i++; }
+      u.scene();
+      u.blit(sheet, i, px, py, 1.5);
+      u.strip(sheet, i);
+      u.label("a DUR[] array instead of one fps — the strip's cells are not equal anymore", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("H", "Hologram", "scifi", "scanlines + flicker + a rolling band — solid art wearing a broken-projector costume", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var R = u.rng(730 + f.i);
+    var flick = R() < 0.15 ? 0.35 : 1;                // occasional dropout
+    var a = (0.55 + Math.sin(f.kl * u.TAU) * 0.1) * flick;
+    var wob = (R() - 0.5) * 1.5;
+    f.dot(f.c + wob, f.c - 6, 11, "rgba(120,220,245," + a * 0.6 + ")");   // the figure
+    f.dot(f.c + wob, f.c + 9, 8, "rgba(120,220,245," + a * 0.5 + ")");
+    f.dot(f.c + wob - 4, f.c - 8, 1.6, "rgba(230,250,255," + a + ")");
+    f.dot(f.c + wob + 4, f.c - 8, 1.6, "rgba(230,250,255," + a + ")");
+    f.g.globalAlpha = a * 0.5;
+    f.g.strokeStyle = "rgba(19,16,32,0.9)";           // the scanlines
+    f.g.lineWidth = 1;
+    f.g.beginPath();
+    for (var y = 24; y < f.S - 16; y += 3) { f.g.moveTo(f.c - 16, y); f.g.lineTo(f.c + 16, y); }
+    f.g.stroke();
+    f.g.globalAlpha = 1;
+    var band = 22 + f.kl * 44;                        // the rolling bright band
+    f.streak(f.c - 15, band, f.c + 15, band, "rgba(230,250,255," + a * 0.7 + ")", 2.5);
+    f.wedge(f.c, f.S - 10, -u.TAU / 4, 30, 0.45, "rgba(120,220,245," + a * 0.15 + ")");   // projector cone
+    f.dot(f.c, f.S - 9, 2.5, "rgba(230,250,255," + a + ")");
+  });
+  var px = u.W * 0.5, py = u.GY - 36;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Zap's per-frame dice, rolled for dropouts instead of arcs", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("I", "Itemget", "arcade", "the treasure lift: a gem rises, spins by x-scale, and announces itself with rays", function make(u) {
+  var N = 14, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var y = f.S - 24 - u.ease(Math.min(1, k / 0.5)) * 30;
+    var spin = Math.cos(k * u.TAU * 2);               // fake 3D: |cos| as width
+    var wpx = Math.max(0.15, Math.abs(spin)) * 10;
+    var col = spin > 0 ? "rgba(138,217,245,0.95)" : "rgba(100,180,220,0.95)";
+    f.poly([[f.c - wpx, y], [f.c, y - 12], [f.c + wpx, y], [f.c, y + 12]], col);
+    f.dot(f.c - wpx * 0.3, y - 4, 1.6, "rgba(245,251,255,0.9)");
+    if (k > 0.4) {                                    // the announcement
+      var q = (k - 0.4) / 0.6;
+      for (var j = 0; j < 6; j++) {
+        var a = (j / 6) * u.TAU - u.TAU / 4;
+        var d0 = 16 + q * 10, d1 = d0 + 7 * Math.sin(q * Math.PI);
+        f.streak(f.c + Math.cos(a) * d0, y + Math.sin(a) * d0,
+          f.c + Math.cos(a) * d1, y + Math.sin(a) * d1, "rgba(245,241,220," + Math.sin(q * Math.PI) * 0.9 + ")", 1.8);
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 40, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.3) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.5, "add");
+      u.strip(sheet, i);
+      u.label("Leaves' y-flip trick turned sideways: |cos| width = a spinning gem", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("J", "Jackpot", "arcade", "three reels stop one after another — staggered clocks, then the payout flash", function make(u) {
+  var N = 16, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var stops = [0.35, 0.55, 0.75];
+    var win = k > 0.8;
+    for (var w = 0; w < 3; w++) {
+      var x = f.c + (w - 1) * 22;
+      f.g.strokeStyle = "rgba(201,196,228,0.7)";
+      f.g.lineWidth = 1.5;
+      f.g.strokeRect(x - 9, f.c - 12, 18, 24);
+      if (k < stops[w]) {                             // still spinning: blurred symbols
+        for (var s = 0; s < 3; s++)
+          f.streak(x - 5, f.c - 8 + ((f.i * 7 + s * 8 + w * 5) % 22), x + 5, f.c - 8 + ((f.i * 7 + s * 8 + w * 5) % 22),
+            "rgba(232,229,244,0.5)", 2.5);
+      } else {                                        // stopped: the star lands
+        f.star(x, f.c, 6.5, 2.6, 5, "rgba(245,193,105," + (win ? 1 : 0.85) + ")", 0.3);
+        if (k - stops[w] < 0.08)                      // the little settle blink
+          f.ring(x, f.c, 10, "rgba(245,241,220,0.8)", 1.5);
+      }
+    }
+    if (win) {                                        // JACKPOT: rim bulbs
+      var q = (k - 0.8) / 0.2;
+      for (var b = 0; b < 10; b++) {
+        var on = (b + f.i) % 2 === 0;
+        f.dot(14 + b * 7.5, 20, on ? 2.2 : 1.2, "rgba(245,193,105," + (on ? 0.95 : 0.4) + ")");
+        f.dot(14 + b * 7.5, f.S - 18, on ? 2.2 : 1.2, "rgba(245,193,105," + (on ? 0.95 : 0.4) + ")");
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 40, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.5) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("three sub-clocks stopping in sequence — suspense is a stagger", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("K", "Kettle", "cozy", "steam curls from the spout on offset clocks; every few laps, the whistle lines shiver", function make(u) {
+  var N = 16, S = 96, FPS = 10;
+  var R = u.rng(233);
+  var puffs = [];
+  for (var j = 0; j < 5; j++) puffs.push({ off: R(), amp: 2 + R() * 3 });
+  var sheet = u.bake(N, S, function (f) {
+    var bx = f.c - 4, by = f.S - 26;                  // the kettle body
+    f.dot(bx, by, 15, "rgba(180,175,195,0.9)");
+    f.g.fillStyle = "rgba(180,175,195,0.9)";
+    f.g.fillRect(bx - 5, by - 21, 10, 6);             // the lid
+    f.dot(bx, by - 22, 2.5, "rgba(140,135,155,0.9)");
+    f.streak(bx + 13, by - 6, bx + 22, by - 12, "rgba(180,175,195,0.9)", 5);   // the spout
+    var sx = bx + 23, sy = by - 13;
+    for (var j2 = 0; j2 < puffs.length; j2++) {       // the steam
+      var p = (f.kl + puffs[j2].off) % 1;
+      var y = sy - p * 34;
+      var x = sx + Math.sin(p * u.TAU * 1.5 + j2 * 2) * puffs[j2].amp + p * 4;
+      f.dot(x, y, 2 + p * 3, "rgba(232,235,244," + Math.sin(p * Math.PI) * 0.4 + ")");
+    }
+    if (f.i % 8 < 2)                                  // the periodic whistle
+      for (var s = 0; s < 2; s++)
+        f.streak(sx + 4 + s * 4, sy - 4 - s * 3, sx + 8 + s * 4, sy - 8 - s * 3, "rgba(245,241,220,0.7)", 1.4);
+  });
+  var px = u.W * 0.5, py = u.GY - 34;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Updraft's rig, domesticated — 10 fps is kitchen tempo", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("L", "Levelup", "arcade", "a column of light sweeps up carrying chevrons — the ceremony every RPG owes its players", function make(u) {
+  var N = 14, S = 96, FPS = 16;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var a = k < 0.15 ? k / 0.15 : (k > 0.75 ? (1 - k) / 0.25 : 1);
+    f.g.save();
+    var grad = f.g.createLinearGradient(0, f.S, 0, 0);
+    grad.addColorStop(0, "rgba(245,193,105," + a * 0.35 + ")");
+    grad.addColorStop(1, "rgba(245,193,105,0)");
+    f.g.fillStyle = grad;
+    f.g.fillRect(f.c - 13, 6, 26, f.S - 16);          // the column
+    f.g.restore();
+    for (var j = 0; j < 3; j++) {                     // rising chevrons
+      var p = (k * 1.4 + j / 3) % 1;
+      var y = f.S - 14 - p * (f.S - 26);
+      var al = Math.sin(p * Math.PI) * a;
+      f.streak(f.c - 8, y + 5, f.c, y - 2, "rgba(245,220,150," + al + ")", 2.5);
+      f.streak(f.c, y - 2, f.c + 8, y + 5, "rgba(245,220,150," + al + ")", 2.5);
+    }
+    for (var s = 0; s < 4; s++) {                     // stray celebration stars
+      var sp = (k * 1.2 + s / 4) % 1;
+      f.star(f.c + (s % 2 ? 16 : -16), f.S - 16 - sp * 50, 3 * Math.sin(sp * Math.PI) * a,
+        1 * Math.sin(sp * Math.PI), 4, "rgba(245,241,220," + Math.sin(sp * Math.PI) * a + ")", sp * 3);
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 40, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.2) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(px, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Heal's rise + Yell's ceremony, aimed straight up", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("M", "Mist", "fantasy", "three fog banks drift at three speeds — the parallax whisper, baked flat", function make(u) {
+  var N = 16, S = 96, FPS = 10;
+  var sheet = u.bake(N, S, function (f) {
+    var layers = [[0.5, 62, 0.28, 9], [1, 52, 0.22, 12], [1.6, 42, 0.16, 15]];
+    for (var L = 0; L < layers.length; L++) {
+      var lay = layers[L];
+      for (var b = 0; b < 3; b++) {
+        var p = (f.kl * lay[0] + b / 3) % 1;          // integer speed multiples loop
+        var x = p * (f.S + 40) - 20;
+        var a = Math.sin(p * Math.PI) * lay[2];
+        f.dot(x, lay[1] + Math.sin(b * 3 + L) * 4, lay[3], "rgba(200,200,220," + a + ")");
+        f.dot(x + 10, lay[1] + 3, lay[3] * 0.7, "rgba(200,200,220," + a * 0.8 + ")");
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 26;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene(); u.mote(px, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.9);
+      u.strip(sheet, i);
+      u.label("near drifts fast, far drifts slow — chapter 4's parallax in one texture", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("N", "Neon", "scifi", "a sign buzzes awake: dark, sputter, half-lit, ON — then holds its hum", function make(u) {
+  var N = 14, S = 96, FPS = 12;
+  function tube(f, a, hum) {                          // the tube: a rounded zigzag
+    var pts = [[20, 60], [34, 34], [48, 60], [62, 34], [76, 60]];
+    f.g.strokeStyle = "rgba(245,110,180," + a * 0.35 + ")";
+    f.g.lineWidth = 7;
+    f.g.lineJoin = "round"; f.g.lineCap = "round";
+    f.g.beginPath();
+    for (var j = 0; j < pts.length; j++) j ? f.g.lineTo(pts[j][0], pts[j][1]) : f.g.moveTo(pts[j][0], pts[j][1]);
+    f.g.stroke();
+    f.g.strokeStyle = "rgba(255,190,225," + a + ")";
+    f.g.lineWidth = 2.5;
+    f.g.stroke();
+    f.g.lineCap = "butt";
+    if (hum) f.ring(48, 47, 34 + Math.sin(hum) * 1.5, "rgba(245,110,180," + a * 0.15 + ")", 8);
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var R = u.rng(760 + f.i);
+    var i = f.i;
+    if (i === 0) tube(f, 0.08, 0);
+    else if (i === 1) tube(f, R() * 0.7, 0);          // sputter
+    else if (i === 2) tube(f, 0.1, 0);
+    else if (i === 3) tube(f, R() * 0.9, 0);          // sputter harder
+    else if (i === 4) tube(f, 0.55, 0);               // half-lit
+    else tube(f, 0.92 + Math.sin(f.kl * u.TAU * 2) * 0.06, f.kl * u.TAU);  // ON, humming
+  });
+  var px = u.W * 0.5, py = u.GY - 42;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("the loop hides its own intro: frames 0-4 buzz, the rest hum", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("O", "Oldfilm", "scifi", "grain re-rolled per frame, a wandering scratch, and the whole image jittering in the gate", function make(u) {
+  var N = 12, S = 96, FPS = 12;
+  var sheet = u.bake(N, S, function (f) {
+    var R = u.rng(790 + f.i);
+    var jx = (R() - 0.5) * 2, jy = (R() - 0.5) * 1.5; // gate weave
+    f.dot(f.c + jx, f.c + jy - 4, 12, "rgba(216,210,190,0.85)");    // the "footage":
+    f.dot(f.c + jx, f.c + jy + 12, 8, "rgba(216,210,190,0.75)");    // a pale figure
+    f.dot(f.c + jx - 4, f.c + jy - 6, 1.6, "rgba(40,36,30,0.9)");
+    f.dot(f.c + jx + 4, f.c + jy - 6, 1.6, "rgba(40,36,30,0.9)");
+    for (var g = 0; g < 26; g++)                      // the grain, never the same
+      f.dot(R() * f.S, R() * f.S, 0.7, "rgba(30,26,22," + R() * 0.5 + ")");
+    if (R() < 0.4) {                                  // the scratch
+      var x = 14 + R() * 68;
+      f.streak(x, 6, x + (R() - 0.5) * 4, f.S - 6, "rgba(30,26,22,0.5)", 1);
+    }
+    f.ring(f.c, f.c, 43, "rgba(20,17,14,0.5)", 14);   // vignette corners
+  });
+  var px = u.W * 0.5, py = u.GY - 36;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Lightning's lesson wearing sepia: age is chaos re-rolled per frame", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("P", "Pixelate", "scifi", "the mosaic transition: the same face at 4-, 8-, 16-pixel chunks and back", function make(u) {
+  var N = 12, S = 96, FPS = 12;
+  function face(px2, py2) {                           // the source, as a function
+    var d = Math.sqrt((px2 - 0.5) * (px2 - 0.5) + (py2 - 0.42) * (py2 - 0.42));
+    if (d > 0.32) return null;
+    if ((Math.abs(px2 - 0.38) < 0.05 && Math.abs(py2 - 0.36) < 0.05) ||
+        (Math.abs(px2 - 0.62) < 0.05 && Math.abs(py2 - 0.36) < 0.05)) return [19, 16, 32];
+    if (py2 > 0.5 && py2 < 0.56 && px2 > 0.4 && px2 < 0.6) return [19, 16, 32];
+    return [138, 217, 245];
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var lvl = 0.5 - 0.5 * Math.cos(f.kl * u.TAU);     // 0 sharp → 1 chunky → 0
+    var cell = Math.max(2, Math.round(2 + lvl * 14)); // the chunk size
+    for (var y = 8; y < f.S - 8; y += cell)
+      for (var x = 8; x < f.S - 8; x += cell) {
+        var s = face((x + cell / 2 - 8) / (f.S - 16), (y + cell / 2 - 8) / (f.S - 16));
+        if (!s) continue;
+        f.g.fillStyle = "rgba(" + s[0] + "," + s[1] + "," + s[2] + ",0.95)";
+        f.g.fillRect(x, y, cell - 0.5, cell - 0.5);
+      }
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.5);
+      u.strip(sheet, i);
+      u.label("sample the SAME picture at a coarser grid — resolution as an animation dial", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("Q", "Quicksand", "fantasy", "a slow spiral of sand dashes, and something important sinking into it", function make(u) {
+  var N = 14, S = 96, FPS = 12;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var cy = f.c + 10;
+    for (var ring2 = 0; ring2 < 3; ring2++) {         // the swirl: dashed ellipses
+      var rr = 26 - ring2 * 7;
+      for (var dsh = 0; dsh < 8; dsh++) {
+        var a = f.kl * u.TAU * (1 + ring2 * 0.5) + (dsh / 8) * u.TAU;
+        f.streak(f.c + Math.cos(a) * rr, cy + Math.sin(a) * rr * 0.32,
+          f.c + Math.cos(a + 0.3) * rr, cy + Math.sin(a + 0.3) * rr * 0.32,
+          "rgba(214,190,130," + (0.6 - ring2 * 0.12) + ")", 2);
+      }
+    }
+    var sink = u.ease(k) * 14;                        // the sinking crate
+    f.g.save();
+    f.g.beginPath(); f.g.rect(0, 0, f.S, cy + 2); f.g.clip();      // below = swallowed
+    f.g.fillStyle = "rgba(184,148,95,0.95)";
+    f.g.fillRect(f.c - 8, cy - 16 + sink, 16, 16);
+    f.g.strokeStyle = "rgba(120,92,55,0.9)";
+    f.g.strokeRect(f.c - 8, cy - 16 + sink, 16, 16);
+    f.g.restore();
+    if (f.i % 4 === 0)                                // a struggling bubble
+      f.ring(f.c + 12, cy - 2, 2.5, "rgba(214,190,130,0.7)", 1);
+  });
+  var px = u.W * 0.5, py = u.GY - 26, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.6) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5 + 38, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("a clip() region eats the crate — Vortex flattened into the ground plane", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("R", "Runner", "fantasy", "TWO clips in one atlas — a right-facing run and a left-facing run, switched at the edges", function make(u) {
+  var NC = 8, N = 16, S = 96, FPS = 12;
+  function drawRunner(f, flip) {                      // one gait frame, either facing
+    var m = function (x) { return flip ? f.S - x : x; };
+    var ph = (f.i % NC) / NC * u.TAU;
+    var bob = Math.abs(Math.sin(ph)) * -3;
+    f.dot(m(f.c), f.c + bob - 4, 8, "rgba(155,226,138,0.95)");
+    f.dot(m(f.c + 3), f.c + bob - 6, 1.6, "#131020");
+    for (var leg = 0; leg < 2; leg++) {               // two swinging legs
+      var la = Math.sin(ph + leg * Math.PI) * 0.9;
+      f.streak(m(f.c), f.c + bob + 3,
+        m(f.c + Math.sin(la) * 9), f.c + 14 + Math.abs(Math.cos(la)) * 2,
+        "rgba(155,226,138,0.9)", 3);
+    }
+    if (f.i % 2 === 0) f.dot(m(f.c - 12), f.c + 15, 2, "rgba(160,150,140,0.4)");  // heel dust
+  }
+  var sheet = u.bake(N, S, function (f) {
+    drawRunner(f, f.i >= NC);                         // frames 0-7 face right, 8-15 left
+  });
+  var x = u.W * 0.3, dir = 1;
+  return {
+    frame: function (dt, t) {
+      u.scene();
+      x += dir * 46 * dt;
+      if (x > u.W - 40) { dir = -1; x = u.W - 40; }   // the edge flips the CLIP,
+      if (x < 40) { dir = 1; x = 40; }                // not the pixels
+      var i = (dir > 0 ? 0 : NC) + Math.floor(t * FPS) % NC;
+      u.blit(sheet, i, x, u.GY - 22, 1.4);
+      u.strip(sheet, i);
+      u.label("one texture, two animations — rows-as-clips is how real atlases work", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (px2) { dir = px2 > x ? 1 : -1; }
+  };
+});
+
+def("S", "Shield", "arcade", "a hex barrier takes the hit: flash at the impact point, ripple across the dome", function make(u) {
+  var N = 12, S = 96, FPS = 20;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var a = 1 - k * 0.6;
+    f.g.strokeStyle = "rgba(138,217,245," + a * 0.7 + ")";
+    f.g.lineWidth = 2;
+    f.g.beginPath();                                  // the dome (a hex arc)
+    for (var j = 0; j <= 6; j++) {
+      var ang = Math.PI + (j / 6) * Math.PI;
+      var wob = k < 0.3 ? Math.sin(k * 30 + j) * (0.3 - k) * 8 : 0;   // it shudders
+      var x = f.c + Math.cos(ang) * (30 + wob), y = f.S - 18 + Math.sin(ang) * (30 + wob);
+      j ? f.g.lineTo(x, y) : f.g.moveTo(x, y);
+    }
+    f.g.stroke();
+    var hx = f.c + 21, hy = f.S - 18 - 21;            // the impact corner
+    if (k < 0.35) f.glow(hx, hy, 12 * (1 - k / 0.35), "rgba(245,241,220,", 0.95);
+    var rp = u.ease(k);                               // the ripple runs the rim
+    var ra = Math.PI + rp * Math.PI;
+    f.glow(f.c + Math.cos(ra) * 30, f.S - 18 + Math.sin(ra) * 30, 6, "rgba(138,217,245,", (1 - k) * 0.9);
+  });
+  var px = u.W * 0.5, py = u.GY - 24, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.2) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Impact's flash + Glint's traveller, bent around a dome", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("T", "Tempo", "cozy", "ONE sheet, three clocks: 6, 12, and 24 fps side by side — speed is a playback dial", function make(u) {
+  var N = 12, S = 96;
+  var sheet = u.bake(N, S, function (f) {             // a 4-blade pinwheel:
+    var rot = f.kl * u.TAU / 4;                       // quarter-turn per lap = seamless
+    for (var b = 0; b < 4; b++) {
+      var a = rot + b * u.TAU / 4;
+      f.wedge(f.c, f.c, a, 26, 0.35, ["rgba(245,138,138,0.9)", "rgba(245,193,105,0.9)", "rgba(155,226,138,0.9)", "rgba(138,217,245,0.9)"][b]);
+    }
+    f.dot(f.c, f.c, 4, "rgba(232,229,244,0.95)");
+  });
+  return {
+    frame: function (dt, t) {
+      u.scene();
+      var speeds = [6, 12, 24];
+      for (var s = 0; s < 3; s++) {
+        var x = u.W * (0.2 + s * 0.3);
+        u.blit(sheet, Math.floor(t * speeds[s]) % N, x, u.GY - 40, 1.05);
+        u.label(speeds[s] + " fps", x, u.GY - 2, "rgba(245,193,105,0.9)", "center");
+      }
+      u.strip(sheet, Math.floor(t * 12) % N);
+      u.label("smoothness lives in N (bake-time); speed lives in fps (play-time)", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function () {}
+  };
+});
+
+def("U", "UFO", "scifi", "a saucer bobs while its rim lights chase and the tractor beam breathes", function make(u) {
+  var N = 16, S = 96, FPS = 12;
+  var sheet = u.bake(N, S, function (f) {
+    var bob = Math.sin(f.kl * u.TAU) * 3;
+    var cy = 30 + bob;
+    var pulse = 0.5 + 0.5 * Math.sin(f.kl * u.TAU * 2);
+    f.wedge(f.c, cy + 4, u.TAU / 4, 46, 0.32, "rgba(155,226,138," + (0.1 + pulse * 0.15) + ")");   // the beam
+    f.g.fillStyle = "rgba(180,185,205,0.95)";
+    f.g.beginPath();
+    f.g.ellipse(f.c, cy, 22, 7, 0, 0, u.TAU);         // the hull
+    f.g.fill();
+    f.dot(f.c, cy - 6, 8, "rgba(138,217,245,0.55)");  // the dome
+    for (var b2 = 0; b2 < 6; b2++) {                  // rim lights, chasing
+      var on = (b2 + f.i) % 6 < 2;
+      f.dot(f.c - 17 + b2 * 7, cy + 3, on ? 2.2 : 1.2, "rgba(245,193,105," + (on ? 0.95 : 0.35) + ")");
+    }
+    f.dot(f.c + Math.sin(f.kl * u.TAU) * 4, cy + 34, 3, "rgba(155,226,138," + pulse * 0.7 + ")");  // the abductee-to-be
+  });
+  var px = u.W * 0.5, py = u.GY - 44;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("three clocks in one loop: bob ×1, pulse ×2, lights stepping — all on kl", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("V", "Vapor", "scifi", "concentric blobs breathing through a colour cycle — the trippy shelf's slow exhale", function make(u) {
+  var N = 16, S = 96, FPS = 10;
+  var cols = ["245,110,180", "201,160,245", "138,217,245", "155,226,138", "245,193,105"];
+  var sheet = u.bake(N, S, function (f) {
+    for (var ring2 = 4; ring2 >= 0; ring2--) {
+      var p = (f.kl + ring2 / 5) % 1;
+      var r = 6 + p * 34;
+      var col = cols[(ring2 + Math.floor(f.kl * 5)) % 5];        // the hue walks
+      var a = Math.sin(p * Math.PI) * 0.4;
+      f.g.strokeStyle = "rgba(" + col + "," + a + ")";
+      f.g.lineWidth = 5;
+      f.g.beginPath();
+      for (var j = 0; j <= 30; j++) {                 // blobby, not perfect
+        var ang = (j / 30) * u.TAU;
+        var rr = r + Math.sin(ang * 3 + p * 6) * r * 0.12;
+        var x = f.c + Math.cos(ang) * rr, y = f.c + Math.sin(ang) * rr;
+        j ? f.g.lineTo(x, y) : f.g.moveTo(x, y);
+      }
+      f.g.closePath(); f.g.stroke();
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Ripple's phase offsets + a palette that rotates one slot per lap", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("W", "Waddle", "goofy", "the THIRD index line: i bounces off the ends, so 6 frames play as 10 — and the walk goes with it", function make(u) {
+  var NC = 6, S = 96, FPS = 8;
+  var sheet = u.bake(NC, S, function (f) {            // a penguin mid-waddle,
+    var lean = (f.i / (NC - 1) - 0.5) * 0.5;          // leaning further per frame
+    f.g.save();
+    f.g.translate(f.c, f.S - 30);
+    f.g.rotate(lean);
+    f.g.fillStyle = "rgba(40,44,66,0.95)";
+    f.g.beginPath(); f.g.ellipse(0, 0, 13, 17, 0, 0, u.TAU); f.g.fill();
+    f.g.fillStyle = "rgba(232,235,244,0.95)";
+    f.g.beginPath(); f.g.ellipse(0, 4, 8, 11, 0, 0, u.TAU); f.g.fill();
+    f.dot(-3.5, -9, 1.6, "#E8E5F4"); f.dot(3.5, -9, 1.6, "#E8E5F4");
+    f.dot(-3.5, -9, 0.8, "#131020"); f.dot(3.5, -9, 0.8, "#131020");
+    f.wedge(0, -5, u.TAU / 4, 6, 0.5, "rgba(245,161,90,0.95)");
+    f.g.restore();
+    var lift = Math.abs(f.i / (NC - 1) - 0.5) * 2;    // the off foot lifts
+    f.dot(f.c - 6, f.S - 12 - (1 - lift) * 3, 3, "rgba(245,161,90,0.95)");
+    f.dot(f.c + 6, f.S - 12 - lift * 3, 3, "rgba(245,161,90,0.95)");
+  });
+  var born = null;
+  return {
+    frame: function (dt, t) {
+      u.scene();
+      var p = Math.floor(t * FPS) % (2 * NC - 2);     // ← the ping-pong line
+      var i = p < NC ? p : 2 * NC - 2 - p;
+      var span = u.W - 80;
+      var wp = (t * 26) % (span * 2);                 // the path ping-pongs too
+      var x = 40 + (wp < span ? wp : span * 2 - wp);
+      u.blit(sheet, i, x, u.GY - 26, 1.35);
+      u.strip(sheet, i);
+      u.label("i = p < N ? p : 2N−2−p — no reversed copy of the sheet needed", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function () {}
+  };
+});
+
+def("X", "Xylophone", "goofy", "five bars light in sequence, each hit popping its own note — a melody as a stagger", function make(u) {
+  var N = 15, S = 96, FPS = 12;
+  var order = [0, 2, 4, 3, 1];                        // the little tune
+  var sheet = u.bake(N, S, function (f) {
+    var step = Math.floor(f.kl * 5);                  // which bar is being struck
+    var within = (f.kl * 5) % 1;
+    for (var b = 0; b < 5; b++) {
+      var x = 16 + b * 16;
+      var hot = order[step] === b;
+      var h = 34 - b * 4;
+      f.g.fillStyle = hot ? "rgba(245,193,105," + (1 - within * 0.5) + ")" :
+        "rgba(" + [138, 155, 201, 245, 245][b] + "," + [217, 226, 160, 193, 138][b] + "," + [245, 138, 245, 105, 138][b] + ",0.8)";
+      f.g.fillRect(x - 6, f.c + 8 - h / 2, 12, h);
+      if (hot && within < 0.5) {                      // the note pops off the bar
+        var ny = f.c - h / 2 - within * 16;
+        f.dot(x, ny, 2.4, "rgba(232,229,244," + (1 - within * 2) + ")");
+        f.streak(x + 2, ny, x + 2, ny - 7, "rgba(232,229,244," + (1 - within * 2) + ")", 1.3);
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 34;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Jackpot's stagger playing music — an order[] array is a melody", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("Y", "Yarn", "cozy", "a yarn ball rocks, its loose thread wiggles — and every few seconds, a paw", function make(u) {
+  var N = 16, S = 96, FPS = 11;
+  var sheet = u.bake(N, S, function (f) {
+    var rock = Math.sin(f.kl * u.TAU) * 0.18;
+    var bx = f.c, by = f.S - 26;
+    f.g.save();
+    f.g.translate(bx, by);
+    f.g.rotate(rock);
+    f.dot(0, 0, 14, "rgba(245,138,160,0.95)");        // the ball
+    for (var w = 0; w < 3; w++)                       // the windings
+      f.ring(0, 0, 13 - w * 1.5, "rgba(220,110,135,0.7)", 1.2);
+    f.g.restore();
+    f.g.strokeStyle = "rgba(245,138,160,0.85)";       // the loose thread
+    f.g.lineWidth = 1.5;
+    f.g.beginPath();
+    f.g.moveTo(bx + 12, by + 6);
+    for (var s2 = 1; s2 <= 6; s2++)
+      f.g.lineTo(bx + 12 + s2 * 5, by + 8 + Math.sin(f.kl * u.TAU * 2 + s2) * 3);
+    f.g.stroke();
+    if (f.i >= 11 && f.i <= 13) {                     // the paw, on schedule
+      var pp = (f.i - 11) / 2;
+      var reach = Math.sin(pp * Math.PI);
+      f.dot(bx - 22 + reach * 9, by - 10 - reach * 4, 5.5, "rgba(232,229,244,0.95)");
+      for (var toe = 0; toe < 3; toe++)
+        f.dot(bx - 25 + reach * 9 + toe * 3, by - 15 - reach * 4, 1.4, "rgba(200,196,215,0.9)");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 30;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Kettle's whistle trick: a guest that only exists in frames 11-13", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("Z", "Zoom", "arcade", "speedlines converge on the middle while the subject swells — the camera never moved", function make(u) {
+  var N = 10, S = 96, FPS = 20;
+  var R = u.rng(251);
+  var lines = [];
+  for (var j = 0; j < 14; j++) lines.push({ a: R() * u.TAU, off: R() });
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    for (var j2 = 0; j2 < lines.length; j2++) {       // the converging streaks
+      var L = lines[j2];
+      var p = (k * 2 + L.off) % 1;
+      var d0 = 46 - p * 26, d1 = d0 - 8 - p * 6;
+      f.streak(f.c + Math.cos(L.a) * d0, f.c + Math.sin(L.a) * d0,
+        f.c + Math.cos(L.a) * d1, f.c + Math.sin(L.a) * d1,
+        "rgba(232,229,244," + (0.25 + p * 0.5) + ")", 1.5);
+    }
+    var sc = 1 + u.ease(k) * 0.9;                     // the subject swells
+    f.dot(f.c, f.c, 8 * sc, "rgba(138,217,245,0.95)");
+    f.dot(f.c + 2.5 * sc, f.c - 2.5 * sc, 1.8 * sc, "#131020");
+    if (k > 0.8) f.ring(f.c, f.c, 8 * sc + 4, "rgba(245,241,220," + (k - 0.8) * 4 + ")", 2);
+  });
+  var px = u.W * 0.5, py = u.GY - 36, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.1) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("cheap perspective, exhibit one: lines toward a point + scale = a lens", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+/* ---- lap four ---- */
+
+def("A", "Anticipation", "arcade", "crouch, HOLD, launch — the hold is just the same drawing baked three times", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var i = f.i, base = f.S - 18;
+    function guy(y, sx, sy, dust) {
+      f.g.save();
+      f.g.translate(f.c, base - 9 * sy - y);
+      f.g.scale(sx, sy);
+      f.dot(0, 0, 9, "rgba(138,217,245,0.95)");
+      f.dot(3, -3, 1.8, "#131020");
+      f.g.restore();
+      if (dust) for (var d = 0; d < 3; d++)
+        f.dot(f.c - 10 + d * 10, base + 3, 2.5 * dust, "rgba(160,150,140," + dust * 0.4 + ")");
+    }
+    if (i < 2) guy(0, 1, 1, 0);                       // standing
+    else if (i < 6) guy(0, 1.25, 0.7, 0);             // THE HOLD: 4 identical crouches
+    else if (i < 10) {                                // launch, stretched
+      var q = (i - 6) / 3;
+      guy(q * 40, 0.75, 1.35, 1 - q);
+    } else guy(44, 1, 1, 0);                          // gone off the top
+  });
+  var px = u.W * 0.5, py = u.GY - 34, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.2) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("count the identical strip cells — 'on threes' is Glitch's DUR[] spelled in copies", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("B", "Bounceball", "goofy", "the ball arcs, the SHADOW stays on the floor and shrinks with height — that's the whole 3D", function make(u) {
+  var N = 14, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var kl = f.kl, base = f.S - 14;
+    var hop = Math.abs(Math.sin(kl * u.TAU));         // two bounces per lap
+    var x = 16 + kl * (f.S - 32);
+    var h = hop * 34;
+    var squash = h < 4 ? 0.6 : 1;                     // flat at the floor
+    f.g.beginPath();                                  // the shadow: height's witness
+    f.g.ellipse(x, base + 3, 8 * (1 - h / 50), 2.6 * (1 - h / 50), 0, 0, u.TAU);
+    f.g.fillStyle = "rgba(19,16,32," + (0.45 - h / 120) + ")";
+    f.g.fill();
+    f.g.save();
+    f.g.translate(x, base - 6 - h);
+    f.g.scale(1 / squash, squash);
+    f.dot(0, 0, 7, "rgba(245,138,138,0.95)");
+    f.dot(-2, -2, 2, "rgba(255,210,210,0.8)");
+    f.g.restore();
+  });
+  var px = u.W * 0.5, py = u.GY - 30;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("cheap perspective, exhibit two: a grounded shadow sells any altitude", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("C", "Cauldron", "fantasy", "green bubbles, a lazy stir, and every eighth frame a star escapes the brew", function make(u) {
+  var N = 16, S = 96, FPS = 11;
+  var R = u.rng(307);
+  var bubs = [];
+  for (var j = 0; j < 6; j++) bubs.push({ dx: (R() - 0.5) * 22, off: R(), r: 1.5 + R() * 2 });
+  var sheet = u.bake(N, S, function (f) {
+    var cy = f.S - 26;
+    f.g.fillStyle = "rgba(45,42,60,0.95)";
+    f.g.beginPath();
+    f.g.ellipse(f.c, cy + 6, 20, 12, 0, 0, Math.PI);  // the pot
+    f.g.fill();
+    f.g.fillRect(f.c - 20, cy, 40, 7);
+    f.g.beginPath();                                  // the brew surface, stirring
+    f.g.ellipse(f.c, cy, 17, 5, 0, 0, u.TAU);
+    f.g.fillStyle = "rgba(120,220,120,0.85)";
+    f.g.fill();
+    var sa = f.kl * u.TAU;
+    f.dot(f.c + Math.cos(sa) * 9, cy + Math.sin(sa) * 2.5, 2, "rgba(200,250,180,0.8)");
+    for (var b = 0; b < bubs.length; b++) {           // rising brew bubbles
+      var p = (f.kl + bubs[b].off) % 1;
+      var y = cy - 2 - p * 24;
+      var a = Math.sin(p * Math.PI);
+      f.ring(f.c + bubs[b].dx * (0.6 + p * 0.5), y, bubs[b].r * (0.6 + p), "rgba(155,226,138," + a * 0.8 + ")", 1.2);
+    }
+    if (f.i % 8 === 0)                                // the escaping star
+      f.star(f.c + 8, cy - 30, 4, 1.4, 5, "rgba(245,241,220,0.9)", 0.5);
+  });
+  var px = u.W * 0.5, py = u.GY - 32;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Venom's simmer with a schedule — the star is Yarn's paw, refluffed", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("D", "Doorway", "fantasy", "a door swings by x-scale while light spills through the widening gap", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var open = u.ease(Math.min(1, k / 0.7));
+    var fx = f.c - 16, fw = 32, fh = 52, fy = f.S - 16 - fh;
+    if (open > 0.05) {                                // the light wedge
+      f.g.save();
+      var grad = f.g.createLinearGradient(fx, 0, fx + fw + open * 20, 0);
+      grad.addColorStop(0, "rgba(245,220,150," + open * 0.55 + ")");
+      grad.addColorStop(1, "rgba(245,220,150,0)");
+      f.g.fillStyle = grad;
+      f.g.beginPath();
+      f.g.moveTo(fx + 2, fy + 2);
+      f.g.lineTo(fx + fw + open * 26, fy - open * 6);
+      f.g.lineTo(fx + fw + open * 34, fy + fh + open * 8);
+      f.g.lineTo(fx + 2, fy + fh);
+      f.g.closePath(); f.g.fill();
+      f.g.restore();
+      for (var m = 0; m < 3; m++)                     // dust motes in the light
+        f.dot(fx + 12 + m * 9 + open * 8, fy + 14 + ((f.i * 3 + m * 17) % 30), 1, "rgba(245,241,220," + open * 0.6 + ")");
+    }
+    f.g.strokeStyle = "rgba(201,196,228,0.8)";        // the frame
+    f.g.lineWidth = 3;
+    f.g.strokeRect(fx, fy, fw, fh);
+    var dw = fw * (1 - open * 0.85);                  // the door: thinner = swung
+    f.g.fillStyle = "rgba(110,80,52,0.95)";
+    f.g.fillRect(fx, fy, dw, fh);
+    if (dw > 5) f.dot(fx + dw - 4, fy + fh / 2, 1.8, "rgba(245,193,105,0.9)");
+  });
+  var px = u.W * 0.5, py = u.GY - 40, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.8) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5 - 40, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Itemget's |cos| trick on a hinge — width IS the swing angle", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("E", "Enchant", "fantasy", "runes light along the blade base-to-tip, then the whole edge takes the glow", function make(u) {
+  var N = 14, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var bx = f.c - 14, by = f.S - 20;                 // blade from here…
+    var tx = f.c + 20, ty = 18;                       // …to here
+    f.g.strokeStyle = "rgba(201,196,228,0.9)";        // the blade
+    f.g.lineWidth = 5;
+    f.g.lineCap = "round";
+    f.g.beginPath(); f.g.moveTo(bx, by); f.g.lineTo(tx, ty); f.g.stroke();
+    f.g.lineCap = "butt";
+    f.streak(bx - 7, by + 2, bx + 7, by - 6, "rgba(150,120,80,0.95)", 4);   // the guard
+    var lit = u.ease(Math.min(1, k / 0.65));          // how far the magic reached
+    for (var r = 0; r < 5; r++) {                     // five runes on the flat
+      var q = (r + 0.5) / 5;
+      if (q > lit) continue;
+      var x = bx + (tx - bx) * q, y = by + (ty - by) * q;
+      var age = u.clamp((lit - q) * 5, 0, 1);
+      f.star(x - 4, y - 4, 3 * age, 1 * age, 4, "rgba(201,160,245," + (0.5 + age * 0.5) + ")", r);
+    }
+    if (k > 0.65) {                                   // the edge takes the glow
+      var g2 = (k - 0.65) / 0.35;
+      f.streak(bx, by, tx, ty, "rgba(201,160,245," + g2 * 0.6 + ")", 9);
+      f.glow(tx, ty, 8 * g2, "rgba(201,160,245,", g2 * 0.9);
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 38, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.5) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Xylophone's sequence walking a line instead of a keyboard", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("F", "Frostcreep", "fantasy", "ice claims the cell left to right — same seed every frame, longer branches every frame", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  function fern(f, seed, x0, y0, reach) {
+    var R = u.rng(seed);
+    var x = x0, y = y0, a = (R() - 0.5) * 0.8;
+    var steps = Math.floor(reach * 8);
+    for (var s = 0; s < steps; s++) {
+      var nx = x + Math.cos(a) * 6, ny = y + Math.sin(a) * 6;
+      f.streak(x, y, nx, ny, "rgba(190,230,250,0.85)", 2 - s * 0.15);
+      if (s % 2 === 0) {                              // side needles
+        f.streak(nx, ny, nx + Math.cos(a + 1.1) * 4, ny + Math.sin(a + 1.1) * 4, "rgba(190,230,250,0.6)", 1);
+        f.streak(nx, ny, nx + Math.cos(a - 1.1) * 4, ny + Math.sin(a - 1.1) * 4, "rgba(190,230,250,0.6)", 1);
+      }
+      x = nx; y = ny; a += (R() - 0.5) * 0.7;
+    }
+    return [x, y];
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var reach = u.ease(Math.min(1, k / 0.85));
+    for (var j = 0; j < 5; j++) {
+      var tip = fern(f, 820 + j, 8, 18 + j * 15, reach);
+      if (k > 0.3 && k < 0.9)                         // gleams at the growing tips
+        f.star(tip[0], tip[1], 2.5 * Math.sin(k * Math.PI), 0.9, 4, "rgba(245,251,255,0.8)", j);
+    }
+    if (k >= 0.85)                                    // fully claimed: a cold sheen
+      f.glow(f.c, f.c, 38, "rgba(190,230,250,", (k - 0.85) / 0.15 * 0.15);
+  });
+  var px = u.W * 0.5, py = u.GY - 36, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.8) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene(); u.mote(u.W * 0.5, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Quake's remembering-crack, grown into dissolve's cold cousin", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("G", "Gears", "goofy", "two gears mesh — per lap, each turns a whole number of teeth, so the loop never skips", function make(u) {
+  var N = 16, S = 96, FPS = 12;
+  function gear(f, cx, cy, r, teeth, rot, col) {
+    for (var t2 = 0; t2 < teeth; t2++) {
+      var a = rot + (t2 / teeth) * u.TAU;
+      f.streak(cx + Math.cos(a) * r, cy + Math.sin(a) * r,
+        cx + Math.cos(a) * (r + 5), cy + Math.sin(a) * (r + 5), col, 4);
+    }
+    f.ring(cx, cy, r, col, 3);
+    f.dot(cx, cy, 3, col);
+  }
+  var sheet = u.bake(N, S, function (f) {
+    // big: 12 teeth, 1 tooth-pitch per lap · small: 6 teeth, 2 pitches per lap
+    gear(f, f.c - 12, f.c + 6, 20, 12, f.kl * (u.TAU / 12), "rgba(201,196,228,0.9)");
+    gear(f, f.c + 22, f.c - 12, 11, 6, -f.kl * (u.TAU / 6) * 2 + 0.26, "rgba(245,193,105,0.9)");
+  });
+  var px = u.W * 0.5, py = u.GY - 36;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.5);
+      u.strip(sheet, i);
+      u.label("Fireflies' integer rule in metal: rotate by whole tooth-pitches per lap", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("H", "Heartbeat", "cozy", "an EKG write-head sweeps the cell; the spike happens at the same phase every lap", function make(u) {
+  var N = 16, S = 96, FPS = 12;
+  function ekg(x) {                                   // the trace, as a function of x
+    var q = x / 96;
+    if (q > 0.4 && q < 0.46) return -26 * Math.sin((q - 0.4) / 0.06 * Math.PI);
+    if (q > 0.46 && q < 0.52) return 10 * Math.sin((q - 0.46) / 0.06 * Math.PI);
+    if (q > 0.6 && q < 0.72) return -6 * Math.sin((q - 0.6) / 0.12 * Math.PI);
+    return Math.sin(q * 40) * 0.8;
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var hx = f.kl * f.S;                              // the write head
+    f.g.strokeStyle = "rgba(155,226,138,0.9)";
+    f.g.lineWidth = 1.8;
+    f.g.beginPath();
+    for (var x = 0; x < f.S; x += 2) {
+      var age = (hx - x + f.S) % f.S;                 // older = fainter
+      if (age > f.S * 0.85) continue;
+      f.g.globalAlpha = 1 - age / (f.S * 0.85);
+      var y = f.c + ekg(x);
+      x === 0 ? f.g.moveTo(x, y) : f.g.lineTo(x, y);
+    }
+    f.g.stroke();
+    f.g.globalAlpha = 1;
+    f.glow(hx, f.c + ekg(hx), 5, "rgba(155,226,138,", 0.9);
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("Glint's traveller carrying a graph — trails by alpha-per-age", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("I", "Invaders", "arcade", "the original flipbook was TWO frames — arms up, arms down — and it conquered Earth", function make(u) {
+  var N = 8, S = 96, FPS = 4;
+  function alien(f, cx, cy, up, col) {
+    f.g.fillStyle = col;
+    f.g.fillRect(cx - 7, cy - 5, 14, 7);              // the body
+    f.g.fillRect(cx - 10, cy - 2, 3, 4);
+    f.g.fillRect(cx + 7, cy - 2, 3, 4);
+    f.g.fillRect(cx - 5, cy - 8, 3, 3);               // the eyes' brow
+    f.g.fillRect(cx + 2, cy - 8, 3, 3);
+    var ly = up ? cy + 3 : cy + 5;                    // THE two-frame difference
+    f.g.fillRect(cx - 9, ly, 3, 3);
+    f.g.fillRect(cx + 6, ly, 3, 3);
+    f.g.fillStyle = "#131020";
+    f.g.fillRect(cx - 4, cy - 3, 2, 2);
+    f.g.fillRect(cx + 2, cy - 3, 2, 2);
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var up = f.i % 2 === 0;
+    var sx = [0, 5, 10, 5, 0, -5, -10, -5][f.i];      // the fleet shuffles
+    for (var r = 0; r < 2; r++)
+      for (var c2 = 0; c2 < 3; c2++)
+        alien(f, 24 + c2 * 24 + sx, 30 + r * 22, up,
+          r === 0 ? "rgba(155,226,138,0.95)" : "rgba(138,217,245,0.95)");
+  });
+  var px = u.W * 0.5, py = u.GY - 40;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.5);
+      u.strip(sheet, i);
+      u.label("N = 2 poses at 4 fps carried a whole genre — start smaller than you think", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("J", "Jump", "arcade", "hang time is frame count: the apex owns a third of the strip on purpose", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var i = f.i, base = f.S - 16;
+    var ys = [0, 0, 14, 30, 39, 42, 42, 42, 39, 30, 14, 2];      // apex frames 5-7
+    var y = ys[i];
+    var sy = i < 2 ? 0.75 : (i === 2 || i === 3 ? 1.25 : (i === 11 ? 0.7 : 1));
+    f.g.beginPath();
+    f.g.ellipse(f.c, base + 3, 7 * (1 - y / 60), 2.2 * (1 - y / 60), 0, 0, u.TAU);
+    f.g.fillStyle = "rgba(19,16,32,0.4)";
+    f.g.fill();
+    f.g.save();
+    f.g.translate(f.c, base - 8 * sy - y);
+    f.g.scale(1 / sy, sy);
+    f.dot(0, 0, 8, "rgba(245,193,105,0.95)");
+    f.dot(2.5, -2.5, 1.8, "#131020");
+    f.g.restore();
+    if (i === 11) for (var d = 0; d < 3; d++)         // landing dust
+      f.dot(f.c - 10 + d * 10, base + 2, 2.5, "rgba(160,150,140,0.4)");
+  });
+  var px = u.W * 0.5, py = u.GY - 34, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.2) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("the ys[] table IS the animation — three 42s in a row are the hang", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("K", "Kaleido", "goofy", "one wedge of doodles, mirrored six ways — draw a sixth, get a mandala", function make(u) {
+  var N = 16, S = 96, FPS = 10;
+  var sheet = u.bake(N, S, function (f) {
+    var R = u.rng(340);                               // ONE seed: the doodles are
+    var doodles = [];                                 // fixed, only the wheel turns
+    for (var j = 0; j < 5; j++)
+      doodles.push({ r: 8 + R() * 28, a: R() * (u.TAU / 6), s: 1.5 + R() * 2.5,
+                     c: ["rgba(245,138,160,0.8)", "rgba(138,217,245,0.8)", "rgba(245,193,105,0.8)"][j % 3] });
+    for (var seg = 0; seg < 6; seg++) {
+      var flip = seg % 2 === 1;                       // alternate segments mirror
+      for (var d = 0; d < doodles.length; d++) {
+        var dd = doodles[d];
+        var a = (flip ? -dd.a : dd.a) + seg * (u.TAU / 6) + f.kl * u.TAU / 6;
+        f.dot(f.c + Math.cos(a) * dd.r, f.c + Math.sin(a) * dd.r, dd.s, dd.c);
+        f.ring(f.c + Math.cos(a) * dd.r, f.c + Math.sin(a) * dd.r, dd.s + 1.5, dd.c, 0.8);
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("rotate by 2π/6 per lap and the sixfold pattern loops on itself", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("L", "Lantern", "fantasy", "paper lanterns climb the night on offset clocks, each flame flickering its own warmth", function make(u) {
+  var N = 16, S = 96, FPS = 10;
+  var R = u.rng(347);
+  var lans = [];
+  for (var j = 0; j < 3; j++) lans.push({ x: 22 + j * 26, off: R(), sway: 3 + R() * 3 });
+  var sheet = u.bake(N, S, function (f) {
+    for (var j2 = 0; j2 < lans.length; j2++) {
+      var L = lans[j2];
+      var p = (f.kl + L.off) % 1;
+      var y = f.S - 12 - p * (f.S - 20);
+      var x = L.x + Math.sin(p * u.TAU + j2 * 2) * L.sway;
+      var a = Math.sin(p * Math.PI);
+      var flick = 0.8 + Math.sin(f.kl * u.TAU * 3 + j2 * 4) * 0.2;
+      f.glow(x, y, 9 * a * flick, "rgba(245,161,90,", a * 0.5);
+      f.g.fillStyle = "rgba(245,138,90," + a * 0.85 + ")";
+      f.g.beginPath();
+      f.g.ellipse(x, y, 5, 7, 0, 0, u.TAU);           // the paper body
+      f.g.fill();
+      f.streak(x - 4, y - 6, x + 4, y - 6, "rgba(120,80,50," + a * 0.9 + ")", 1.5);
+      f.streak(x - 4, y + 6, x + 4, y + 6, "rgba(120,80,50," + a * 0.9 + ")", 1.5);
+      f.dot(x, y + 1, 1.8, "rgba(245,241,200," + a * flick + ")");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 42;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene(); u.mote(px, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Embers, grown up and given paper coats", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y - 20; }
+  };
+});
+
+def("M", "Mushroom", "fantasy", "sproing: the cap overshoots on the way up, and spores puff at full height", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k, base = f.S - 14;
+    var over = k < 0.5 ? (k / 0.5) * 1.3 - Math.pow(k / 0.5, 2) * 0.3 : 1 + Math.sin((k - 0.5) * 12) * 0.04 * (1 - k);
+    var h = 26 * Math.max(0, over);
+    if (h < 2) { f.dot(f.c, base, 3, "rgba(214,190,170,0.8)"); return; }
+    f.g.fillStyle = "rgba(232,220,205,0.95)";
+    f.g.fillRect(f.c - 3.5, base - h * 0.6, 7, h * 0.6);         // the stem
+    f.g.fillStyle = "rgba(245,110,110,0.95)";
+    f.g.beginPath();                                  // the cap
+    f.g.ellipse(f.c, base - h * 0.6, 16 * Math.min(1, over), 10 * Math.min(1, over), 0, Math.PI, 0);
+    f.g.fill();
+    f.dot(f.c - 6, base - h * 0.6 - 4, 2.2, "rgba(255,235,235,0.9)");
+    f.dot(f.c + 5, base - h * 0.6 - 2, 1.7, "rgba(255,235,235,0.9)");
+    if (k > 0.45 && k < 0.8) {                        // the spore puff
+      var q = (k - 0.45) / 0.35;
+      for (var s = 0; s < 4; s++)
+        f.dot(f.c - 12 + s * 8, base - h - 4 - q * 8, 1.2 * (1 - q), "rgba(232,220,205," + (1 - q) * 0.7 + ")");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 30, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.6) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Kapow's overshoot curve, gone botanical", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = u.GY - 30; t0 = -9; }
+  };
+});
+
+def("N", "Nebula", "scifi", "translucent dust arms turn at three speeds around a bright core, seeded stars behind", function make(u) {
+  var N = 16, S = 96, FPS = 9;
+  var R = u.rng(353);
+  var stars = [];
+  for (var j = 0; j < 12; j++) stars.push({ x: R() * 96, y: R() * 96, tw: R() });
+  var sheet = u.bake(N, S, function (f) {
+    for (var s = 0; s < stars.length; s++) {          // the star field twinkles
+      var st = stars[s];
+      var a = 0.3 + 0.5 * Math.pow(Math.sin((f.kl + st.tw) * u.TAU) * 0.5 + 0.5, 2);
+      f.dot(st.x, st.y, 0.8, "rgba(232,229,244," + a + ")");
+    }
+    var cols = ["rgba(201,160,245,", "rgba(138,217,245,", "rgba(245,138,180,"];
+    for (var arm = 0; arm < 3; arm++) {               // the dust arms
+      var rot = f.kl * u.TAU * (arm === 1 ? 2 : 1) * (arm === 2 ? -1 : 1);
+      for (var b = 0; b < 4; b++) {
+        var a2 = rot + arm * 2.1 + b * 0.5;
+        var r = 10 + b * 6;
+        f.dot(f.c + Math.cos(a2) * r, f.c + Math.sin(a2) * r * 0.7,
+          7 - b, cols[arm] + (0.14 - b * 0.02) + ")");
+      }
+    }
+    f.glow(f.c, f.c, 8, "rgba(245,241,220,", 0.7);    // the core
+  });
+  var px = u.W * 0.5, py = u.GY - 40;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("integer spin ratios (1, 2, −1) keep three arms on one seamless lap", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("O", "Odometer", "arcade", "the ones digit rolls continuously; the tens only tick when it laps — a carry, drawn", function make(u) {
+  var N = 20, S = 96, FPS = 10;
+  var sheet = u.bake(N, S, function (f) {
+    var y0 = f.c - 11, h = 22;
+    function window2(cx, val, slide) {                // one digit drum
+      f.g.fillStyle = "rgba(28,24,44,0.95)";
+      f.g.fillRect(cx - 9, y0, 18, h);
+      f.g.strokeStyle = "rgba(201,196,228,0.6)";
+      f.g.strokeRect(cx - 9, y0, 18, h);
+      f.g.save();
+      f.g.beginPath(); f.g.rect(cx - 9, y0, 18, h); f.g.clip();
+      f.g.fillStyle = "#F5C169";
+      f.g.font = "700 16px 'Spline Sans Mono', Consolas, monospace";
+      f.g.textAlign = "center";
+      f.g.textBaseline = "middle";
+      f.g.fillText(String(Math.floor(val) % 10), cx, y0 + h / 2 + slide * h);
+      f.g.fillText(String((Math.floor(val) + 1) % 10), cx, y0 + h / 2 + (slide - 1) * h);
+      f.g.restore();
+    }
+    var ones = f.kl * 2 * 10 % 10;                    // two full drums per lap
+    window2(f.c + 22, ones, ones % 1);
+    var tens = f.kl * 2;                              // ticks only at the carry
+    var tslide = ones > 9 ? ones - 9 : 0;
+    window2(f.c, tens, tslide);
+    window2(f.c - 22, 0, 0);
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("clip() windows + sliding glyphs — every score counter is this", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("P", "Portalhop", "scifi", "shrink into the left ring, grow out of the right — one loop, an infinite commute", function make(u) {
+  var N = 16, S = 96, FPS = 13;
+  var sheet = u.bake(N, S, function (f) {
+    var kl = f.kl;
+    var LX = 22, RX = 74, PY = f.c + 8;
+    function portal(x, col, active) {
+      f.g.strokeStyle = col + (0.5 + active * 0.5) + ")";
+      f.g.lineWidth = 2.5;
+      f.g.beginPath();
+      f.g.ellipse(x, PY, 7 + active * 2, 16 + active * 3, 0, 0, u.TAU);
+      f.g.stroke();
+    }
+    var inPhase = kl < 0.5;
+    var q = (kl % 0.5) / 0.5;
+    portal(LX, "rgba(138,217,245,", inPhase ? Math.sin(q * Math.PI) : 0);
+    portal(RX, "rgba(245,161,90,", !inPhase ? Math.sin(q * Math.PI) : 0);
+    var sc, x;
+    if (inPhase) { sc = 1 - u.ease(q); x = LX + (1 - q) * 14; } // shrinking in
+    else { sc = u.ease(q); x = RX - (1 - q) * -14 + (q - 1) * 14; x = RX + q * 14 - 14; } // growing out
+    if (sc > 0.05) {
+      f.dot(x, PY, 6 * sc, "rgba(155,226,138,0.95)");
+      f.dot(x + 2 * sc, PY - 2 * sc, 1.4 * sc, "#131020");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 34;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("exit scale = 1 − entry scale — conservation of critter", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("Q", "Quill", "fantasy", "a feather writes a flourish that stays written — the line only ever gets longer", function make(u) {
+  var N = 14, S = 96, FPS = 12;
+  function path(q) {                                  // the flourish, 0..1 → x,y
+    var x = 16 + q * 60;
+    var y = 54 + Math.sin(q * u.TAU * 1.5) * 12 * (1 - q * 0.4) - q * 8;
+    return [x, y];
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    var reach = u.ease(Math.min(1, k / 0.8));
+    f.g.strokeStyle = "rgba(60,50,90,0.9)";           // the ink so far
+    f.g.lineWidth = 2;
+    f.g.lineCap = "round";
+    f.g.beginPath();
+    for (var q = 0; q <= reach; q += 0.02) {
+      var p = path(q);
+      q === 0 ? f.g.moveTo(p[0], p[1]) : f.g.lineTo(p[0], p[1]);
+    }
+    f.g.stroke();
+    f.g.lineCap = "butt";
+    if (k < 0.85) {                                   // the quill at the write head
+      var tip = path(reach);
+      f.streak(tip[0], tip[1], tip[0] + 8, tip[1] - 18, "rgba(232,229,244,0.95)", 2.5);
+      f.wedge(tip[0] + 8, tip[1] - 18, -1.9, 10, 0.35, "rgba(232,229,244,0.9)");
+      if (f.i % 3 === 0) f.dot(tip[0] + 1, tip[1] + 2, 1, "rgba(60,50,90,0.7)");   // a spot of ink
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 38, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.8) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Frostcreep with penmanship — reveals are growth played as writing", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
+def("R", "Retrowave", "scifi", "the road to the horizon: rows accelerate and spread as they near — perspective from ONE curve", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var HOR = 40;                                     // the horizon line
+    f.dot(f.c, HOR - 8, 13, "rgba(245,138,160,0.85)");           // the sun…
+    f.g.fillStyle = "rgba(19,16,32,0.95)";
+    for (var band = 0; band < 3; band++)              // …with its missing bands
+      f.g.fillRect(f.c - 14, HOR - 8 + band * 4 + 1, 28, 1.8);
+    f.streak(6, HOR, f.S - 6, HOR, "rgba(245,110,180,0.8)", 1.5);
+    for (var v = -4; v <= 4; v++)                     // converging verticals
+      f.streak(f.c + v * 3, HOR, f.c + v * 16, f.S - 4, "rgba(138,217,245,0.5)", 1);
+    for (var r = 0; r < 5; r++) {                     // rows sliding toward us
+      var p = (f.kl + r / 5) % 1;
+      var y = HOR + p * p * (f.S - HOR - 4);          // p² = the perspective curve
+      f.streak(6, y, f.S - 6, y, "rgba(138,217,245," + (0.25 + p * 0.6) + ")", 0.8 + p * 1.6);
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 36;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("cheap perspective, exhibit three: y = horizon + p² — the square is the depth", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("S", "Springcoil", "goofy", "compress, tremble, LAUNCH, then ring down like a struck ruler", function make(u) {
+  var N = 14, S = 96, FPS = 16;
+  function coil(f, x, y0, h, w) {
+    f.g.strokeStyle = "rgba(201,196,228,0.9)";
+    f.g.lineWidth = 2.5;
+    f.g.beginPath();
+    for (var s = 0; s <= 24; s++) {
+      var q = s / 24;
+      f.g.lineTo(x + Math.sin(q * u.TAU * 4) * w, y0 - q * h);
+    }
+    f.g.stroke();
+  }
+  var sheet = u.bake(N, S, function (f) {
+    var i = f.i, base = f.S - 12;
+    var h, star = -1;
+    if (i < 3) h = 34 - i * 8;                        // compressing
+    else if (i < 5) h = 10 + (i - 3) * 1.5;           // the tremble
+    else {                                            // launch + ring-down
+      var q = (i - 5) / 8;
+      h = 34 + Math.sin(q * u.TAU * 1.5) * 14 * Math.exp(-q * 2.5);   // damped!
+      star = q;
+    }
+    coil(f, f.c, base, h, 9 + (34 - h) * 0.25);
+    if (star >= 0) {
+      var sy = base - 40 - u.ease(Math.min(1, star * 1.4)) * 34;
+      f.star(f.c, sy, 6, 2.2, 5, "rgba(245,193,105," + (1 - star * 0.6) + ")", star * 4);
+    } else {
+      f.star(f.c, base - h - 6, 6, 2.2, 5, "rgba(245,193,105,0.95)", 0.3);
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 32, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.4) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("sin·e^−t — the lexicon's damped spring, four frames of it", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; t0 = -9; }
+  };
+});
+
+def("T", "Teleport", "scifi", "one dissolve sheet, two directions: forward = leave, REVERSED = arrive", function make(u) {
+  var N = 10, S = 96, FPS = 16;
+  var R = u.rng(367);
+  var bits = [];
+  for (var j = 0; j < 12; j++)
+    bits.push({ a: R() * u.TAU, r: 3 + R() * 8, sp: 0.5 + R() });
+  var sheet = u.bake(N, S, function (f) {             // baked ONCE, as "leaving"
+    var k = f.k;
+    if (k < 0.25) {
+      f.dot(f.c, f.c, 9 * (1 - k / 0.25 * 0.3), "rgba(138,217,245,0.95)");
+      f.dot(f.c + 3, f.c - 3, 1.8, "#131020");
+    }
+    for (var j2 = 0; j2 < bits.length; j2++) {        // the body becomes motes
+      var b = bits[j2];
+      var p = u.clamp((k - 0.15) / 0.85, 0, 1);
+      if (p <= 0) continue;
+      f.dot(f.c + Math.cos(b.a) * b.r * (1 + p), f.c + Math.sin(b.a) * b.r - p * 26 * b.sp,
+        2 * (1 - p), "rgba(138,217,245," + (1 - p) + ")");
+    }
+  });
+  var t0 = -9, AX = u.W * 0.3, BX = u.W * 0.7;
+  return {
+    frame: function (dt, t) {
+      var CY = u.GY - 30;
+      if (t - t0 > 2 * N / FPS + 1.6) t0 = t;
+      var ts = (t - t0) * FPS;
+      u.scene();
+      if (ts < N) {                                   // leaving: play forward at A
+        u.blit(sheet, Math.min(N - 1, Math.floor(ts)), AX, CY, 1.5, "add");
+        u.strip(sheet, Math.min(N - 1, Math.floor(ts)));
+      } else if (ts < 2 * N) {                        // arriving: SAME sheet, reversed, at B
+        var i = N - 1 - Math.min(N - 1, Math.floor(ts - N));
+        u.blit(sheet, i, BX, CY, 1.5, "add");
+        u.strip(sheet, i);
+      } else {                                        // arrived, briefly whole
+        u.blit(sheet, 0, BX, CY, 1.5, "add");
+        u.strip(sheet, 0);
+      }
+      u.label("i and N−1−i — a departure is an arrival read right-to-left", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function () { t0 = -9; }
+  };
+});
+
+def("U", "Umbrella", "cozy", "rain meets a dome and becomes deflection ticks and edge drips", function make(u) {
+  var N = 14, S = 96, FPS = 13;
+  var R = u.rng(373);
+  var drops = [];
+  for (var j = 0; j < 7; j++) drops.push({ x: 14 + R() * 68, off: R() });
+  var sheet = u.bake(N, S, function (f) {
+    var uy = f.c + 2;
+    f.g.fillStyle = "rgba(245,138,138,0.95)";
+    f.g.beginPath();                                  // the dome
+    f.g.arc(f.c, uy, 24, Math.PI, 0);
+    f.g.fill();
+    for (var rib = 0; rib <= 3; rib++)
+      f.streak(f.c - 24 + rib * 16, uy, f.c - 24 + rib * 16, uy - 2, "rgba(200,105,105,0.9)", 1.5);
+    f.streak(f.c, uy, f.c, uy + 26, "rgba(201,196,228,0.9)", 2);   // the handle
+    f.g.beginPath();
+    f.g.arc(f.c + 4, uy + 26, 4, 0, Math.PI);
+    f.g.strokeStyle = "rgba(201,196,228,0.9)";
+    f.g.stroke();
+    for (var d2 = 0; d2 < drops.length; d2++) {
+      var dr = drops[d2];
+      var p = (f.kl + dr.off) % 1;
+      var hitY = uy - Math.sqrt(Math.max(0, 576 - (dr.x - f.c) * (dr.x - f.c)));
+      var over = Math.abs(dr.x - f.c) < 23;
+      var floorY2 = over ? hitY : f.S - 8;
+      var y = 4 + p * (floorY2 - 8);
+      if (y < floorY2 - 3) {
+        f.streak(dr.x + 1, y, dr.x, y + 6, "rgba(150,200,245,0.7)", 1.2);
+      } else if (over) {                              // deflected off the dome
+        var side = dr.x < f.c ? -1 : 1;
+        f.streak(dr.x, hitY, dr.x + side * 4, hitY - 3, "rgba(150,200,245," + (1 - p) + ")", 1);
+      }
+    }
+    var edgeP = (f.kl * 2) % 1;                       // the patient edge drip
+    f.dot(f.c + 24, uy + 2 + edgeP * 20, 1.5, "rgba(150,200,245," + (1 - edgeP) + ")");
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Rain's clocks, interrupted by geometry — collision baked as an if", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("V", "Victory", "arcade", "rays wheel behind a cup while sparkles and confetti recycle — a finale built of old parts", function make(u) {
+  var N = 16, S = 96, FPS = 13;
+  var R = u.rng(379);
+  var conf = [];
+  for (var j = 0; j < 8; j++)
+    conf.push({ x: 12 + R() * 72, off: R(), c: ["#F58A8A", "#9BE28A", "#8AD9F5", "#C9A0F5"][j % 4] });
+  var sheet = u.bake(N, S, function (f) {
+    for (var ray = 0; ray < 8; ray++) {               // the wheeling rays
+      var a = f.kl * u.TAU / 8 + ray * u.TAU / 8;     // one spoke-step per lap
+      f.wedge(f.c, f.c - 2, a, 42, 0.14, "rgba(245,193,105,0.14)");
+    }
+    f.g.fillStyle = "rgba(245,193,105,0.95)";         // the cup
+    f.g.beginPath();
+    f.g.moveTo(f.c - 11, f.c - 14);
+    f.g.quadraticCurveTo(f.c, f.c + 4, f.c + 11, f.c - 14);
+    f.g.closePath(); f.g.fill();
+    f.g.fillRect(f.c - 3, f.c - 2, 6, 8);
+    f.g.fillRect(f.c - 8, f.c + 6, 16, 3);
+    f.dot(f.c - 4, f.c - 10, 1.8, "rgba(255,240,210,0.9)");
+    var tw = Math.pow(Math.sin(f.kl * u.TAU * 2), 2); // the glint, twice a lap
+    f.star(f.c + 8, f.c - 12, 5 * tw, 1.6 * tw, 4, "rgba(245,241,220," + tw + ")", f.kl * 3);
+    for (var c2 = 0; c2 < conf.length; c2++) {        // recycling confetti
+      var p = (f.kl + conf[c2].off) % 1;
+      var col = conf[c2].c;
+      f.g.save();
+      f.g.translate(conf[c2].x, 6 + p * (f.S - 12));
+      f.g.rotate(p * 9 + c2);
+      f.g.globalAlpha = Math.sin(p * Math.PI);
+      f.g.fillStyle = col;
+      f.g.fillRect(-2, -1.3, 4, 2.6);
+      f.g.restore();
+      f.g.globalAlpha = 1;
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 40;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene(); u.mote(px, u.GY - 12);
+      u.blit(sheet, i, px, py, 1.6, "add");
+      u.strip(sheet, i);
+      u.label("Orbit's wheel + Sparkle's blink + Confetti's flutter — a finale is a chord", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("W", "Wormhole", "scifi", "rings grow toward you from a point — scale-through-time IS the tunnel", function make(u) {
+  var N = 16, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    for (var ring2 = 5; ring2 >= 0; ring2--) {
+      var p = (f.kl + ring2 / 6) % 1;
+      var r = 2 + Math.pow(p, 2.2) * 44;              // slow far away, fast up close
+      var a = p < 0.15 ? p / 0.15 : (p > 0.85 ? (1 - p) / 0.15 : 1);
+      var drift = Math.sin(p * 5 + f.kl * u.TAU) * p * 3;         // the tunnel bends
+      f.ring(f.c + drift, f.c + drift * 0.5, r, "rgba(201,160,245," + a * 0.8 + ")", 1 + p * 2.5);
+      if (ring2 % 2 === 0)
+        f.ring(f.c + drift, f.c + drift * 0.5, r * 0.92, "rgba(138,217,245," + a * 0.4 + ")", 1);
+    }
+    f.glow(f.c, f.c, 6, "rgba(245,241,220,", 0.8);    // the far end
+  });
+  var px = u.W * 0.5, py = u.GY - 38;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.7, "add");
+      u.strip(sheet, i);
+      u.label("cheap perspective, exhibit four: p^2.2 growth reads as flying INTO it", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("X", "Xray", "scifi", "every sixth frame swaps the body for its bones — the two-frame damage flash, medically enhanced", function make(u) {
+  var N = 12, S = 96, FPS = 14;
+  var sheet = u.bake(N, S, function (f) {
+    var xr = f.i % 6 === 0;                           // the flash frames
+    if (!xr) {
+      f.dot(f.c, f.c - 4, 11, "rgba(138,217,245,0.95)");          // the body
+      f.dot(f.c, f.c + 11, 8, "rgba(138,217,245,0.9)");
+      f.dot(f.c + 4, f.c - 6, 1.8, "#131020");
+      f.dot(f.c - 4, f.c - 6, 1.8, "#131020");
+    } else {
+      f.g.fillStyle = "rgba(232,240,250,0.9)";        // the negative flash
+      f.g.fillRect(f.c - 18, f.c - 20, 36, 42);
+      var bone = "rgba(19,16,32,0.9)";                // and the skeleton
+      f.ring(f.c, f.c - 5, 6, bone, 2);
+      f.streak(f.c, f.c + 1, f.c, f.c + 14, bone, 2.5);
+      f.streak(f.c - 7, f.c + 4, f.c + 7, f.c + 4, bone, 2);
+      f.streak(f.c - 6, f.c + 8, f.c + 6, f.c + 8, bone, 2);
+      f.dot(f.c - 2.5, f.c - 6, 1.6, bone);
+      f.dot(f.c + 2.5, f.c - 6, 1.6, bone);
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 36;
+  return {
+    frame: function (dt, t) {
+      var i = Math.floor(t * FPS) % N;
+      u.scene();
+      u.blit(sheet, i, px, py, 1.5);
+      u.strip(sheet, i);
+      u.label("Invaders' two-pose lesson at combat speed — a swap IS an effect", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; }
+  };
+});
+
+def("Y", "Yolk", "goofy", "tip, crack, split, plop — and then the yolk blinks at you", function make(u) {
+  var N = 14, S = 96, FPS = 12;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k, base = f.S - 16;
+    if (k < 0.55) {                                   // the egg, tipping + cracking
+      var tip = Math.sin(Math.min(1, k / 0.3) * Math.PI) * 0.2 + (k > 0.3 ? (k - 0.3) * 1.2 : 0);
+      f.g.save();
+      f.g.translate(f.c, base - 13);
+      f.g.rotate(tip);
+      f.g.fillStyle = "rgba(240,235,222,0.95)";
+      f.g.beginPath(); f.g.ellipse(0, 0, 10, 13, 0, 0, u.TAU); f.g.fill();
+      if (k > 0.2) {                                  // the crack spreads
+        var cr = Math.min(1, (k - 0.2) / 0.3);
+        f.g.strokeStyle = "rgba(120,110,95,0.9)";
+        f.g.lineWidth = 1;
+        f.g.beginPath();
+        f.g.moveTo(-8, 0);
+        for (var s = 1; s <= Math.floor(cr * 5); s++)
+          f.g.lineTo(-8 + s * 3.2, (s % 2 ? -2.5 : 2.5));
+        f.g.stroke();
+      }
+      f.g.restore();
+    } else {                                          // the plop + the blink
+      var q = (k - 0.55) / 0.45;
+      f.g.fillStyle = "rgba(240,235,222,0.9)";        // shell halves, fallen
+      f.g.beginPath(); f.g.ellipse(f.c - 13, base - 3, 7, 5, -0.4, Math.PI, 0); f.g.fill();
+      f.g.beginPath(); f.g.ellipse(f.c + 13, base - 3, 7, 5, 0.4, Math.PI, 0); f.g.fill();
+      var wob = 1 + Math.sin(q * 12) * 0.15 * (1 - q);
+      f.g.beginPath();                                // the white
+      f.g.ellipse(f.c, base - 2, 15 * wob, 5 / wob, 0, 0, u.TAU);
+      f.g.fillStyle = "rgba(245,242,235,0.9)";
+      f.g.fill();
+      f.dot(f.c, base - 5, 6.5 * wob, "rgba(245,193,60,0.98)");   // the yolk
+      var blink = q > 0.5 && q < 0.62;                // the googly moment
+      if (blink) {
+        f.streak(f.c - 2.5, base - 7, f.c - 0.5, base - 7, "#131020", 1.2);
+        f.streak(f.c + 0.5, base - 7, f.c + 2.5, base - 7, "#131020", 1.2);
+      } else {
+        f.dot(f.c - 1.8, base - 7, 1.1, "#131020");
+        f.dot(f.c + 1.8, base - 7, 1.1, "#131020");
+      }
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 30, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 1.8) t0 = t;
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Drip's four acts with comedic casting — the blink is two frames", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = u.GY - 30; t0 = -9; }
+  };
+});
+
+def("Z", "Zen", "cozy", "a rake draws its rings around the stone at 8 fps, and then everything simply rests", function make(u) {
+  var N = 16, S = 96, FPS = 8;
+  var sheet = u.bake(N, S, function (f) {
+    var k = f.k;
+    f.g.fillStyle = "rgba(90,86,105,0.95)";           // the stone
+    f.g.beginPath();
+    f.g.ellipse(f.c + 6, f.c + 2, 9, 6.5, 0.3, 0, u.TAU);
+    f.g.fill();
+    f.dot(f.c + 3, f.c - 1, 2, "rgba(130,126,145,0.8)");
+    var reach = u.ease(Math.min(1, k / 0.8));         // the rake's progress
+    for (var ring2 = 0; ring2 < 3; ring2++) {
+      var rr = 15 + ring2 * 8;
+      var end = u.clamp(reach * 3 - ring2, 0, 1);     // rings draw in sequence
+      if (end <= 0) continue;
+      f.g.strokeStyle = "rgba(214,205,185,0.6)";
+      f.g.lineWidth = 1.2;
+      for (var line = -1; line <= 1; line++) {        // the rake has three teeth
+        f.g.beginPath();
+        f.g.ellipse(f.c + 6, f.c + 2, rr + line * 2.2, (rr + line * 2.2) * 0.62, 0.3,
+          -u.TAU / 4, -u.TAU / 4 + end * u.TAU);
+        f.g.stroke();
+      }
+    }
+    if (k < 0.8) {                                    // the rake tip itself
+      var a = -u.TAU / 4 + u.clamp(reach * 3 - Math.min(2, Math.floor(reach * 3)), 0, 1) * u.TAU;
+      var rr2 = 15 + Math.min(2, Math.floor(reach * 3)) * 8;
+      f.dot(f.c + 6 + Math.cos(a) * rr2, f.c + 2 + Math.sin(a) * rr2 * 0.62, 1.8, "rgba(232,229,244,0.8)");
+    }
+  });
+  var px = u.W * 0.5, py = u.GY - 34, t0 = -9;
+  return {
+    frame: function (dt, t) {
+      if (t - t0 > N / FPS + 2.5) t0 = t;             // a long, unhurried rest
+      var i = Math.min(N - 1, Math.floor((t - t0) * FPS));
+      u.scene();
+      u.blit(sheet, i, px, py, 1.6);
+      u.strip(sheet, i);
+      u.label("Quill's reveal at garden speed — the folio closes at 8 fps, on purpose", u.W / 2, u.H - 34, null, "center");
+    },
+    press: function (x, y) { px = x; py = y; t0 = -9; }
+  };
+});
+
 /* ============================== the page runner ============================== */
 
 var FAMILY_ORDER = [
@@ -2049,7 +4034,12 @@ var FAMILY_ORDER = [
   ["hit", "Hits & slashes", "one-shots born at a point — clamp the index, bake the last frame empty"],
   ["smoke", "Smoke, dust & water", "matter, not light — source-over playback, transparency doing the real work"],
   ["magic", "Magic & sparkle", "offset clocks, counter-rotating layers, and per-frame chaos"],
-  ["speech", "Speech & celebration", "effects that talk to the player — paper, ink, and punctuation"]
+  ["speech", "Speech & celebration", "effects that talk to the player — paper, ink, and punctuation"],
+  ["scifi", "Sci-fi & glitch", "beams, portals, static, neon — plus the start/loop/end triple and frames that own their own clocks"],
+  ["fantasy", "Fantasy & adventure", "charge-ups, frost, doors, quills — and a two-clip atlas running the width of its card"],
+  ["arcade", "Action & arcade", "explosions, jackpots, invaders — loud, brief, layered, and staggered"],
+  ["cozy", "Cozy & minimal", "axolotls, kettles, zen sand — soft clocks, and one sheet playing at three speeds"],
+  ["goofy", "Goofy & playful", "waddles, yolks, springs — squash, stretch, ping-pong, and comedy timing"]
 ];
 
 var grid = document.getElementById("folio");

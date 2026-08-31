@@ -38,7 +38,7 @@ has its Godot twin here:
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 | Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
 | Locomotion lexicon (all 26) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
-| Flipbook folio (all 52) | `scenes/flipbook.gd` | flipbook | 15 |
+| Flipbook folio (all 104) | `scenes/flipbook.gd` | flipbook | 15 |
 | Flipbook VFX (Godot-only) | `scenes/flipbook_vfx.gd` + `shaders/rim_glow.gdshader`, `shaders/circuit_flow.gdshader` | — | 15 (also 03, 06, 12) |
 
 One demo has no web twin: **Flipbook VFX** is a PNG-sequence loop (frames generated in code — swap in your own) wearing rim glow, a breathing aura, a circuit track, an orbiting mote, click-bursts and a right-click light/dark ground swap, all conducted by tweens, timers and signals. Where the folio (key **G**) is the *breadth* demo — 26 baked sheets — this one (key **H**) is the *depth* demo: one loop, fully dressed. Long-form companion: [`cheatsheets/godot-flipbook-vfx.md`](../../cheatsheets/godot-flipbook-vfx.md).
@@ -105,10 +105,19 @@ of every formula match line for line. No rhymes on this one: the cards
 ## The flipbook folio, in full
 
 `scenes/flipbook.gd` is the same treatment for **baked VFX**: the web
-page's 52 transparent sprite sheets — the alphabet twice over (auras,
-bursts, poofs, magic circles, lightning, confetti; then afterimages,
-meteors, jellies, tornados, omens, Zzz's) — five families paged in
-window-sized parts in one scene. The port
+page's 104 transparent sprite sheets — the alphabet four times over: two
+teaching laps (auras, bursts, poofs, magic circles, lightning, confetti;
+then afterimages, meteors, jellies, tornados, omens, Zzz's) and two
+**genre laps** (sci-fi beams and glitches, fantasy frost and quills,
+arcade jackpots and invaders, cozy axolotls and kettles, goofy waddles
+and yolks) — ten families paged in window-sized parts in one scene. The
+genre laps' special cards use real runtime machinery: per-frame durations
+are passed natively to `SpriteFrames.add_frame`, Tempo's three speeds are
+three `AnimatedSprite2D`s sharing one `SpriteFrames` at different
+`speed_scale`s, Axolotl's synced sparkles reuse lap two's baked Sparkle
+sheet (sheets are assets — sharing them is the point), and Beam, Runner,
+Waddle, and Teleport drive `frame` by hand to show the start/loop/end
+triple, the two-clip atlas, the ping-pong index, and reversed playback. The port
 is deliberately end-to-end Godot: each sheet is drawn ONCE into a
 `SubViewport` with `transparent_bg`, captured to an `ImageTexture`, sliced
 by `AtlasTexture` regions, stacked into `SpriteFrames`, and played by an
@@ -164,5 +173,5 @@ godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 1
 godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://grimoire_test.gd  # all 104 text effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://lexicon_test.gd   # all 26 movement styles: tick, press, draw, A-to-Z census
-godot --headless --path . -s res://flipbook_test.gd  # all 52 sheets: defs census (A–Z twice) + the bake→slice→play pipeline
+godot --headless --path . -s res://flipbook_test.gd  # all 104 sheets: defs census (A–Z ×4) + the bake→slice→play pipeline + the specials
 ```
