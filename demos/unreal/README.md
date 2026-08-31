@@ -70,6 +70,7 @@ table in `recipes/` holds in both dimensions unless a row says otherwise.
 | Elemental buttons | `recipes/elemental-buttons.md` | UMG anatomy recipe |
 | Cube codex (character VFX) | `Source/.../SSCubeVfx.*` + `recipes/cube-vfx.md` | C++ actor with Niagara effect slots + family map |
 | Glyph grimoire (text FX) | `Source/.../SSTextFx.*` + `recipes/text-fx.md` | C++ per-letter TextRender actor + a 2D (UMG) & 3D family map |
+| Flipbook folio (baked VFX sheets) | `Source/.../SSFlipbookVfx.*` + `recipes/flipbook-vfx.md` | C++ runtime-baked SubUV sheet + the three flipbook routes (Paper2D / Niagara / material) |
 
 The full 104-button bestiary lives on
 [the web page](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)

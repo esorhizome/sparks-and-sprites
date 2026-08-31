@@ -19,8 +19,11 @@ Every effect is one of two mechanisms: **spawn small things with simple rules** 
 | Shockwave | ring scales 0→3× while fading | tween | tween | Timeline | tween/`animate` |
 | Screen shake | `noise(t) * trauma²`, trauma decays | camera offset | camera offset | camera shake class | transform on wrapper |
 | Ambience | 2–8/sec slow drifting particles | GPUParticles2D | Particle System | Niagara | starfield code |
+| Flipbook (any of the above, baked) | transparent sheet; frame = `⌊t·fps⌋ mod N` | AnimatedSprite2D + AtlasTexture | Sprite Mode Multiple / Texture Sheet Anim | PaperFlipbook / Niagara SubUV | 9-arg `drawImage` / CSS `steps()` |
 
 **Live demos:** [sparks](https://esorhizome.github.io/sparks-and-sprites/sparks.html) · [flame](https://esorhizome.github.io/sparks-and-sprites/flame.html) · [glow](https://esorhizome.github.io/sparks-and-sprites/glow-additive.html) · [dissolve](https://esorhizome.github.io/sparks-and-sprites/dissolve.html) · [trails](https://esorhizome.github.io/sparks-and-sprites/trails.html) · [fragmented trails](https://esorhizome.github.io/sparks-and-sprites/trails-fragments.html) · [waterdrops](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html) · [halo](https://esorhizome.github.io/sparks-and-sprites/halo.html) · [chrome & liquid metal](https://esorhizome.github.io/sparks-and-sprites/metal-chrome.html) · [shake](https://esorhizome.github.io/sparks-and-sprites/shake.html) · [starfield](https://esorhizome.github.io/sparks-and-sprites/starfield.html)
+
+**Baked VFX** (transparent flipbook sheets — bake once, copy a rectangle) has its own chapter [15](../chapters/15-transparent-flipbooks.md) and cheatsheet [flipbooks](flipbooks.md) — demo: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (26 sheets, A–Z, editable)
 
 **UI feedback** (glowing buttons, cursor trails, responsive cursors) has its own chapter: [12](../chapters/12-cursors-and-living-buttons.md) — demos: [living buttons](https://esorhizome.github.io/sparks-and-sprites/glow-buttons.html) · [responsive cursor](https://esorhizome.github.io/sparks-and-sprites/cursor-sparkle.html)
 

@@ -6,6 +6,8 @@
 
 Each effect names its **mechanism** first — because once you know the mechanism, every engine's version is recognisably the same dish.
 
+(Everything in this cookbook is drawn *live*, every frame. The other way to ship a VFX — draw it **once** into a transparent sprite sheet and replay the frames — is [chapter 15](15-transparent-flipbooks.md), with 26 baked examples in [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html).)
+
 ## Glow
 
 Two different tricks share the name:

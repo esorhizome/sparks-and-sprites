@@ -28,6 +28,7 @@ const DEMOS := [
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
 	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
 	["F", "Locomotion lexicon — 26 movement styles, A to Z", "res://scenes/locomotion.tscn"],
+	["G", "Flipbook folio — 26 baked VFX sheets, A to Z", "res://scenes/flipbook.tscn"],
 ]
 
 func _ready() -> void:

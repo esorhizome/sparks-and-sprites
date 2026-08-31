@@ -53,3 +53,8 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Surface normal | "Straight up off the surface": the slope turned 90° (cross product, in 3D) |
 | Restitution (e) | Bounciness: speed kept per bounce; height kept is e² |
 | Gait | Walking as rules: foot homes, step thresholds, arcs, hips over the planted foot |
+| Flipbook | Playing a sprite sheet frame by frame: loop = `⌊t·fps⌋ mod N`, one-shot clamps |
+| One-shot | Plays once and holds its last frame — which is baked *empty*, so ending needs no cleanup |
+| Premultiplied alpha | Colour stored already ×alpha; a mismatch with the blend mode = dark fringes on fading glows |
+| SubUV | Unreal's word for reading one cell of a sprite sheet by offsetting UVs |
+| steps() | CSS timing function that jumps in N discrete hops — a flipbook player with no JavaScript |
