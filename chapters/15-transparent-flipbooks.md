@@ -12,7 +12,7 @@ The playback technology is two lines of arithmetic, and this chapter will not pr
 
 Everything else is bake-time craft. That's the trade the technique makes: all the cleverness moves to *before the game runs*, and the runtime cost collapses to "copy a rectangle" — which is why flipbooks power VFX on hardware from a Game Boy to a render farm, and why every engine made this century has first-class machinery for them.
 
-▶ *See it all:* **[the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html)** — 26 VFX baked into transparent sheets, A to Z, every one editable in the page. Each card bakes its own sheet from code when it wakes (no image files anywhere), and the filmstrip under each card is the *actual baked texture*, checkerboarded so the transparency is visible. The same 26 are fully ported to GDScript ([`demos/godot/scenes/flipbook.gd`](../demos/godot/scenes/flipbook.gd), menu key **G**).
+▶ *See it all:* **[the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html)** — 52 VFX baked into transparent sheets, the alphabet twice over, every one editable in the page. Each card bakes its own sheet from code when it wakes (no image files anywhere), and the filmstrip under each card is the *actual baked texture*, checkerboarded so the transparency is visible. The same 52 are fully ported to GDScript ([`demos/godot/scenes/flipbook.gd`](../demos/godot/scenes/flipbook.gd), menu key **G**).
 
 ## When to bake, when to draw live
 
@@ -77,15 +77,17 @@ And Godot gets a **depth demo** to pair with the folio's breadth: [`demos/godot/
 
 Two production notes that save real tears: **premultiplied alpha** — some pipelines store colour already multiplied by alpha (Unreal and most GPU particle paths prefer it; canvas and Godot handle it for you); if your baked glow grows a dark fringe where it fades out, the sheet and the blend mode disagree about premultiplication, and the fix is the exporter's "premultiply" checkbox, not artistic despair. And **padding**: with bilinear filtering, frames bleed into their neighbours at the edges — leave 1–2 transparent pixels of margin per cell (the folio's effects simply stay clear of their cell edges, which is the same medicine).
 
-## The 26, A to Z
+## The 52 — the alphabet, twice
 
-| Family | Cards | The lesson each carries |
-|---|---|---|
-| **Glow & flame** | A·Aura, E·Embers, F·Flame, G·Glint, O·Orbit | seamless `i/N` loops, offset per-particle clocks, additive playback |
-| **Hits & slashes** | B·Burst, I·Impact, K·Kapow, N·Nova, T·Trailslash, X·Xslash | the clamp index line, empty last frames, baked motion blur, staggered sub-timelines |
-| **Smoke, dust & water** | D·Dustkick, J·Jet, P·Poof, R·Ripple, U·Updraft, V·Vortex | source-over for matter, loops whose particles are born as their twins die |
-| **Magic & sparkle** | H·Heal, L·Lightning, M·Magicircle, S·Sparkle, W·Warp, Z·Zap | counter-rotating layers in one sheet, per-frame chaos, wobble lobes that divide the lap |
-| **Speech & celebration** | C·Confetti, Q·Question, Y·Yell | ballistics baked at bake time, glyphs as frames, effects aimed at the player |
+The folio runs A to Z two full laps, so every letter owns two effects. The second lap needed **no new machinery at all** — the same baker, the same two index lines, the same five families — which is the quiet point of it: once the pipeline exists, another 26 effects is just another 26 ideas.
+
+| Family | First lap | Second lap | The lesson each carries |
+|---|---|---|---|
+| **Glow & flame** | A·Aura, E·Embers, F·Flame, G·Glint, O·Orbit | A·Afterimage, C·Comet, E·Eclipse, F·Fireflies, W·Wisp | seamless `i/N` loops, offset clocks, backward-sampled tails, Lissajous paths with whole-number frequencies |
+| **Hits & slashes** | B·Burst, I·Impact, K·Kapow, N·Nova, T·Trailslash, X·Xslash | I·Iceshard, M·Meteor, P·Pop, Q·Quake, U·Uppercut, X·Xstamp | the clamp index line, empty last frames, baked motion blur, staggered acts, hard cuts, squash on landing |
+| **Smoke, dust & water** | D·Dustkick, J·Jet, P·Poof, R·Ripple, U·Updraft, V·Vortex | B·Bubbles, D·Drip, G·Geyser, J·Jelly, L·Leaves, R·Rain, S·Snow, T·Tornado | source-over for matter, particles born as their twins die, squash-and-stretch, tempo as weather |
+| **Magic & sparkle** | H·Heal, L·Lightning, M·Magicircle, S·Sparkle, W·Warp, Z·Zap | O·Omen, V·Venom | counter-rotating layers, per-frame chaos, slow one-shots that play a mood instead of a bang |
+| **Speech & celebration** | C·Confetti, Q·Question, Y·Yell | H·Hearts, K·Knockstars, N·Notes, Y·Yoyo, Z·Zzz | ballistics baked at bake time, glyphs as frames, piecewise clocks, effects aimed at the player |
 
 Every card's playback line, blend mode, frame count, and fps are printed on the card — the folio is its own cheatsheet.
 

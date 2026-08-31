@@ -1,6 +1,6 @@
 # Cheatsheet · Transparent flipbooks
 
-Everything = **bake the drawing once, choose a frame with arithmetic, copy a rectangle.** Full chapter: [15](../chapters/15-transparent-flipbooks.md). Live demos: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (26 sheets, A–Z, editable).
+Everything = **bake the drawing once, choose a frame with arithmetic, copy a rectangle.** Full chapter: [15](../chapters/15-transparent-flipbooks.md). Live demos: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (52 sheets — the alphabet twice — all editable).
 
 ## The two index lines (the entire technology)
 
@@ -9,7 +9,7 @@ Everything = **bake the drawing once, choose a frame with arithmetic, copy a rec
 i = floor(t * fps) % N               i = min(N - 1, floor((t - t0) * fps))
 ```
 
-## The A–Z, one line each
+## The A–Z, first lap, one line each
 
 | Card | Effect | The bake in one breath |
 |---|---|---|
@@ -39,6 +39,37 @@ i = floor(t * fps) % N               i = min(N - 1, floor((t - t0) * fps))
 | X | Xslash | two cuts land 3 frames apart — stagger sub-timelines inside one strip |
 | Y | Yell | 3 arc-triplets ripple from the mouth + first-instant speedline ticks |
 | Z | Zap | short arcs re-rolled per frame around the body; every 4th frame surges |
+
+## The A–Z, second lap — same machinery, 26 more ideas
+
+| Card | Effect | The bake in one breath |
+|---|---|---|
+| A | Afterimage | a dasher laps an ellipse; ghosts = the same path sampled slightly in the past |
+| B | Bubbles | risers wobble up on offset clocks; the last 15% of each clock is the pop |
+| C | Comet | Afterimage's trick at tempo — a tail is backward sampling along the path |
+| D | Drip | form → stretch → fall → splash; the first exercise of every animation course |
+| E | Eclipse | the moon crosses on `cos(kl·2π)` — twice per lap, so the loop is seamless; one OPAQUE disc forces source-over |
+| F | Fireflies | Lissajous wanderers — whole-number frequencies or the loop tears |
+| G | Geyser | column up on eased k, crown spray rains down its own sides |
+| H | Hearts | two discs + a triangle, pulsing on a 3× clock inside the rise |
+| I | Iceshard | grow → gleam → shatter: three acts staggered inside one clamp index |
+| J | Jelly | squash × stretch = 1 — conserve volume and the boing sells itself |
+| K | Knockstars | the dizzy halo; the near half of the ellipse draws bigger — free depth |
+| L | Leaves | tumble = rotation + a y-scale flip faking the flat side of a 2D leaf |
+| M | Meteor | falls 60% of the strip, lands the rest — the impact frame is a hard cut |
+| N | Notes | disc + stem + flag on offset rises; what chapter 7's sound looks like |
+| O | Omen | an eye opens, stares, closes at 12 fps — slow one-shots read as omens |
+| P | Pop | inflate with growing wobble (the tell), then droplets — anticipation, baked |
+| Q | Quake | same seed each frame + growing step count = a crack that remembers itself |
+| R | Rain | 75% of each clock falls, 25% splashes — one particle, two costumes |
+| S | Snow | Rain at 10 fps and half the fall — tempo is weather |
+| T | Tornado | five stacked ellipses lagging each other's sway — a funnel from phase alone |
+| U | Uppercut | Trailslash turned vertical; re-bake to rotate, never rotate the blit |
+| V | Venom | a puddle simmers at 11 fps on purpose — poison should feel too slow |
+| W | Wisp | the key-H sibling waves from the web: bob + phase-lagged tail curls |
+| X | Xstamp | an X slams down: oversized → squash → settle, dust ring on the land |
+| Y | Yoyo | drop / sleep / snap / rest — four acts on one piecewise kl clock |
+| Z | Zzz | Z glyphs climb a sleepy sine at 10 fps — the one effect that WANTS low fps |
 
 ## The rules that keep working
 
