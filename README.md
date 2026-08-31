@@ -61,6 +61,7 @@ One-page quick references for the days you just need the answer:
 - [Text](cheatsheets/text.md) — the per-letter anatomy, family → mechanism, the numbers that keep working
 - [Procedural animation](cheatsheets/procedural-animation.md) — the A–Z of movement maths, the four load-bearing snippets, enemy brains cheapest-first
 - [Flipbooks](cheatsheets/flipbooks.md) — the two index lines, the A–Z of baked VFX, engine spellings for sheet → play
+- [VFX around the flipbook (Godot)](cheatsheets/godot-flipbook-vfx.md) — the long form: four clocks + signals, dressing one playing loop with shaders, tweens, particles, and triggers
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
 - [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes
