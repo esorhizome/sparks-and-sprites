@@ -14,7 +14,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 
 1. **No chapter assumes you remember any other chapter.** Every technical word is re-explained, in place, every time it matters. Re-reading a definition you've seen before is a feature of this book, not an insult to you.
 2. **Nothing here can break anything.** This is a map, not a machine. Skimming, forgetting, and returning months later are all correct ways to use it.
-3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing.)
+3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing, and to [animate.style](https://animate.style/), which proved a catalogue you *recognise things in* beats documentation you search — skim until you spot the effect you were imagining, then take its code.)
 
 [![The Waterdrops demo mid-rain: falling streaks, splash droplets, and overlapping ripple rings on the water line](docs/assets/waterdrops-demo.png)](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html)
 
@@ -60,7 +60,7 @@ One-page quick references for the days you just need the answer:
 - [Backgrounds](cheatsheets/backgrounds.md) — the five background patterns
 - [Text](cheatsheets/text.md) — the per-letter anatomy, family → mechanism, the numbers that keep working
 - [Procedural animation](cheatsheets/procedural-animation.md) — the A–Z of movement maths, the four load-bearing snippets, enemy brains cheapest-first
-- [Flipbooks](cheatsheets/flipbooks.md) — the two index lines, the A–Z of baked VFX, engine spellings for sheet → play
+- [Flipbooks](cheatsheets/flipbooks.md) — the four index lines, the A–Z×4 of baked VFX (teaching laps + genre laps), engine spellings for sheet → play
 - [VFX around the flipbook (Godot)](cheatsheets/godot-flipbook-vfx.md) — the long form: four clocks + signals, dressing one playing loop with shaders, tweens, particles, and triggers
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary

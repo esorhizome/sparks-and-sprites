@@ -12,7 +12,7 @@ The playback technology is two lines of arithmetic, and this chapter will not pr
 
 Everything else is bake-time craft. That's the trade the technique makes: all the cleverness moves to *before the game runs*, and the runtime cost collapses to "copy a rectangle" — which is why flipbooks power VFX on hardware from a Game Boy to a render farm, and why every engine made this century has first-class machinery for them.
 
-▶ *See it all:* **[the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html)** — 52 VFX baked into transparent sheets, the alphabet twice over, every one editable in the page. Each card bakes its own sheet from code when it wakes (no image files anywhere), and the filmstrip under each card is the *actual baked texture*, checkerboarded so the transparency is visible. The same 52 are fully ported to GDScript ([`demos/godot/scenes/flipbook.gd`](../demos/godot/scenes/flipbook.gd), menu key **G**).
+▶ *See it all:* **[the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html)** — 104 VFX baked into transparent sheets, the alphabet four times over, every one editable in the page. Laps one and two teach the machinery; laps three and four are **genre laps** — sci-fi & glitch, fantasy & adventure, action & arcade, cozy & minimal, goofy & playful — a picture-book to skim until you recognise the effect you were imagining, then open its code and turn its numbers. Each card bakes its own sheet from code when it wakes (no image files anywhere), and the filmstrip under each card is the *actual baked texture*, checkerboarded so the transparency is visible. The same 104 are fully ported to GDScript ([`demos/godot/scenes/flipbook.gd`](../demos/godot/scenes/flipbook.gd), menu key **G**).
 
 ## When to bake, when to draw live
 
@@ -77,9 +77,9 @@ And Godot gets a **depth demo** to pair with the folio's breadth: [`demos/godot/
 
 Two production notes that save real tears: **premultiplied alpha** — some pipelines store colour already multiplied by alpha (Unreal and most GPU particle paths prefer it; canvas and Godot handle it for you); if your baked glow grows a dark fringe where it fades out, the sheet and the blend mode disagree about premultiplication, and the fix is the exporter's "premultiply" checkbox, not artistic despair. And **padding**: with bilinear filtering, frames bleed into their neighbours at the edges — leave 1–2 transparent pixels of margin per cell (the folio's effects simply stay clear of their cell edges, which is the same medicine).
 
-## The 52 — the alphabet, twice
+## The 104 — the alphabet, four times
 
-The folio runs A to Z two full laps, so every letter owns two effects. The second lap needed **no new machinery at all** — the same baker, the same two index lines, the same five families — which is the quiet point of it: once the pipeline exists, another 26 effects is just another 26 ideas.
+The folio runs A to Z four full laps, so every letter owns four effects. Lap two needed **no new machinery at all** — the same baker, the same two index lines, the same five families — which is the quiet point of it: once the pipeline exists, another 26 effects is just another 26 ideas.
 
 | Family | First lap | Second lap | The lesson each carries |
 |---|---|---|---|
@@ -89,7 +89,27 @@ The folio runs A to Z two full laps, so every letter owns two effects. The secon
 | **Magic & sparkle** | H·Heal, L·Lightning, M·Magicircle, S·Sparkle, W·Warp, Z·Zap | O·Omen, V·Venom | counter-rotating layers, per-frame chaos, slow one-shots that play a mood instead of a bang |
 | **Speech & celebration** | C·Confetti, Q·Question, Y·Yell | H·Hearts, K·Knockstars, N·Notes, Y·Yoyo, Z·Zzz | ballistics baked at bake time, glyphs as frames, piecewise clocks, effects aimed at the player |
 
+Laps three and four are the **genre laps** — a visual catalogue first, in the spirit of [animate.style](https://animate.style/): skim, recognise, open, modify. Only a handful of their cards introduce genuinely new machinery (bolded below); every other card's caption names the older card it borrows from.
+
+| Genre family | The cards | New machinery introduced here |
+|---|---|---|
+| **Sci-fi & glitch** | **B·Beam**, **G·Glitch**, H·Hologram, N·Neon, O·Oldfilm, P·Pixelate, U·UFO, V·Vapor · N·Nebula, P·Portalhop, R·Retrowave, T·Teleport, W·Wormhole, X·Xray | **Beam**: the start/loop/end triple — the industry anatomy of a sustained effect, three segments in one strip. **Glitch**: per-frame durations — a `DUR[]` array instead of one fps (native to Godot's `SpriteFrames`). Teleport adds reversed playback: `N−1−i` turns a departure into an arrival. |
+| **Fantasy & adventure** | C·Chargeup, M·Mist, Q·Quicksand, **R·Runner** · C·Cauldron, D·Doorway, E·Enchant, F·Frostcreep, L·Lantern, M·Mushroom, Q·Quill | **Runner**: two clips in one atlas (a right-facing and a left-facing run, switched at the edges) — rows-as-clips is how real sprite atlases work. |
+| **Action & arcade** | D·Dash, E·Explosion, F·Fireworks, I·Itemget, J·Jackpot, L·Levelup, S·Shield, Z·Zoom · A·Anticipation, I·Invaders, J·Jump, O·Odometer, V·Victory | Explosion plays **two sheets as layers** (additive fireball under source-over smoke). Anticipation and Jump spell timing as frame count — holds and hang-time are just repeated drawings. |
+| **Cozy & minimal** | **A·Axolotl**, K·Kettle, **T·Tempo**, Y·Yarn · H·Heartbeat, U·Umbrella, Z·Zen | **Axolotl**: attach-and-sync — a second sheet tracking a moving host, timed to its turns. **Tempo**: one sheet at three read speeds side by side. |
+| **Goofy & playful** | **W·Waddle**, X·Xylophone · B·Bounceball, G·Gears, K·Kaleido, S·Springcoil, Y·Yolk | **Waddle**: the third index line — ping-pong, `i = p < N ? p : 2N−2−p`, six frames playing as ten with no reversed copy of the sheet. |
+
 Every card's playback line, blend mode, frame count, and fps are printed on the card — the folio is its own cheatsheet.
+
+## Three questions, answered on camera
+
+*(These came up while planning the genre laps, and each got a card instead of a paragraph — show first, then tell.)*
+
+**Can a flipbook track another sprite?** Yes, trivially — position and timing are just variables, and nothing stops two sheets from sharing them. **A·Axolotl** (cozy lap) is the demonstration built to order: a wiggle-swimmer crosses its card on an 8-second loop while a *second* sheet — sparkles — borrows the swimmer's x, y, *and* clock, lighting for half a second after each turn. In engine terms this is parenting (Godot: make the effect a child of the host node, or copy `host.position` each frame; the folio's Godot port sets `sparkle.position = swimmer.position` in one line) plus a shared clock or signal for the timing (`animation_finished`, a `Timer`, or plain `t` — the wisp demo's whole cheatsheet, [`godot-flipbook-vfx.md`](../cheatsheets/godot-flipbook-vfx.md), is about exactly this).
+
+**Is slower/faster motion like standard animating — more frames = slow?** Half right, and the half matters: in a flipbook, **smoothness lives in N (bake-time) and speed lives in fps (play-time)** — they're independent dials. Playing the same sheet at a lower fps is slower *and* choppier (that's traditional animation "on twos" — Anticipation and Jump bake their holds as repeated frames); baking more frames at the same fps is smoother, not slower. In code the speed dial costs nothing: `i = ⌊t·fps⌋` means changing fps re-times playback without touching a pixel — **T·Tempo** shows one pinwheel sheet at 6, 12, and 24 fps side by side, and half the folio's tone comes from this dial alone (hits at 24, poison at 11, sleep at 10).
+
+**Can 2D fake perspective cheaply?** Yes — every trick you named survives baking, because each is just geometry per frame. The folio's perspective squad: **Z·Zoom** (lines converging on a point + a swelling subject = a lens), **B·Bounceball** (a grounded shadow that shrinks with height — the shadow *is* the altitude cue), **R·Retrowave** (rows placed at `horizon + p²` — one squared curve is the entire road-to-horizon effect), **W·Wormhole** (rings growing on `p^2.2` read as flying into a tunnel), plus the flat-plane squash used everywhere (`y × 0.32` turns a circle into a floor). Foreshortening is non-uniform scale (Itemget's spinning gem is just `|cos|` width; Doorway's swing is width shrinking on a hinge); depth-blur is alpha and glow standing in for focus (Mist's far layers are fainter and slower). None of it needs a camera — which is the point.
 
 ## Free sheets, if you'd rather not bake
 
