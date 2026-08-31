@@ -1,23 +1,10 @@
-; Sparks & Sprites — Godot demos
-; Open this file with Godot 4.7+ (Import button on the project manager), press F5.
-; Every demo scene builds itself from code in _ready(), so each script IS the demo.
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
 ;
-; (Heads-up: the Godot editor rewrites this file and drops these comments
-;  whenever it saves settings — README.md in this folder is the durable home.)
-;
-; Capability note: every web-gallery demo has a full Godot twin here, including
-; all 104 elemental buttons (scenes/elements/), all 104 cube-codex character
-; effects (scenes/cubefx/), and all 104 glyph-grimoire text effects
-; (scenes/textfx/). Where the web canvas and Godot spell an effect
-; differently (gradients, additive blending, clipping, trails, font weights),
-; the scripts note the translation in place; none of it is beyond _draw() + math.
-;
-; Rhymes: every one of the 312 effects also has a RHYME — the same effect with
-; two or three dials turned (scenes/elements/*_r.gd, scenes/cubefx/*_r.gd,
-; scenes/textfx/*_r.gd).
-; RIGHT-CLICK any card in the bestiary or the codex to swap original ⇄ rhyme.
-; Each *_r.gd preloads its original as Base and overrides only the branches
-; whose dials moved; diffing the two files is the whole lesson.
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
 
 config_version=5
 
@@ -36,7 +23,6 @@ config/features=PackedStringArray("4.7")
 window/size/viewport_width=960
 window/size/viewport_height=540
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 
 [rendering]
 

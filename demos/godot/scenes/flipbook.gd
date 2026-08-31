@@ -1,5 +1,5 @@
 extends Node2D
-## THE FLIPBOOK FOLIO — 26 VFX baked into transparent sprite sheets, A to Z.
+## THE FLIPBOOK FOLIO — 52 VFX baked into transparent sprite sheets, A to Z twice.
 ## The full port of the web page (docs/flipbook.html). Every gallery before
 ## this one drew its effects live, every frame; this one draws each effect
 ## ONCE — into an off-screen SubViewport with a transparent background —
@@ -31,10 +31,22 @@ const FAMS := [
 	["SPEECH & CELEBRATION", "effects that talk to the player — paper, ink, and punctuation"],
 ]
 
-var effs: Array = []             # the 26 defs (dictionaries), in A-page order
+var effs: Array = []             # the 52 defs (dictionaries), lap 1 then lap 2
+var pagedefs: Array = []         # families split into window-sized parts of 8
 var cards: Array = []            # per-card runtime state, current page only
 var page := 0
 var baked := false
+
+const PAGE_CAP := 8              # 4 × 2 cards is what a 960×540 window holds
+
+func _make_pages() -> void:
+	pagedefs.clear()
+	for fi in FAMS.size():
+		var list: Array = effs.filter(func(e): return int(e.fam) == fi)
+		var parts := int(ceil(list.size() / float(PAGE_CAP)))
+		for pi in parts:
+			pagedefs.append({ "fam": fi, "part": pi, "parts": parts,
+				"list": list.slice(pi * PAGE_CAP, mini(list.size(), (pi + 1) * PAGE_CAP)) })
 
 ## ---------------------------------------------------------------- helpers
 ## The small drawing kit every bake shares — the web page's frame kit f.*,
@@ -470,6 +482,495 @@ func _make_defs() -> Array:
 				for s in range(-1, 2):
 					_streakc(c, m + Vector2(3.0, s * 7.0), m + Vector2(9.0, s * 10.0), Color(0.91, 0.9, 0.96, a2), 1.2) })
 
+	# ================== THE SECOND LAP — the alphabet again ==================
+	# 26 more sheets, so every letter owns two effects. Same baker, same two
+	# index lines, same five families: another 26 effects is just 26 ideas.
+
+	# ---- glow & flame, lap two ----
+	d.append({ "letter": "A", "name": "Afterimage", "fam": 0, "n": 16, "fps": 14.0, "loop": true, "add": true,
+		"hint": "a dasher laps an ellipse; its ghosts are 'where I recently was', baked",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for s in range(4, -1, -1):
+				var a := (kl - s * 0.045) * TAU
+				var p := Vector2(C + cos(a) * 22.0, C + sin(a) * 12.0)
+				var al := 1.0 - s * 0.22
+				_glowc(c, p, (5.0 - s) * al, Color("8AD9F5"), al * 0.7)
+				c.draw_circle(p, (3.8 - s * 0.6) * al, Color(0.54, 0.85, 0.96, al))
+				if s == 0: c.draw_circle(p + Vector2(1.4, -1.1), 1.0, Color(0.07, 0.06, 0.13)) })
+
+	d.append({ "letter": "C", "name": "Comet", "fam": 0, "n": 16, "fps": 14.0, "loop": true, "add": true,
+		"hint": "a head on a tilted ellipse, a tail sampled BACKWARD along the same path",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for s in range(9, 0, -1):
+				var a := (kl - s * 0.022) * TAU
+				var q := Vector2(C + cos(a) * 23.0, C + sin(a) * 14.0 - cos(a) * 4.5)
+				var al := 1.0 - s / 10.0
+				c.draw_circle(q, 2.0 * al + 0.3, Color(0.96, 0.76, 0.41, al * 0.8))
+			var ah := kl * TAU
+			var h := Vector2(C + cos(ah) * 23.0, C + sin(ah) * 14.0 - cos(ah) * 4.5)
+			_glowc(c, h, 6.5, Color("F5DC96"), 0.9)
+			_starc(c, h, 3.8, 1.2, 4, Color(0.96, 0.95, 0.86, 0.95), kl * 2.0) })
+
+	d.append({ "letter": "E", "name": "Eclipse", "fam": 0, "n": 16, "fps": 12.0, "loop": true, "add": false,
+		"hint": "a dark disc crosses a glow on cos(kl·2π) — passing twice per lap is seamless",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var x := cos(kl * TAU) * 30.0
+			var near := maxf(0.0, 1.0 - absf(x) / 12.0)
+			_glowc(c, Vector2(C, C), 15.0 + near * 6.0, Color("F5DC96"), 0.7 + near * 0.3)
+			c.draw_circle(Vector2(C, C), 9.5, Color(0.96, 0.86, 0.59, 0.95))
+			if near > 0.2:
+				for j in 8:
+					var a := j * TAU / 8.0 + 0.4
+					var dir := Vector2(cos(a), sin(a))
+					_streakc(c, Vector2(C, C) + dir * 12.0, Vector2(C, C) + dir * (12.0 + near * 7.0),
+						Color(0.96, 0.95, 0.86, near * 0.8), 1.2)
+			c.draw_circle(Vector2(C + x, C), 9.0, Color(0.07, 0.06, 0.13, 0.96)) })
+
+	var rF2 := RandomNumberGenerator.new(); rF2.seed = 107
+	var flies: Array = []
+	for j in 6: flies.append([1 + rF2.randi() % 2, 1 + rF2.randi() % 3, rF2.randf() * TAU, rF2.randf() * TAU, 2 + rF2.randi() % 2, rF2.randf()])
+	d.append({ "letter": "F", "name": "Fireflies", "fam": 0, "n": 16, "fps": 12.0, "loop": true, "add": true,
+		"hint": "six wanderers on Lissajous paths — whole-number frequencies, or the loop tears",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for y in flies:
+				var x: float = C + sin(y[0] * kl * TAU + y[2]) * 22.0
+				var yy: float = C + sin(y[1] * kl * TAU + y[3]) * 18.0
+				var a: float = pow(0.5 + 0.5 * sin(y[4] * kl * TAU + y[5] * 9.0), 3.0)
+				_glowc(c, Vector2(x, yy), 4.5 * a + 0.8, Color(0.84, 0.96, 0.55), a * 0.8)
+				c.draw_circle(Vector2(x, yy), 1.1, Color(0.96, 0.96, 0.78, 0.3 + a * 0.7)) })
+
+	d.append({ "letter": "W", "name": "Wisp", "fam": 0, "n": 12, "fps": 12.0, "loop": true, "add": true,
+		"hint": "a bobbing ghost with a phase-lagged tail — hello, key-H sibling",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var bob := sin(kl * TAU) * 3.0
+			_glowc(c, Vector2(C, C - 4.5 + bob), 12.0, Color(0.86, 0.88, 0.96), 0.8)
+			_glowc(c, Vector2(C, C + 4.5 + bob * 0.8), 9.0, Color(0.86, 0.88, 0.96), 0.7)
+			for s in range(1, 4):
+				var lag := sin((kl - s * 0.09) * TAU) * 3.0
+				_glowc(c, Vector2(C + sin(s * 1.8) * 2.6, C + 10.5 + s * 3.8 + lag * 0.6),
+					5.2 - s * 1.3, Color(0.86, 0.88, 0.96), 0.55 - s * 0.14)
+			c.draw_circle(Vector2(C - 3.0, C - 5.2 + bob), 1.4, Color(0.31, 0.78, 0.94, 0.95))
+			c.draw_circle(Vector2(C + 3.0, C - 5.2 + bob), 1.4, Color(0.31, 0.78, 0.94, 0.95)) })
+
+	# ---- hits & slashes, lap two ----
+	var rI2 := RandomNumberGenerator.new(); rI2.seed = 113
+	var spikes2: Array = []
+	for j in 5: spikes2.append([(j / 5.0) * TAU - 0.5 + rI2.randf() * 0.4, 15.0 + rI2.randf() * 7.5])
+	d.append({ "letter": "I", "name": "Iceshard", "fam": 1, "n": 12, "fps": 18.0, "loop": false, "add": true,
+		"hint": "crystals grow, gleam once, then shatter — three acts in one strip",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			if k < 0.55:
+				var g := smoothstep(0.0, 1.0, k / 0.55)
+				for s in spikes2:
+					var tip: Vector2 = Vector2(C, C) + Vector2(cos(s[0]), sin(s[0])) * s[1] * g
+					_streakc(c, Vector2(C, C), tip, Color(0.54, 0.85, 0.96, 0.5), 5.0 * g + 0.8)
+					_streakc(c, Vector2(C, C), tip, Color(0.75, 0.9, 0.98, 0.9), 2.6 * g + 0.4)
+				if k > 0.4: _starc(c, Vector2(C, C), 6.0, 1.9, 4, Color(0.96, 0.98, 1.0, (k - 0.4) / 0.15 * 0.9), 0.3)
+			elif k < 0.9:
+				var sc := (k - 0.55) / 0.35
+				for j2 in spikes2.size():
+					var s2: Array = spikes2[j2]
+					var dd: float = s2[1] * (0.6 + sc * 0.9)
+					var p := Vector2(C + cos(s2[0]) * dd, C + sin(s2[0]) * dd + sc * sc * 7.5)
+					_starc(c, p, 3.0 * (1.0 - sc), 1.1 * (1.0 - sc), 4, Color(0.75, 0.9, 0.98, 1.0 - sc), sc * 3.0 + j2) })
+
+	d.append({ "letter": "M", "name": "Meteor", "fam": 1, "n": 12, "fps": 20.0, "loop": false, "add": true,
+		"hint": "falls for 60% of the strip, lands for the rest — the impact frame is a hard cut",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			var p0 := Vector2(10.0, 8.0)
+			var p1 := Vector2(45.0, 55.0)
+			if k < 0.6:
+				var p := k / 0.6
+				var h := p0 + (p1 - p0) * p
+				_streakc(c, h + Vector2(-7.5, -10.5), h, Color(0.96, 0.63, 0.35, 0.7), 4.0)
+				_streakc(c, h + Vector2(-12.0, -17.0), h, Color(0.96, 0.54, 0.35, 0.35), 6.0)
+				_glowc(c, h, 6.0, Color("F5DC96"), 0.95)
+			else:
+				var q := (k - 0.6) / 0.4
+				if q < 0.35: _glowc(c, p1, 12.0 * (1.0 - q / 0.35), Color(0.96, 0.95, 0.86), 0.95)
+				_ringc(c, p1, 3.0 + q * 20.0, Color(0.96, 0.76, 0.41, 1.0 - q), 2.4 * (1.0 - q) + 0.4)
+				for j in 5:
+					var a := PI + (j / 4.0) * PI + 0.3
+					c.draw_circle(p1 + Vector2(cos(a) * q * 17.0, sin(a) * q * 17.0 - q * (1.0 - q) * 14.0),
+						1.7 * (1.0 - q), Color(0.96, 0.63, 0.35, 1.0 - q)) })
+
+	var rP2 := RandomNumberGenerator.new(); rP2.seed = 127
+	var pdrops: Array = []
+	for j in 8: pdrops.append([(j / 8.0) * TAU + rP2.randf() * 0.4, 0.7 + rP2.randf() * 0.5])
+	d.append({ "letter": "P", "name": "Pop", "fam": 1, "n": 10, "fps": 18.0, "loop": false, "add": true,
+		"hint": "a bubble inflates past its nerve and becomes droplets — state change mid-strip",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			if k < 0.55:
+				var p := k / 0.55
+				var r := 6.0 + p * 11.0
+				var wob := sin(p * 26.0) * p * 1.9
+				_ringc(c, Vector2(C, C), r + wob, Color(0.54, 0.85, 0.96, 0.9), 1.6)
+				c.draw_circle(Vector2(C - r * 0.35, C - r * 0.4), 1.7, Color(0.96, 0.98, 1.0, 0.8))
+			else:
+				var q := (k - 0.55) / 0.45
+				for dd in pdrops:
+					var dist: float = 17.0 * dd[1] * pow(q, 0.7) + 3.0
+					c.draw_circle(Vector2(C + cos(dd[0]) * dist, C + sin(dd[0]) * dist + q * q * 6.0),
+						1.5 * (1.0 - q) + 0.25, Color(0.54, 0.85, 0.96, 1.0 - q))
+				if q < 0.3: _ringc(c, Vector2(C, C), 17.0 + q * 15.0, Color(0.96, 0.98, 1.0, (0.3 - q) / 0.3 * 0.7), 1.2) })
+
+	d.append({ "letter": "Q", "name": "Quake", "fam": 1, "n": 12, "fps": 16.0, "loop": false, "add": false,
+		"hint": "cracks spider outward frame by frame — a one-shot that draws MORE as it ages",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			var reach := smoothstep(0.0, 1.0, minf(1.0, k / 0.7))
+			for j in 4:
+				var rr := RandomNumberGenerator.new()
+				rr.seed = 500 + j                        # same path every frame;
+				var x := C; var y := S - 20.0            # only its LENGTH grows
+				var a := j * TAU / 4.0 + 0.4
+				var steps := int((reach if k < 0.85 else 1.0) * 7.0)
+				for s in steps:
+					var nx := x + cos(a) * 4.0
+					var ny := y + sin(a) * 1.8
+					_streakc(c, Vector2(x, y), Vector2(nx, ny), Color(0.79, 0.77, 0.89, 0.25), 2.8 - s * 0.15)
+					_streakc(c, Vector2(x, y), Vector2(nx, ny), Color(0.12, 0.09, 0.19, 0.9), 1.7 - s * 0.14)
+					x = nx; y = ny; a += (rr.randf() - 0.5) * 1.1
+				if k > 0.15 and k < 0.85:
+					c.draw_circle(Vector2(x, y - 2.2), 2.3 * sin(k * PI), Color(0.63, 0.59, 0.55, 0.35)) })
+
+	d.append({ "letter": "U", "name": "Uppercut", "fam": 1, "n": 10, "fps": 22.0, "loop": false, "add": true,
+		"hint": "Trailslash turned vertical: a rising arc, speedlines, a star at the apex",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			var ke := smoothstep(0.0, 1.0, k)
+			var ang := 2.6 + (-1.2 - 2.6) * ke
+			var fade := 1.0 if k < 0.7 else 1.0 - (k - 0.7) / 0.3
+			var pc := Vector2(C + 6.0, C + 6.0)
+			for s in 4:
+				var ga := ang + s * 0.3
+				if ga > 2.6: continue
+				c.draw_arc(pc, 22.0, ga - 0.1, ga + 0.45, 14,
+					Color(0.91, 0.9, 0.96, fade * (0.85 - s * 0.2)), 4.5 - s * 1.0, true)
+			for v in 3:
+				_streakc(c, Vector2(15.0 + v * 6.0, S - 14.0 - k * 15.0), Vector2(15.0 + v * 6.0, S - 6.0 - k * 15.0),
+					Color(0.54, 0.85, 0.96, fade * 0.5), 1.1)
+			if k > 0.5:
+				var q := (k - 0.5) / 0.5
+				_starc(c, pc + Vector2(cos(-1.2), sin(-1.2)) * 22.0, 5.2 * (1.0 - q) + 0.8, 1.8 * (1.0 - q) + 0.25, 4,
+					Color(0.96, 0.95, 0.86, fade), q) })
+
+	d.append({ "letter": "X", "name": "Xstamp", "fam": 1, "n": 10, "fps": 18.0, "loop": false, "add": false,
+		"hint": "an X slams down with a squash on landing — scale drawn INTO the frames",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			if k > 0.9: return
+			var sc := 1.0; var sy := 1.0
+			if k < 0.35: sc = 2.0 - k / 0.35
+			elif k < 0.55: sy = 1.0 - sin((k - 0.35) / 0.2 * PI) * 0.25
+			var a := (1.0 if k < 0.75 else 1.0 - (k - 0.75) / 0.15) * (0.35 + k if k < 0.35 else 1.0)
+			var L := 13.0 * sc
+			c.draw_set_transform(Vector2(i * S + C, C), 0.0, Vector2(1.0, sy))
+			_streakc(c, Vector2(-L, -L), Vector2(L, L), Color(0.96, 0.54, 0.54, a), 6.0)
+			_streakc(c, Vector2(-L, L), Vector2(L, -L), Color(0.96, 0.54, 0.54, a), 6.0)
+			_streakc(c, Vector2(-L, -L), Vector2(L, L), Color(0.07, 0.06, 0.13, a * 0.9), 2.2)
+			c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE)
+			if k > 0.35 and k < 0.7:
+				_ringc(c, Vector2(C, C + 10.5), (k - 0.35) * 45.0, Color(0.63, 0.59, 0.55, 0.7 - k), 1.6) })
+
+	# ---- smoke, dust & water, lap two ----
+	var rB2 := RandomNumberGenerator.new(); rB2.seed = 131
+	var bubs2: Array = []
+	for j in 6: bubs2.append([15.0 + rB2.randf() * 42.0, rB2.randf(), 1.9 + rB2.randf() * 2.2, 2.2 + rB2.randf() * 3.0])
+	d.append({ "letter": "B", "name": "Bubbles", "fam": 2, "n": 16, "fps": 12.0, "loop": true, "add": true,
+		"hint": "six risers wobble up on offset clocks and pop into ticks at the surface",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for b in bubs2:
+				var p: float = fmod(kl + b[1], 1.0)
+				var y: float = S - 9.0 - p * (S - 21.0)
+				var x: float = b[0] + sin(p * TAU * 2.0 + b[1] * 8.0) * b[3]
+				if p < 0.85:
+					_ringc(c, Vector2(x, y), b[2] * (0.7 + p * 0.5), Color(0.54, 0.85, 0.96, 0.4 + p * 0.4), 1.1)
+					c.draw_circle(Vector2(x - b[2] * 0.3, y - b[2] * 0.35), 0.7, Color(0.96, 0.98, 1.0, 0.7))
+				else:
+					var q: float = (p - 0.85) / 0.15
+					for s in 4:
+						var a := s * TAU / 4.0 + 0.6
+						c.draw_circle(Vector2(x + cos(a) * (b[2] + q * 3.0), y + sin(a) * (b[2] + q * 3.0)),
+							0.6 * (1.0 - q), Color(0.54, 0.85, 0.96, 1.0 - q)) })
+
+	d.append({ "letter": "D", "name": "Drip", "fam": 2, "n": 12, "fps": 14.0, "loop": false, "add": true,
+		"hint": "form, stretch, fall, splash — the classic animation exercise as a texture",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			var topY := 10.0
+			var floorY := S - 12.0
+			if k < 0.4:
+				var p := k / 0.4
+				var r := 1.5 + p * 2.6
+				c.draw_circle(Vector2(C, topY + r), r, Color(0.54, 0.85, 0.96, 0.9))
+				_streakc(c, Vector2(C, topY), Vector2(C, topY + r * (1.0 + p)), Color(0.54, 0.85, 0.96, 0.7), 1.5 + p)
+			elif k < 0.7:
+				var q := (k - 0.4) / 0.3
+				var y := topY + 6.0 + smoothstep(0.0, 1.0, q) * (floorY - topY - 8.0)
+				c.draw_set_transform(Vector2(i * S + C, y), 0.0, Vector2(0.7, 1.5))
+				c.draw_circle(Vector2.ZERO, 3.4, Color(0.54, 0.85, 0.96, 0.9))
+				c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE)
+			else:
+				var s := (k - 0.7) / 0.3
+				for j in 5:
+					var a := PI + (j / 4.0) * PI
+					c.draw_circle(Vector2(C + cos(a) * s * 10.5, floorY + sin(a) * s * 7.0 + s * s * 4.5),
+						1.2 * (1.0 - s), Color(0.54, 0.85, 0.96, 1.0 - s))
+				_ellipsec(c, Vector2(C, floorY + 1.5), 3.0 + s * 12.0, (3.0 + s * 12.0) * 0.3,
+					Color(0.54, 0.85, 0.96, (1.0 - s) * 0.8), 1.2) })
+
+	var rG2 := RandomNumberGenerator.new(); rG2.seed = 139
+	var spray2: Array = []
+	for j in 8: spray2.append([(rG2.randf() - 0.5) * 20.0, rG2.randf() * 0.3, 0.7 + rG2.randf() * 0.6])
+	d.append({ "letter": "G", "name": "Geyser", "fam": 2, "n": 12, "fps": 16.0, "loop": false, "add": true,
+		"hint": "a water column erupts, crowns, and rains back down its own sides",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			var base := S - 9.0
+			var h := smoothstep(0.0, 1.0, minf(1.0, k / 0.45)) * 39.0 * (1.0 if k < 0.75 else 1.0 - (k - 0.75) / 0.35)
+			for s in int(h / 4.5):
+				_glowc(c, Vector2(C + sin(s * 2.0 + k * 9.0) * 1.2, base - s * 4.5),
+					5.2 - s * 0.34, Color("8AD9F5"), 0.7 - s * 0.045)
+			if k > 0.3:
+				for sp in spray2:
+					var q: float = maxf(0.0, (k - 0.3 - sp[1]) / 0.7)
+					if q <= 0.0 or q >= 1.0: continue
+					c.draw_circle(Vector2(C + sp[0] * q * sp[2], base - h - 1.5 + (q * q * 30.0 - q * 13.5)),
+						1.4 * (1.0 - q * 0.6), Color(0.75, 0.92, 0.98, 1.0 - q)) })
+
+	d.append({ "letter": "J", "name": "Jelly", "fam": 2, "n": 12, "fps": 14.0, "loop": true, "add": false,
+		"hint": "a blob hops on pure squash-and-stretch — volume conserved, sx = 1/sy",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var sy := 1.0 + sin(kl * TAU) * 0.28
+			var sx := 1.0 / sy
+			var hop := maxf(0.0, sin(kl * TAU)) * 7.5
+			var base := S - 15.0
+			c.draw_circle(Vector2(C, base + 3.0), 8.2 * sx * maxf(0.0, 1.0 - hop / 6.0) * 0.5 + 2.2, Color(0.07, 0.06, 0.13, 0.3))
+			c.draw_set_transform(Vector2(i * S + C, base - 6.8 * sy - hop), 0.0, Vector2(sx, sy))
+			c.draw_circle(Vector2.ZERO, 8.2, Color(0.61, 0.89, 0.54, 0.85))
+			c.draw_circle(Vector2(-2.6, -2.6), 2.4, Color(0.86, 0.98, 0.82, 0.6))
+			c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE)
+			c.draw_circle(Vector2(C - 2.6 * sx, base - 8.2 * sy - hop), 1.1, Color(0.07, 0.06, 0.13))
+			c.draw_circle(Vector2(C + 2.6 * sx, base - 8.2 * sy - hop), 1.1, Color(0.07, 0.06, 0.13)) })
+
+	var rL2 := RandomNumberGenerator.new(); rL2.seed = 149
+	var leafcols := [Color(0.84, 0.66, 0.47), Color(0.77, 0.55, 0.35), Color(0.61, 0.71, 0.43)]
+	var lvs2: Array = []
+	for j in 5: lvs2.append([13.0 + rL2.randf() * 45.0, rL2.randf(), 6.0 + rL2.randf() * 6.0, 2 + rL2.randi() % 2, leafcols[j % 3]])
+	d.append({ "letter": "L", "name": "Leaves", "fam": 2, "n": 16, "fps": 12.0, "loop": true, "add": false,
+		"hint": "five leaves tumble down on offset clocks, swaying wider than they fall",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for L in lvs2:
+				var p: float = fmod(kl + L[1], 1.0)
+				var y: float = 7.5 + p * (S - 16.0)
+				var x: float = L[0] + sin(p * TAU * 2.0 + L[1] * 7.0) * L[2]
+				var rot: float = p * TAU * L[3]
+				var a: float = p / 0.1 if p < 0.1 else ((1.0 - p) / 0.15 if p > 0.85 else 1.0)
+				var col: Color = L[4]
+				c.draw_set_transform(Vector2(i * S + x, y), rot, Vector2(1.0, 0.45 + 0.55 * absf(cos(rot))))
+				c.draw_circle(Vector2.ZERO, 2.7, Color(col.r, col.g, col.b, a * 0.9))
+				c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE) })
+
+	var rR2 := RandomNumberGenerator.new(); rR2.seed = 151
+	var rdrops: Array = []
+	for j in 8: rdrops.append([7.5 + rR2.randf() * 57.0, rR2.randf()])
+	d.append({ "letter": "R", "name": "Rain", "fam": 2, "n": 12, "fps": 16.0, "loop": true, "add": true,
+		"hint": "eight fast streaks, each ending in a micro-splash exactly where it lands",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var floorY := S - 10.0
+			for dd in rdrops:
+				var p: float = fmod(kl + dd[1], 1.0)
+				if p < 0.75:
+					var y: float = 4.5 + (p / 0.75) * (floorY - 10.0)
+					_streakc(c, Vector2(dd[0] + 1.5, y), Vector2(dd[0], y + 7.0), Color(0.59, 0.78, 0.96, 0.7), 1.1)
+				else:
+					var q: float = (p - 0.75) / 0.25
+					_streakc(c, Vector2(dd[0] - 1.5 - q * 2.2, floorY - q * 2.2), Vector2(dd[0] - 0.8, floorY),
+						Color(0.59, 0.78, 0.96, 1.0 - q), 0.8)
+					_streakc(c, Vector2(dd[0] + 0.8, floorY), Vector2(dd[0] + 1.5 + q * 2.2, floorY - q * 2.2),
+						Color(0.59, 0.78, 0.96, 1.0 - q), 0.8) })
+
+	var rS2 := RandomNumberGenerator.new(); rS2.seed = 157
+	var flakes2: Array = []
+	for j in 8: flakes2.append([7.5 + rS2.randf() * 57.0, rS2.randf(), 3.8 + rS2.randf() * 4.5, 0.9 + rS2.randf() * 1.1])
+	d.append({ "letter": "S", "name": "Snow", "fam": 2, "n": 16, "fps": 10.0, "loop": true, "add": false,
+		"hint": "eight flakes drift on lazy sines — Rain with the clock geared way down",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for s in flakes2:
+				var p: float = fmod(kl + s[1], 1.0)
+				var y: float = 4.5 + p * (S - 12.0)
+				var x: float = s[0] + sin(p * TAU * 2.0 + s[1] * 9.0) * s[2]
+				var a: float = p / 0.1 if p < 0.1 else ((1.0 - p) / 0.1 if p > 0.9 else 1.0)
+				c.draw_circle(Vector2(x, y), s[3], Color(0.94, 0.96, 0.99, a * 0.85))
+				if s[3] > 1.5:
+					for m in 3:
+						var am: float = m * PI / 3.0 + p * 2.0
+						var arm: Vector2 = Vector2(cos(am), sin(am)) * s[3] * 1.8
+						_streakc(c, Vector2(x, y) - arm, Vector2(x, y) + arm, Color(0.94, 0.96, 0.99, a * 0.5), 0.6) })
+
+	d.append({ "letter": "T", "name": "Tornado", "fam": 2, "n": 12, "fps": 14.0, "loop": true, "add": false,
+		"hint": "five stacked ellipses lag each other's sway — a funnel from phase offsets alone",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var base := S - 12.0
+			for s in 5:
+				var h := s / 4.0
+				var y := base - 4.5 - h * 34.0
+				var w := 3.8 + h * 16.5
+				var x := C + sin(kl * TAU + s * 0.9) * (1.5 + h * 3.8)
+				_ellipsec(c, Vector2(x, y), w, w * 0.3, Color(0.75, 0.73, 0.8, 0.75 - h * 0.25), 1.7 - h * 0.6)
+			for dd in 3:
+				var p := fmod(kl * 2.0 + dd / 3.0, 1.0)
+				var lev := 0.3 + dd * 0.25
+				var rr := 3.8 + lev * 16.5
+				c.draw_circle(Vector2(C + cos(p * TAU) * rr, base - 4.5 - lev * 34.0 + sin(p * TAU) * rr * 0.3),
+					1.2, Color(0.84, 0.66, 0.47, 0.8)) })
+
+	# ---- magic & sparkle, lap two ----
+	d.append({ "letter": "O", "name": "Omen", "fam": 3, "n": 12, "fps": 12.0, "loop": false, "add": true,
+		"hint": "an eye opens, stares, drifts, closes — a one-shot that plays a MOOD",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var k := float(i) / (n - 1)
+			if k > 0.92: return
+			var open := smoothstep(0.0, 1.0, k / 0.25) if k < 0.25 else (smoothstep(0.0, 1.0, (0.92 - k) / 0.22) if k > 0.7 else 1.0)
+			var a := minf(1.0, open + 0.1)
+			var w := 19.0
+			var hh := 10.5 * open
+			for lid in [-1.0, 1.0]:                      # two quadratic lids, sampled
+				var pts := PackedVector2Array()
+				for t in 17:
+					var q := t / 16.0
+					var mid := Vector2(C, C + lid * hh * 2.0)
+					var p0 := Vector2(C - w, C)
+					var p2 := Vector2(C + w, C)
+					pts.append(p0.lerp(mid, q).lerp(mid.lerp(p2, q), q))
+				c.draw_polyline(pts, Color(0.79, 0.63, 0.96, a * 0.9), 1.6, true)
+			if open > 0.3:
+				var drift := sin((k - 0.35) * 12.0) * 2.2 if (k > 0.35 and k < 0.6) else 0.0
+				_ringc(c, Vector2(C + drift, C), 5.2 * open, Color(0.96, 0.76, 0.41, a), 1.6)
+				c.draw_circle(Vector2(C + drift, C), 2.0 * open, Color(0.96, 0.95, 0.86, a))
+				_glowc(c, Vector2(C, C), 15.0, Color("C9A0F5"), open * 0.3) })
+
+	var rV2 := RandomNumberGenerator.new(); rV2.seed = 163
+	var vbubs: Array = []
+	for j in 5: vbubs.append([(rV2.randf() - 0.5) * 25.0, rV2.randf(), 1.2 + rV2.randf() * 1.5])
+	d.append({ "letter": "V", "name": "Venom", "fam": 3, "n": 14, "fps": 11.0, "loop": true, "add": true,
+		"hint": "a puddle bubbles while sluggish drips feed it — poison as a patient loop",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var pool := S - 16.0
+			_ellipsec(c, Vector2(C, pool), 18.0, 5.6, Color(0.61, 0.89, 0.54, 0.8), 1.6)
+			_glowc(c, Vector2(C, pool), 10.5, Color("9BE28A"), 0.3)
+			if kl < 0.55:
+				var stretch := kl / 0.55
+				c.draw_circle(Vector2(C - 6.0, 13.5 + stretch * (pool - 18.0)), 1.8 + stretch, Color(0.61, 0.89, 0.54, 0.9))
+				_streakc(c, Vector2(C - 6.0, 12.0), Vector2(C - 6.0, 13.5 + stretch * 4.5), Color(0.61, 0.89, 0.54, 0.5), 1.1)
+			elif kl < 0.7:
+				var sp := (kl - 0.55) / 0.15
+				_ringc(c, Vector2(C - 6.0, pool), sp * 6.0, Color(0.78, 0.96, 0.71, 1.0 - sp), 1.0)
+			for b in vbubs:
+				var p: float = fmod(kl + b[1], 1.0)
+				var a := sin(p * PI)
+				_ringc(c, Vector2(C + b[0], pool - p * 3.8), b[2] * a, Color(0.78, 0.96, 0.71, a * 0.7), 0.8) })
+
+	# ---- speech & celebration, lap two ----
+	d.append({ "letter": "H", "name": "Hearts", "fam": 4, "n": 14, "fps": 12.0, "loop": true, "add": false,
+		"hint": "three hearts rise, sway, and pulse — affection on offset clocks",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for j in 3:
+				var p := fmod(kl + j / 3.0, 1.0)
+				var y := S - 12.0 - p * (S - 22.0)
+				var x := C + sin(p * TAU + j * 2.0) * 7.0
+				var a := sin(p * PI)
+				var r := (3.0 + j) * (1.0 + sin(p * TAU * 3.0) * 0.12) * (0.6 + a * 0.4)
+				var col := Color(0.96, 0.54, 0.63, a)
+				c.draw_circle(Vector2(x - r * 0.5, y - r * 0.35), r * 0.55, col)
+				c.draw_circle(Vector2(x + r * 0.5, y - r * 0.35), r * 0.55, col)
+				c.draw_colored_polygon(PackedVector2Array([
+					Vector2(x - r, y - r * 0.15), Vector2(x + r, y - r * 0.15), Vector2(x, y + r)]), col) })
+
+	d.append({ "letter": "K", "name": "Knockstars", "fam": 4, "n": 12, "fps": 14.0, "loop": true, "add": true,
+		"hint": "the dizzy halo: stars circle a tilted ellipse overhead, blinking as they lap",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var cy := C + 3.0
+			_ellipsec(c, Vector2(C, cy), 19.5, 6.8, Color(0.96, 0.76, 0.41, 0.2), 0.8)
+			for j in 3:
+				var p := fmod(kl + j / 3.0, 1.0)
+				var a := p * TAU
+				var pos := Vector2(C + cos(a) * 19.5, cy + sin(a) * 6.8)
+				var front := sin(a) > 0.0
+				var r := 4.1 if front else 2.9
+				_starc(c, pos, r, r * 0.42, 5, Color(0.96, 0.76, 0.41, 0.95 if front else 0.6), p * 5.0) })
+
+	d.append({ "letter": "N", "name": "Notes", "fam": 4, "n": 16, "fps": 12.0, "loop": true, "add": false,
+		"hint": "three music notes drift up on sway — a disc, a stem, a flag, a song",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			for j in 3:
+				var p := fmod(kl + j / 3.0, 1.0)
+				var y := S - 13.5 - p * (S - 24.0)
+				var x := C - 7.5 + j * 7.5 + sin(p * TAU + j * 2.1) * 5.2
+				var a := sin(p * PI)
+				var col := Color(0.91, 0.9, 0.96, a)
+				c.draw_circle(Vector2(x, y), 2.3, col)
+				_streakc(c, Vector2(x + 2.0, y - 0.8), Vector2(x + 2.0, y - 9.0), col, 1.2)
+				c.draw_colored_polygon(PackedVector2Array([
+					Vector2(x + 2.0, y - 9.0), Vector2(x + 6.5, y - 7.2), Vector2(x + 2.0, y - 6.0)]), col) })
+
+	d.append({ "letter": "Y", "name": "Yoyo", "fam": 4, "n": 16, "fps": 14.0, "loop": true, "add": false,
+		"hint": "drop, sleep, snap back — a piecewise clock where each act gets its own easing",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var p := float(i) / n
+			var topY := 10.5
+			var botY := S - 16.0
+			var y := topY
+			var spin := 0.0
+			if p < 0.3: y = topY + smoothstep(0.0, 1.0, p / 0.3) * (botY - topY)
+			elif p < 0.6:
+				y = botY
+				spin = (p - 0.3) / 0.3
+			elif p < 0.85: y = botY - smoothstep(0.0, 1.0, (p - 0.6) / 0.25) * (botY - topY)
+			_streakc(c, Vector2(C, topY - 4.5), Vector2(C, y - 4.5), Color(0.79, 0.77, 0.89, 0.6), 0.8)
+			c.draw_circle(Vector2(C, y), 5.2, Color(0.96, 0.54, 0.54, 0.95))
+			_ringc(c, Vector2(C, y), 5.2, Color(0.07, 0.06, 0.13, 0.5), 1.2)
+			c.draw_circle(Vector2(C, y), 1.5, Color(0.96, 0.95, 0.86, 0.9))
+			if spin > 0.0:
+				for s in 3:
+					var a := spin * 15.0 + s * TAU / 3.0
+					var dir := Vector2(cos(a), sin(a))
+					_streakc(c, Vector2(C, y) + dir * 6.8, Vector2(C, y) + dir * 9.0, Color(0.96, 0.76, 0.41, 0.7), 0.9) })
+
+	d.append({ "letter": "Z", "name": "Zzz", "fam": 4, "n": 14, "fps": 10.0, "loop": true, "add": false,
+		"hint": "three Z glyphs climb a sleepy sine, each bigger than the last",
+		"paint": func(c: CanvasItem, i: int, n: int) -> void:
+			var kl := float(i) / n
+			var font := ThemeDB.fallback_font
+			for j in 3:
+				var p := fmod(kl + j / 3.0, 1.0)
+				var y := S - 15.0 - p * (S - 26.0)
+				var x := C - 4.5 + sin(p * TAU + j) * 6.0 + j * 3.0
+				var a := sin(p * PI) * 0.9
+				var fs := int(round(8.0 + p * 8.0 + j * 1.5))
+				c.draw_set_transform(Vector2(i * S + x, y), sin(p * TAU * 2.0) * 0.2, Vector2.ONE)
+				c.draw_string(font, Vector2(-fs * 0.35, fs * 0.35), "Z", HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Color(0.79, 0.77, 0.89, a))
+				c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE) })
+
 	return d
 
 ## ---------------------------------------------------------------- baking
@@ -485,6 +986,7 @@ class SheetPainter extends Node2D:
 
 func _ready() -> void:
 	effs = _make_defs()
+	_make_pages()
 	_bake_all()
 
 func _bake_all() -> void:
@@ -518,7 +1020,7 @@ func _build_page() -> void:
 	for card in cards:
 		(card.spr as AnimatedSprite2D).queue_free()
 	cards.clear()
-	var list: Array = effs.filter(func(e): return int(e.fam) == page)
+	var list: Array = pagedefs[page].list
 	for i in list.size():
 		var eff: Dictionary = list[i]
 		var cellpos := ORIGIN + Vector2((i % COLS) * CELL.x, floorf(i / float(COLS)) * CELL.y)
@@ -558,9 +1060,11 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 func _draw() -> void:
+	var pd: Dictionary = pagedefs[page] if not pagedefs.is_empty() else { "fam": 0, "part": 0, "parts": 1 }
+	var part := " · part %d/%d" % [int(pd.part) + 1, int(pd.parts)] if int(pd.parts) > 1 else ""
 	draw_string(ThemeDB.fallback_font, Vector2(14, 24),
-		"THE FLIPBOOK FOLIO — 26 VFX baked into transparent sprite sheets — %s (%d/%d): %s" %
-		[FAMS[page][0], page + 1, FAMS.size(), FAMS[page][1]],
+		"THE FLIPBOOK FOLIO — 52 VFX baked into transparent sprite sheets — %s%s (%d/%d): %s" %
+		[FAMS[pd.fam][0], part, page + 1, pagedefs.size(), FAMS[pd.fam][1]],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.66, 0.64, 0.77))
 	draw_string(ThemeDB.fallback_font, Vector2(14, 42),
 		"←/→ turn the page · click a card to replay from frame 0 · the strip below each card IS the baked texture · Esc = menu",
@@ -613,8 +1117,8 @@ func _input(event: InputEvent) -> void:
 			KEY_ESCAPE:
 				get_tree().change_scene_to_file("res://scenes/menu.tscn")
 			KEY_RIGHT, KEY_PAGEDOWN:
-				page = (page + 1) % FAMS.size()
+				page = (page + 1) % pagedefs.size()
 				if baked: _build_page()
 			KEY_LEFT, KEY_PAGEUP:
-				page = (page - 1 + FAMS.size()) % FAMS.size()
+				page = (page - 1 + pagedefs.size()) % pagedefs.size()
 				if baked: _build_page()
