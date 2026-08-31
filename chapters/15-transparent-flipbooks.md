@@ -43,6 +43,8 @@ The full stack, all from code if you want it that way (which this book does):
 
 The folio's Godot port bakes its sheets in a `SubViewport` with `transparent_bg = true` — draw the frames with `_draw()` calls, grab the viewport's texture, slice, play. That's also the recipe for baking *any* procedural animation into a sheet inside Godot.
 
+And Godot gets a **depth demo** to pair with the folio's breadth: [`demos/godot/scenes/flipbook_vfx.gd`](../demos/godot/scenes/flipbook_vfx.gd) (menu key **H**) takes *one* 8-frame loop and dresses it completely — rim-glow shader on the sprite, a breathing aura tween period-locked to the loop, a flowing circuit track, an orbiting mote that z-flips behind and in front, click-bursts, an idle-phase cycle, and a right-click dark/light ground swap that the same white frames survive because `modulate` multiplies. Its long-form companion, [`cheatsheets/godot-flipbook-vfx.md`](../cheatsheets/godot-flipbook-vfx.md), is the full conductor's manual: the four clocks (shader `TIME`, `AnimationPlayer`, `Tween`, `Timer`) and the signals that let any effect loop, cycle, *and* trigger around a playing flipbook.
+
 ### Unity — yes, three ways
 
 - **Sprite Mode: Multiple** — import the sheet, slice it in the Sprite Editor (grid slicing takes a cell size), and the frames become individual `Sprite` assets you can drop on an Animation clip. This is the designer-facing flipbook.

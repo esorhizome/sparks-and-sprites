@@ -12,7 +12,9 @@ extends Node2D
 ## Click the wisp = burst. Click anywhere = ripple. RIGHT-CLICK swaps the
 ## dark/light ground — the SAME white frames survive both themes because
 ## `modulate` multiplies (white art is tintable art). Esc = menu.
-## Chapters 03, 06, 12 — long-form companion: cheatsheets/godot-flipbook-vfx.md.
+## Chapters 15 (flipbooks), 03, 06, 12 — long-form companion:
+## cheatsheets/godot-flipbook-vfx.md. Breadth sibling: scenes/flipbook.gd
+## (the folio, menu key G) bakes 26 sheets; this scene dresses ONE loop fully.
 ##
 ## The frames are GENERATED below (~a second of honest math at load) so nothing
 ## hides in an asset file. To use real art, make _wisp_frames() return your own:

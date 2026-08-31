@@ -60,4 +60,6 @@ i = floor(t * fps) % N               i = min(N - 1, floor((t - t0) * fps))
 
 **Code-baked, no assets:** web [flipbook.js](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) · Godot [`flipbook.gd`](../demos/godot/scenes/flipbook.gd) (SubViewport bake, menu key **G**) · Unity [`FlipbookVfx.cs`](../demos/unity/Scripts/FlipbookVfx.cs) (`SetPixels` bake) · Unreal [`SSFlipbookVfx.*`](../demos/unreal/Source/SparksAndSprites/SSFlipbookVfx.cpp) (transient `UTexture2D` + SubUV) + [recipe](../demos/unreal/recipes/flipbook-vfx.md).
 
+**Going deep in Godot:** [godot-flipbook-vfx.md](godot-flipbook-vfx.md) — the long-form conductor's manual for hanging effects *on and around* one playing flipbook (the four clocks: shader `TIME`, `AnimationPlayer`, `Tween`, `Timer`; signals as triggers) — live demo `scenes/flipbook_vfx.gd`, menu key **H**.
+
 **Free sheets:** Kenney particle/explosion packs (CC0) · OpenGameArt VFX (check each license) · itch.io free VFX packs — all arrive as exactly this format.

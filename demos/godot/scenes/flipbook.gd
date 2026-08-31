@@ -52,7 +52,7 @@ func _streakc(c: CanvasItem, a: Vector2, b: Vector2, col: Color, w := 2.0) -> vo
 	c.draw_line(a, b, col, w, true)
 
 func _starc(c: CanvasItem, p: Vector2, r1: float, r2: float, points: int, col: Color, rot := 0.0) -> void:
-	if r1 < 0.2: return
+	if r1 < 0.7 or r2 < 0.05: return    # sub-pixel stars fail triangulation
 	var pts := PackedVector2Array()
 	for j in points * 2:
 		var r := r1 if j % 2 == 0 else r2
