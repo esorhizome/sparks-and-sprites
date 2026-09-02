@@ -86,10 +86,10 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- S · Sun -----------------------------------------------------------
-	d.append({ "letter": "S", "name": "Sun",
+	d.append({ "letter": "S", "name": "Sun", "drag": true,
 		"hint": "a disc with limb darkening, a corona of stacked glows added together, slow faint rays — and a wide soft that brightens the sky around it",
 		"dials": { "sky": [Color("0B1030"), Color("2A4F9A")], "core": Color("FFFBE8"), "disc": Color("FFD070"), "limb": Color("F08A30"), "corona": Color("FFC060"),
-			"size": 0.13, "layers": 4, "rays": 12, "spin": 0.08, "fade": 0.05,
+			"size": 0.13, "layers": 4, "rays": 12, "spin": 0.2, "fade": 0.05,
 			"label": "core → falloff → thrown light: the disc is one radial, the corona four more, added" },
 		"rhyme": { "name": "Red giant", "hint": "the same sun swollen and cooled — a crimson palette, a disc almost twice as wide, six corona layers, a slower spin",
 			"dials": { "sky": [Color("0A0508"), Color("3A0A14")], "core": Color("FFE0B0"), "disc": Color("FF6A3A"), "limb": Color("8A1A10"), "corona": Color("FF5A3A"),
@@ -124,7 +124,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- C · Candle --------------------------------------------------------
-	d.append({ "letter": "C", "name": "Candle",
+	d.append({ "letter": "C", "name": "Candle", "drag": true,
 		"hint": "a flame is two glows and a bright tip, wobbling; the wall is lit by a radial that flickers with it, the wax a cylinder lit from the flame side",
 		"dials": { "wall": Color("1A1424"), "flame": Color("FFB040"), "tip": Color("FFF6D8"), "blue": Color("5A8AFF"), "wax": Color("E8DCC0"),
 			"wobble": 1.0, "reach": 0.55, "count": 1, "floor": Color("100C18"),
@@ -166,7 +166,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- E · Eclipse -------------------------------------------------------
-	d.append({ "letter": "E", "name": "Eclipse",
+	d.append({ "letter": "E", "name": "Eclipse", "drag": true,
 		"hint": "a dark disc over a bright corona: streaky glows and thin radial lines, added, breathing slowly — the sky darkens as totality nears (press x scrubs)",
 		"dials": { "sky": Color("2A4F9A"), "dark": Color("05050F"), "corona": Color("FFF4E0"), "moon": Color("0A0A12"),
 			"size": 0.14, "moon_size": 1.02, "streaks": 28, "breath": 0.4,
@@ -202,7 +202,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- F · Flare ---------------------------------------------------------
-	d.append({ "letter": "F", "name": "Flare",
+	d.append({ "letter": "F", "name": "Flare", "drag": true,
 		"hint": "a lens flare: soft discs and rings strung along the line from the sun through the canvas centre, sizes and hues varying, plus one horizontal streak",
 		"dials": { "sky": [Color("1A2A5A"), Color("6A9AD0")], "sun": Color("FFF8E0"), "hues": [40.0, 200.0, 300.0, 160.0], "ghosts": 7,
 			"streak": Color("9AC8FF"), "streak_len": 0.9, "hex": false, "hill": Color("0E1428"),
@@ -249,7 +249,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- H · Hearth --------------------------------------------------------
-	d.append({ "letter": "H", "name": "Hearth",
+	d.append({ "letter": "H", "name": "Hearth", "drag": true,
 		"hint": "a dark room lit by one warm radial centred on the fire; the fire is stacked glows, the light flickers, two blocks throw long soft shadows away from it",
 		"dials": { "sky": [Color("0A0810"), Color("0A0810")], "mantle": Color("2A1C1A"), "warm": Color("FF9A40"), "hot": Color("FFE0A0"),
 			"flicker": 1.0, "reach": 0.9, "floor": Color("0E0A12"),      # mantle: null = no fireplace (outdoors)
@@ -294,10 +294,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- K · Kiln ----------------------------------------------------------
-	d.append({ "letter": "K", "name": "Kiln",
+	d.append({ "letter": "K", "name": "Kiln", "drag": true,
 		"hint": "a chamber glowing from within: a hot radial inside a dark box, breathing; embers drifting out; a wedge of glow spilling onto the floor",
 		"dials": { "bg": [Color("0C0A10"), Color("100D14")], "brick": Color("3A2A28"), "hot": Color("FFD070"), "heat": Color("FF6A20"),
-			"period": 3.0, "embers": 24, "drift": 1.0, "floor": Color("0A080E"), "deep": Color("3A0A00"), "deepest": Color("200400"),   # period: seconds per breath
+			"period": 2.0, "embers": 24, "drift": 1.0, "floor": Color("0A080E"), "deep": Color("3A0A00"), "deepest": Color("200400"),   # period: seconds per breath
 			"label": "light from inside a box: the core is hidden, so the falloff and the spill do all the telling" },
 		"rhyme": { "name": "Iron forge", "hint": "the same chamber running hotter — blue-white heat, a breath every 1.2 s instead of 3, forty sparks instead of two dozen embers",
 			"dials": { "bg": [Color("08090E"), Color("0C0E14")], "brick": Color("2A2C34"), "hot": Color("E8F4FF"), "heat": Color("5A9AFF"),
@@ -340,7 +340,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- L · Lantern -------------------------------------------------------
-	d.append({ "letter": "L", "name": "Lantern",
+	d.append({ "letter": "L", "name": "Lantern", "drag": true,
 		"hint": "a paper lantern: a warm gradient shell with dark ribs, lit by a core inside, swaying on a string — the pool of light on the ground moves with it",
 		"dials": { "sky": [Color("0A0818"), Color("1A1030")], "paper": Color("FF8A3A"), "core": Color("FFF0C0"), "ribs": 7,
 			"sway": 1.0, "count": 1, "rise": 0.0,                        # rise > 0: the lanterns float upward and wrap
@@ -389,10 +389,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- M · Moonphases ----------------------------------------------------
-	d.append({ "letter": "M", "name": "Moonphases",
+	d.append({ "letter": "M", "name": "Moonphases", "drag": true,
 		"hint": "a sphere shaded by a light that orbits over time — the terminator moves new → crescent → half → full; one offset radial plus one dark disc",
 		"dials": { "sky": [Color("03030A"), Color("0B0B1E")], "moons": [Color("D8D8E0")], "dark": Color("0E0E1A"), "glow": Color("B8C8FF"),
-			"size": 0.2, "month": 12.0, "count": 1,                     # month: seconds for one full cycle
+			"size": 0.2, "month": 8.0, "count": 1,                     # month: seconds for one full cycle
 			"label": "the terminator IS the sphere: a shading offset plus a sliding dark disc, nothing else" },
 		"rhyme": { "name": "Twin moons", "hint": "the same terminator on two moons of another world — one rose, one teal, the small one a third of a cycle ahead — and a faster month",
 			"dials": { "sky": [Color("0A0410"), Color("1E0A24")], "moons": [Color("F0B8C8"), Color("8AE0D0")], "dark": Color("120A18"), "glow": Color("F0C8E0"),
@@ -430,7 +430,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- N · Neon ----------------------------------------------------------
-	d.append({ "letter": "N", "name": "Neon",
+	d.append({ "letter": "N", "name": "Neon", "drag": true,
 		"hint": "a neon sign: one path stroked four times, wider and fainter each pass (the falloff), added; it flickers; the wall gets a glow of the same hue",
 		"dials": { "wall": Color("141018"), "tube": Color("FF2A8A"), "passes": 4, "flicker": 0.15, "wobble": 0.0, "floor": Color("0A080C"),   # flicker: chance per tick of a dim moment
 			"label": "one path, four strokes: a thin white-hot core, then wider fainter halos — added, not layered" },
@@ -476,10 +476,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Q · Quasar --------------------------------------------------------
-	d.append({ "letter": "Q", "name": "Quasar",
+	d.append({ "letter": "Q", "name": "Quasar", "drag": true,
 		"hint": "a hot core, two opposite jets (glows stretched with ctx.scale), and a torus-like accretion ring — all added, slowly rotating; pure light, no matter",
 		"dials": { "sky": [Color("020208"), Color("0A0618")], "core": Color.WHITE, "jet": Color("7AB8FF"), "disc": Color("FF8A5A"),
-			"spin": 0.15, "jet_len": 0.45, "pulse": 0.0,                # pulse: seconds per beat (0 = steady)
+			"spin": 0.35, "jet_len": 0.45, "pulse": 0.0,                # pulse: seconds per beat (0 = steady)
 			"label": "additive only: nothing here is solid, so every overlap is brighter — that IS how light behaves" },
 		"rhyme": { "name": "Crab pulsar", "hint": "the same core and jets spinning thirteen times faster and beating once every 0.9 s — a lighthouse in cyan and violet",
 			"dials": { "jet": Color("40F0FF"), "disc": Color("9A5AFF"), "spin": 2.0, "pulse": 0.9,
@@ -518,7 +518,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- R · Rimlight ------------------------------------------------------
-	d.append({ "letter": "R", "name": "Rimlight",
+	d.append({ "letter": "R", "name": "Rimlight", "drag": true,
 		"hint": "a backlit figure: a dark silhouette (sphere + body) with a bright rim on the edge nearest the light, a soft light behind — press moves the light",
 		"dials": { "sky": [Color("0C0A1A"), Color("241A3A")], "ground": Color("0A0812"), "light": Color("FFE8B0"), "body": Color("1A1424"), "rim": Color("FFE8B0"), "size": 0.11,
 			"label": "the rim is the edge nearest the light — a thin bright arc says 'lit from behind' on its own" },
@@ -553,7 +553,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- U · Ultraviolet ---------------------------------------------------
-	d.append({ "letter": "U", "name": "Ultraviolet",
+	d.append({ "letter": "U", "name": "Ultraviolet", "drag": true,
 		"hint": "a blacklight room: a thin violet tube, its falloff on the wall, and only certain shapes glow — saturated additive violet and green with soft halos",
 		"dials": { "room": Color("07050C"), "tube": Color("B08CFF"), "tube_core": Color("F0E8FF"), "glow_a": Color("8A3AFF"), "glow_b": Color("3AFF9A"),
 			"reach": 0.55, "shapes": 7, "bob": 0.0, "floor": Color("05040A"), "matter": Color("100C16"),   # bob > 0: the shapes drift as if floating

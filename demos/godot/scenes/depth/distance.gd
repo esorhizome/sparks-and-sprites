@@ -113,10 +113,10 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- A · Alps ----------------------------------------------------------
-	d.append({ "letter": "A", "name": "Alps",
+	d.append({ "letter": "A", "name": "Alps", "drag": true,
 		"hint": "six mountain silhouettes, each mixed toward the sky by depth — the far ones nearly dissolve; press slides the camera and the near ridge moves most",
 		"dials": { "sky": [Color("5A82C8"), Color("C8DCEE")], "rock": Color("262A42"), "air": Color("B4C8E2"),   # the air is what far rock turns into
-			"layers": 6, "jag": 1.0, "drift": 0.15, "seed": 7,
+			"layers": 6, "jag": 1.0, "drift": 0.4, "seed": 7,
 			"label": "same rock, more air: fog(rock, depth) — six shades of one colour is a mountain range" },
 		"rhyme": { "name": "Neon ridges", "hint": "the same six ridges under a black sky, fogging toward cyan instead of blue — a synth poster from one changed colour",
 			"dials": { "sky": [Color("050515"), Color("160E3A")], "rock": Color("2A0A4A"), "air": Color("3AF0E0"),
@@ -147,7 +147,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- C · Canyon --------------------------------------------------------
-	d.append({ "letter": "C", "name": "Canyon",
+	d.append({ "letter": "C", "name": "Canyon", "drag": true,
 		"hint": "cliff walls step in from both sides toward a bright far gap: each nearer pair is darker and warmer, and dust pools between them; press sets the dust",
 		"dials": { "sky": [Color("6A90CC"), Color("F8E8C8")], "rock": Color("8A4630"), "air": Color("EED2A8"), "glow": Color("FFF6DC"),
 			"dust": 1.0, "pairs": 6, "seed": 5,
@@ -187,7 +187,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- D · Dunes ---------------------------------------------------------
-	d.append({ "letter": "D", "name": "Dunes",
+	d.append({ "letter": "D", "name": "Dunes", "drag": true,
 		"hint": "dune crests stacked back to a pale horizon: each a horizontal gradient, lit side to shadow side, fading to peach with distance; press moves the sun",
 		"dials": { "sky": [Color("6A9AD8"), Color("F5DDB8")], "sand": Color("D89A52"), "shade": Color("7A3E22"), "air": Color("F2D8B8"),
 			"dunes": 7, "sun_x": 0.15, "seed": 9, "label_col": Color(0.16, 0.08, 0.04, 0.65),
@@ -229,7 +229,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- F · Fjord ---------------------------------------------------------
-	d.append({ "letter": "F", "name": "Fjord",
+	d.append({ "letter": "F", "name": "Fjord", "drag": true,
 		"hint": "fogged mountain layers over still water, each mirrored below the line — the reflection darker and fading down under a gradient mask; press for wind",
 		"dials": { "sky": [Color("7A9AC8"), Color("D8E4EE")], "rock": Color("2C3446"), "air": Color("C0D0E0"), "water": Color("1E2A3E"),
 			"layers": 4, "wind": 0.3, "seed": 12,
@@ -275,7 +275,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- I · Icebergs ------------------------------------------------------
-	d.append({ "letter": "I", "name": "Icebergs",
+	d.append({ "letter": "I", "name": "Icebergs", "drag": true,
 		"hint": "three rows of bergs over a mist band: the far row is smaller, paler, and bobs slower — one number z sets size, colour, and speed; press pans",
 		"dials": { "sky": [Color("4A6A9A"), Color("C8D8E8")], "ice": Color("DCEAF5"), "sea": Color("2A4A6A"), "air": Color("B8C8D8"), "mist": Color.WHITE,
 			"per_row": 5, "rows": 3, "seed": 21,
@@ -328,7 +328,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- K · Knoll ---------------------------------------------------------
-	d.append({ "letter": "K", "name": "Knoll",
+	d.append({ "letter": "K", "name": "Knoll", "drag": true,
 		"hint": "rolling hills, each a gradient-filled sine, warm green near and blue-grey far — the sheep shrink with their hills; press pans the camera",
 		"dials": { "sky": [Color("7AAAE0"), Color("DDE8F0")], "grass": Color("4A8A3A"), "air": Color("B8C8DC"), "sheep": Color("F5F2E8"),
 			"hills": 6, "flock": 5, "step": 3.0, "seed": 33,               # step: how often the curve is sampled, in px
@@ -379,7 +379,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- M · Mesa ----------------------------------------------------------
-	d.append({ "letter": "M", "name": "Mesa",
+	d.append({ "letter": "M", "name": "Mesa", "drag": true,
 		"hint": "flat-topped rock stacks in rows that bunch toward the horizon — smaller, paler, closer together — shadows only at the near feet; press moves the sun",
 		"dials": { "sky": [Color("5A8AD0"), Color("F2D9B0")], "rock": Color("B0603A"), "sand": Color("D8A870"), "air": Color("E8CDB0"),
 			"rows": 6, "per_row": 3, "sun_x": 0.1, "seed": 17, "label_col": Color(0.16, 0.08, 0.04, 0.65),
@@ -421,7 +421,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- P · Pines ---------------------------------------------------------
-	d.append({ "letter": "P", "name": "Pines",
+	d.append({ "letter": "P", "name": "Pines", "drag": true,
 		"hint": "rows of triangle trees: each row back is smaller, packed tighter, and mixed further into the fog — press moves the camera and the rows slide by depth",
 		"dials": { "sky": [Color("8AA8C8"), Color("E4ECF2")], "pine": Color("16302A"), "air": Color("D0DCE6"), "rows": 6, "seed": 4, "label_col": null,
 			"label": "size, spacing, colour, and parallax all come from the row's p — four cues, one number" },
@@ -466,7 +466,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- Q · Quay ----------------------------------------------------------
-	d.append({ "letter": "Q", "name": "Quay",
+	d.append({ "letter": "Q", "name": "Quay", "drag": true,
 		"hint": "harbour posts marching to a vanishing point: spacing shrinks as p², heights shrink with it, colour fogs, ripples only near; press moves the point",
 		"dials": { "sky": [Color("3A4A7A"), Color("E8B890")], "water": Color("22304A"), "post": Color("3A2A1E"), "air": Color("C8A898"), "glow": Color("FFD9A0"),
 			"posts": 14, "jitter": 0.0, "vp_x": 0.62,                     # jitter: 0 = still posts
@@ -535,7 +535,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label if b.fog_on else D.label_off) })
 
 	# ---- S · Skyline -------------------------------------------------------
-	d.append({ "letter": "S", "name": "Skyline",
+	d.append({ "letter": "S", "name": "Skyline", "drag": true,
 		"hint": "a city in three planes: the far one pale, flat, and slow; the near one dark with lit windows — colour, speed, and detail from one z; press pans",
 		"dials": { "sky": [Color("1A1E4A"), Color("7A4A7A"), Color("F5A070")], "tower": Color("1A1828"), "air": Color("9A7090"), "window": Color("F5C169"),
 			"per_plane": 12, "max_h": 0.55, "seed": 44,
@@ -593,7 +593,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- V · Valley --------------------------------------------------------
-	d.append({ "letter": "V", "name": "Valley",
+	d.append({ "letter": "V", "name": "Valley", "drag": true,
 		"hint": "two slopes meet in a V, five pairs deep: mist pools in the bottom as a soft band and the far end is the brightest thing; press sets the mist level",
 		"dials": { "sky": [Color("8AA8D0"), Color("F5EAD8")], "hill": Color("243E30"), "air": Color("D8DAD4"), "mist": Color("F0F0F4"), "glow": Color("FFF8E8"),
 			"pairs": 5, "mist_y": 0.62, "seed": 6,                        # mist_y: where the mist's surface sits
@@ -637,7 +637,7 @@ static func defs() -> Array:
 			_label(n, b, D) })
 
 	# ---- W · Woodland ------------------------------------------------------
-	d.append({ "letter": "W", "name": "Woodland",
+	d.append({ "letter": "W", "name": "Woodland", "drag": true,
 		"hint": "trunks at random depths, sorted far to near: the near ones wide, dark, and sharp; the far ones thin and pale behind a low ground fog; press pans",
 		"dials": { "sky": [Color("1E3A2E"), Color("8AA890")], "bark": Color("2A1E16"), "air": Color("9AB0A0"), "fog": Color("C8D8CC"),
 			"trees": 28, "tall": 1.1, "cap": null, "seed": 8,             # cap: a colour turns every trunk into a mushroom
