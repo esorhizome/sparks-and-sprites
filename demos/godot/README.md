@@ -55,6 +55,8 @@ and **drag** where the badge says so (the canvas is an invisible slider:
 scrub a sunrise, pan a range, swing a lamp round a ball). **Double-click a
 card to open it large** in the middle of the window; the painters draw
 relative to their stage size, so the big one is the same code at 2.7×.
+One card (X·Xenon, a strobe) is **opt-in**: it shows a
+"contains flashing light" notice instead of running, until clicked.
 **Right-click a card for its rhyme**: here a rhyme is literally a dials swap — every card keeps its numbers in one dictionary
 `D`, and the rhyme is the same painter with two or three values changed.
 
