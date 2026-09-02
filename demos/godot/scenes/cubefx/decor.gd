@@ -158,7 +158,13 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				poly.append(p)
 			for i in range(pts.size() - 1, -1, -1):
 				poly.append((pts[i] as Vector2) + Vector2(0, 6.0 + i * 1.2))
-			n.draw_colored_polygon(poly, Color(0.67, 0.196, 0.27, 0.9))
+			# the band can be degenerate: fresh from init() every spine point sits
+			# on one spot (a collinear sliver), and for a few frames after the cube
+			# turns the head jumps across while the tail still trails the old way,
+			# so the band folds over itself. Both fail triangulation, so ask the
+			# same triangulator first and skip the frame rather than log an error.
+			if not Geometry2D.triangulate_polygon(poly).is_empty():
+				n.draw_colored_polygon(poly, Color(0.67, 0.196, 0.27, 0.9))
 			CubeKit.draw_cube(n, b)
 		"stage_rain":
 			CubeKit.draw_cube(n, b)
