@@ -303,10 +303,10 @@ var FAMILY_ORDER = [
 
 def("A", "Aurora", "sky", "curtains of light: one thin vertical gradient per strip, its top and bottom riding slow sines — colour is position, motion is phase", function make(u) {
   var D = { sky: ["#07071A", "#0E1230"], hi: "#5AF0AA", lo: "#9A5AF0",   // the two aurora colours
-            strips: 48, speed: 0.35, glow: 0.7 };
+            strips: 48, speed: 0.6, glow: 0.7 };
   var R = u.rng(3), stars = [];
   for (var j = 0; j < 40; j++) stars.push([R() * u.W, R() * u.H * 0.7, 0.4 + R() * 1.1]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var j = 0; j < stars.length; j++)
@@ -329,11 +329,11 @@ def("A", "Aurora", "sky", "curtains of light: one thin vertical gradient per str
 
 def("B", "Bluehour", "sky", "the twenty minutes after sunset: indigo above, a warm sliver at the horizon, and stars arriving one by one as the gradient darkens", function make(u) {
   var D = { top: "#0B0F3A", mid: "#2A3F8F", horizon: "#E8A07A", ground: "#06060F",
-            minutes: 14, stars: 70 };                                     // how long the hour lasts, in seconds
+            minutes: 8, stars: 70 };                                     // how long the hour lasts, in seconds
   var R = u.rng(11), stars = [];
   for (var j = 0; j < D.stars; j++) stars.push([R() * u.W, R() * u.H * 0.75, 0.4 + R() * 1.0, R()]);
   var k = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       k = u.clamp((t % (D.minutes * 1.4)) / D.minutes, 0, 1);            // 0 = just after sunset, 1 = night
       var top = u.mix(D.top, "#030312", k), mid = u.mix(D.mid, "#0B1040", k), hor = u.mix(D.horizon, "#3A2A4F", k);
@@ -352,9 +352,9 @@ def("B", "Bluehour", "sky", "the twenty minutes after sunset: indigo above, a wa
 def("D", "Dawn", "sky", "sunrise as a clock: four palette keyframes for the top and four for the horizon, mixed by time — the sun is just a disc that climbs while the colours change", function make(u) {
   var D = { tops: ["#05051A", "#2A1E5A", "#5A7FD0", "#6FA8E8"],          // night → violet → morning → day
             hors: ["#1A1030", "#C2507A", "#F5A15A", "#CFE6F5"],
-            length: 16, sunSize: 0.09, sea: true };
+            length: 9, sunSize: 0.09, sea: true };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * u.TAU * 0.5)) ;   // eases 0→1, then rests at day
       var seg = u.clamp(k * 3, 0, 2.999), i = Math.floor(seg), f = seg - i;
@@ -383,9 +383,9 @@ def("D", "Dawn", "sky", "sunrise as a clock: four palette keyframes for the top 
 def("E", "Eventide", "sky", "sunset is dawn played backwards with a redder palette — and an afterglow band that outlives the sun", function make(u) {
   var D = { tops: ["#5A8FD8", "#3A4A9A", "#2A1E4A", "#08081C"],          // day → dusk → violet → night
             hors: ["#B8D8F5", "#F58A5A", "#C2507A", "#2A1A3A"],
-            length: 16, sunSize: 0.09, afterglow: "#F5C169" };
+            length: 9, sunSize: 0.09, afterglow: "#F5C169" };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * u.TAU * 0.5));
       var seg = u.clamp(k * 3, 0, 2.999), i = Math.floor(seg), f = seg - i;
@@ -414,7 +414,7 @@ def("G", "Goldenhour", "sky", "a low sun paints everything on one side gold and 
             hills: 4, sunX: 0.12 };
   var R = u.rng(21), hills = [];
   for (var j = 0; j < D.hills; j++) hills.push({ y: 0.55 + j * 0.1, amp: 0.05 + R() * 0.04, ph: R() * 9, f: 1.5 + R() * 2 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       var sx = u.W * D.sunX, sy = u.H * 0.46;
@@ -438,7 +438,7 @@ def("G", "Goldenhour", "sky", "a low sun paints everything on one side gold and 
 def("H", "Haze", "sky", "heat haze: the horizon band is cut into thin slices and each slice slides sideways on a sine — the shimmer grows toward the ground", function make(u) {
   var D = { sky: ["#3A6FD0", "#9FC8F0", "#F5E1B0"], sand: "#D9A86A", far: "#B9A8C8",
             heat: 1.0, slices: 26 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [0.7, D.sky[2]]]);
       var GY = u.H * 0.7, band = u.H * 0.16;
@@ -461,7 +461,7 @@ def("H", "Haze", "sky", "heat haze: the horizon band is cut into thin slices and
 
 def("N", "Nebula", "sky", "a gas cloud is soft radial blobs in three depth layers — far ones small and dim, near ones big and bright — drifting at speeds that match their depth", function make(u) {
   var D = { sky: ["#05040F", "#0F0A22"], hues: [270, 320, 200],          // violet, magenta, cyan
-            blobs: 34, drift: 1.0, seed: 5 };
+            blobs: 34, drift: 2.5, seed: 5 };
   var R = u.rng(D.seed), blobs = [];
   for (var j = 0; j < D.blobs; j++)
     blobs.push({ x: R() * u.W, y: R() * u.H, z: R(), hue: D.hues[j % D.hues.length] + R() * 30, ph: R() * 9 });
@@ -483,14 +483,14 @@ def("N", "Nebula", "sky", "a gas cloud is soft radial blobs in three depth layer
   };
 });
 
-def("N", "Nightfall", "sky", "a full day in 24 seconds: five palettes on a circular clock, the sun and moon on opposite arcs, stars fading in with the dark", function make(u) {
+def("N", "Nightfall", "sky", "a full day in 14 seconds: five palettes on a circular clock, the sun and moon on opposite arcs, stars fading in with the dark", function make(u) {
   var D = { tops: ["#6FA8E8", "#4A6FC8", "#2A1E5A", "#05051A", "#2A1E5A"],   // noon → golden → dusk → night → dawn (wraps)
             hors: ["#CFE6F5", "#F5C169", "#C2507A", "#1A1030", "#F5A15A"],
-            day: 24 };
+            day: 14 };
   var R = u.rng(8), stars = [];
   for (var j = 0; j < 60; j++) stars.push([R() * u.W, R() * u.H * 0.7, 0.4 + R() * 1.0]);
   var offset = 0, lastT = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       var k = ((t + offset) / D.day) % 1, n = D.tops.length;
@@ -516,7 +516,7 @@ def("N", "Nightfall", "sky", "a full day in 24 seconds: five palettes on a circu
 });
 
 def("O", "Overcast", "sky", "a grey day is bands of cloud, each a gradient with a lighter far edge, drifting at speeds that say how far away they are", function make(u) {
-  var D = { top: "#5A6478", bottom: "#B8BFCC", cloud: "#7A8396", bands: 6, wind: 1.0, sunbreak: 0 };
+  var D = { top: "#5A6478", bottom: "#B8BFCC", cloud: "#7A8396", bands: 6, wind: 1.6, sunbreak: 0 };
   var R = u.rng(13), bands = [];
   for (var j = 0; j < D.bands; j++) bands.push({ y: 0.08 + j * 0.11, h: 0.08 + R() * 0.06, ph: R() * 9, f: 1 + R() * 1.5 });
   var sun = null;
@@ -545,7 +545,7 @@ def("O", "Overcast", "sky", "a grey day is bands of cloud, each a gradient with 
 def("R", "Rainbow", "sky", "a bow is seven concentric arcs of hue, alpha fading at both edges — a gradient bent into a circle, drawn where the light isn't", function make(u) {
   var D = { sky: ["#4A6FA8", "#9FB8D8", "#D9E3F0"], width: 0.12, alpha: 0.55, secondary: true, speed: 1 };
   var cx = u.W * 0.5, cy = u.H * 0.95;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       var grow = u.ease(t * 0.35 * D.speed), r0 = u.H * 0.5, w = u.H * D.width, n = 28;
@@ -568,9 +568,9 @@ def("R", "Rainbow", "sky", "a bow is seven concentric arcs of hue, alpha fading 
 });
 
 def("T", "Twilight", "sky", "the Belt of Venus: a pink band floating above a blue-grey band (the Earth's own shadow) — two horizontal gradients stacked, rising as the sun sinks", function make(u) {
-  var D = { top: "#2A3A8F", pink: "#E8A0B8", shadow: "#4A5A8A", horizon: "#F5D9B0", length: 18 };
+  var D = { top: "#2A3A8F", pink: "#E8A0B8", shadow: "#4A5A8A", horizon: "#F5D9B0", length: 9 };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * Math.PI));   // 0 → 1 and rests
       var GY = u.H * 0.74, band = GY - u.H * 0.28 * k;                  // the shadow's top edge rises
@@ -586,7 +586,7 @@ def("T", "Twilight", "sky", "the Belt of Venus: a pink band floating above a blu
 
 def("Z", "Zenith", "sky", "the plainest sky: deep blue overhead, pale at the horizon, because you look through more air sideways — plus a bright patch that follows the sun", function make(u) {
   var D = { zenith: "#1E4FB8", horizon: "#CFE6F5", sunGlow: "#FFF3D0", sunX: 0.7, sunY: 0.25 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.zenith], [0.85, D.horizon]]);
       var sx = u.W * D.sunX, sy = u.H * D.sunY;
@@ -609,7 +609,7 @@ rhymeOf("Aurora", "Glitch aurora", "the same curtains in magenta and cyan, 16 fa
             strips: 16, speed: 1.1, glow: 0.8 };
   var R = u.rng(3), stars = [];
   for (var j = 0; j < 40; j++) stars.push([R() * u.W, R() * u.H * 0.7, 0.4 + R() * 1.1]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var j = 0; j < stars.length; j++)
@@ -637,7 +637,7 @@ rhymeOf("Bluehour", "Alien bluehour", "the same dusk under a green sky with a co
   var R = u.rng(11), stars = [];
   for (var j = 0; j < D.stars; j++) stars.push([R() * u.W, R() * u.H * 0.75, 0.4 + R() * 1.0, R()]);
   var k = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       k = u.clamp((t % (D.minutes * 1.4)) / D.minutes, 0, 1);
       var top = u.mix(D.top, "#030312", k), mid = u.mix(D.mid, "#0B1040", k), hor = u.mix(D.horizon, "#3A2A4F", k);
@@ -657,9 +657,9 @@ rhymeOf("Dawn", "Candy dawn", "the same sunrise in pastel — mint to peach to c
   // rhyme of Dawn: dials moved — both palettes, sunSize 0.09 → 0.18, sea true → false
   var D = { tops: ["#3A2A5A", "#8A6AB8", "#A8D8C8", "#BFE8F5"],
             hors: ["#5A3A6A", "#F5A0B8", "#FFD0A0", "#FFF3E0"],
-            length: 16, sunSize: 0.18, sea: false };
+            length: 9, sunSize: 0.18, sea: false };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * u.TAU * 0.5)) ;
       var seg = u.clamp(k * 3, 0, 2.999), i = Math.floor(seg), f = seg - i;
@@ -689,9 +689,9 @@ rhymeOf("Eventide", "Desert eventide", "the same sunset over sand — ochre and 
   // rhyme of Eventide: dials moved — both palettes, sunSize 0.09 → 0.16, afterglow colour
   var D = { tops: ["#8AAED8", "#C8785A", "#5A2A3A", "#0A0810"],
             hors: ["#F5D9B0", "#F5A15A", "#B85A3A", "#2A1A1A"],
-            length: 16, sunSize: 0.16, afterglow: "#F58A5A" };
+            length: 9, sunSize: 0.16, afterglow: "#F58A5A" };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * u.TAU * 0.5));
       var seg = u.clamp(k * 3, 0, 2.999), i = Math.floor(seg), f = seg - i;
@@ -721,7 +721,7 @@ rhymeOf("Goldenhour", "Silver hour", "the same low light in greyscale — a whit
             hills: 8, sunX: 0.12 };
   var R = u.rng(21), hills = [];
   for (var j = 0; j < D.hills; j++) hills.push({ y: 0.5 + j * 0.055, amp: 0.03 + R() * 0.03, ph: R() * 9, f: 1.5 + R() * 2 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       var sx = u.W * D.sunX, sy = u.H * 0.5;
@@ -746,7 +746,7 @@ rhymeOf("Haze", "Cold haze", "the same shimmer over ice — a blue-white palette
   // rhyme of Haze: dials moved — palette to arctic, heat 1.0 → 0.5, slices 26 → 52
   var D = { sky: ["#1E3A7A", "#8AB8E8", "#E8F0F8"], sand: "#C8DCEC", far: "#A8C0D8",
             heat: 0.5, slices: 52 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [0.7, D.sky[2]]]);
       var GY = u.H * 0.7, band = u.H * 0.16;
@@ -770,7 +770,7 @@ rhymeOf("Haze", "Cold haze", "the same shimmer over ice — a blue-white palette
 rhymeOf("Nebula", "Ink nebula", "the same cloud in two inks — indigo and rust — with 60 blobs and a slower drift; a different seed, so a different cloud", function make(u) {
   // rhyme of Nebula: dials moved — hues, blobs 34 → 60, drift 1.0 → 0.4, seed 5 → 9
   var D = { sky: ["#0A0A10", "#14121C"], hues: [230, 20],
-            blobs: 60, drift: 0.4, seed: 9 };
+            blobs: 60, drift: 1.0, seed: 9 };
   var R = u.rng(D.seed), blobs = [];
   for (var j = 0; j < D.blobs; j++)
     blobs.push({ x: R() * u.W, y: R() * u.H, z: R(), hue: D.hues[j % D.hues.length] + R() * 30, ph: R() * 9 });
@@ -800,7 +800,7 @@ rhymeOf("Nightfall", "Fast-forward night", "the same day in six seconds instead 
   var R = u.rng(8), stars = [];
   for (var j = 0; j < 60; j++) stars.push([R() * u.W, R() * u.H * 0.7, 0.4 + R() * 1.0]);
   var offset = 0, lastT = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       var k = ((t + offset) / D.day) % 1, n = D.tops.length;
@@ -861,7 +861,7 @@ rhymeOf("Rainbow", "Moonbow", "the same bow at night — a quarter of the alpha,
   var cx = u.W * 0.5, cy = u.H * 0.95;
   var R = u.rng(4), stars = [];
   for (var j = 0; j < 50; j++) stars.push([R() * u.W, R() * u.H * 0.8, 0.4 + R() * 1.0]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       for (var j = 0; j < stars.length; j++) u.dot(stars[j][0], stars[j][1], stars[j][2], u.rgba(u.INK, 0.5 + 0.4 * Math.sin(t * 2 + j)));
@@ -888,7 +888,7 @@ rhymeOf("Twilight", "Cyber twilight", "the same two bands in neon — hot pink o
   // rhyme of Twilight: dials moved — all four colours, length 18 → 10
   var D = { top: "#0A0020", pink: "#FF2A9A", shadow: "#1A5AFF", horizon: "#000000", length: 10 };
   var scrub = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var k = scrub !== null ? scrub : (0.5 - 0.5 * Math.cos((t / D.length) * Math.PI));
       var GY = u.H * 0.74, band = GY - u.H * 0.28 * k;
@@ -905,7 +905,7 @@ rhymeOf("Twilight", "Cyber twilight", "the same two bands in neon — hot pink o
 rhymeOf("Zenith", "Martian zenith", "the same clear sky on Mars: butterscotch overhead, blue near the small sun — the gradient runs the other way", function make(u) {
   // rhyme of Zenith: dials moved — zenith/horizon colours swapped in character, sunGlow to pale blue
   var D = { zenith: "#C8925A", horizon: "#E8C8A0", sunGlow: "#B8D8FF", sunX: 0.7, sunY: 0.25 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.zenith], [0.85, D.horizon]]);
       var sx = u.W * D.sunX, sy = u.H * D.sunY;
@@ -931,7 +931,7 @@ rhymeOf("Zenith", "Martian zenith", "the same clear sky on Mars: butterscotch ov
 
 def("A", "Alps", "far", "six mountain silhouettes, each mixed toward the sky by depth — the far ones nearly dissolve; press slides the camera and the near ridge moves most", function make(u) {
   var D = { sky: ["#5A82C8", "#C8DCEE"], rock: "#262A42", air: "#B4C8E2",   // the air is what far rock turns into
-            layers: 6, jag: 1.0, drift: 0.15, seed: 7 };
+            layers: 6, jag: 1.0, drift: 0.4, seed: 7 };
   var R = u.rng(D.seed), L = [];
   for (var j = 0; j < D.layers; j++) {                                   // j = 0 is the farthest ridge
     var depth = D.layers > 1 ? 1 - j / (D.layers - 1) : 0;              // 1 = at the horizon, 0 = here
@@ -943,7 +943,7 @@ def("A", "Alps", "far", "six mountain silhouettes, each mixed toward the sky by 
     var k = x / u.W;
     return u.H * (l.base - l.amp * (0.55 * Math.sin(k * l.f[0] * u.TAU + l.ph[0]) + 0.35 * Math.abs(Math.sin(k * l.f[1] * u.TAU + l.ph[1])) + 0.1 * Math.sin(k * l.f[2] * u.TAU + l.ph[2])));
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);                          // the camera glides, it doesn't jump
       u.sky([[0, D.sky[0]], [0.65, D.sky[1]]]);
@@ -969,7 +969,7 @@ def("C", "Canyon", "far", "cliff walls step in from both sides toward a bright f
     walls.push({ p: p, inner: 0.05 + p * p * 0.43, top: 0.5 - p * 0.8, bot: 0.6 + p * p * 0.5,
                  kink: (R() - 0.5) * 0.06, ledge: 0.25 + R() * 0.45 });  // kink: how far the edge leans; ledge: where it steps
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.58, D.sky[1]]]);
       u.soft(u.W / 2, HY, u.W * 0.28, "#FFF6DC", 0.7);                   // the gap glows: it is the far end, so it is the brightest
@@ -995,7 +995,7 @@ def("D", "Dunes", "far", "dune crests stacked back to a pale horizon: each a hor
             dunes: 7, sunX: 0.15, seed: 9 };
   var R = u.rng(D.seed), dunes = [];
   for (var j = 0; j < D.dunes; j++) dunes.push({ base: 0.45 + j * 0.07, amp: 0.05 + j * 0.02, f: 0.7 + R() * 1.0, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]]]);
       var fromLeft = D.sunX < 0.5;
@@ -1028,7 +1028,7 @@ def("F", "Fjord", "far", "fogged mountain layers over still water, each mirrored
     var k = x / u.W;
     return u.H * (l.base - l.amp * (0.6 * Math.abs(Math.sin(k * l.f[0] * u.TAU + l.ph[0])) + 0.4 * Math.abs(Math.sin(k * l.f[1] * u.TAU + l.ph[1]))));
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, WL, 0, u.H, [u.mix(D.sky[1], D.water, 0.3), D.water]);
@@ -1066,7 +1066,7 @@ def("I", "Icebergs", "far", "three rows of bergs over a mist band: the far row i
       bergs.push({ z: z, x: (i + R() * 0.8) / D.perRow, pts: pts, ph: R() * 9, s: 0.5 + R() * 0.7 });
     }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
@@ -1104,7 +1104,7 @@ def("K", "Knoll", "far", "rolling hills, each a gradient-filled sine, warm green
   }
   var cam = 0, aim = 0;
   function top(h, x) { return u.H * (h.base - h.amp * (1 + Math.sin((x / u.W) * h.f * u.TAU + h.ph))); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
@@ -1135,7 +1135,7 @@ def("M", "Mesa", "far", "flat-topped rock stacks in rows that bunch toward the h
     for (var i = 0; i < D.perRow; i++)
       mesas.push({ p: p, x: (i + 0.2 + R() * 0.6) / D.perRow + (R() - 0.5) * 0.1, w: 0.7 + R() * 0.6, h: 0.6 + R() * 0.8 });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.48, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.fog(D.sand, 0.8, D.air), D.sand]);   // even the flat ground fogs toward the horizon
@@ -1166,7 +1166,7 @@ def("P", "Pines", "far", "rows of triangle trees: each row back is smaller, pack
     rows.push(row);
   }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]]]);
@@ -1193,7 +1193,7 @@ def("Q", "Quay", "far", "harbour posts marching to a vanishing point: spacing sh
   var D = { sky: ["#3A4A7A", "#E8B890"], water: "#22304A", post: "#3A2A1E", air: "#C8A898",
             posts: 14, jitter: 0, vpX: 0.62 };                            // jitter: 0 = still posts
   var HY = u.H * 0.45;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.45, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.sky[1], D.water, 0.4), D.water]);
@@ -1257,7 +1257,7 @@ def("S", "Skyline", "far", "a city in three planes: the far one pale, flat, and 
       B.push(b);
     }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [0.88, D.sky[2]]]);
@@ -1287,7 +1287,7 @@ def("V", "Valley", "far", "two slopes meet in a V, five pairs deep: mist pools i
     P.push({ p: p, edgeY: 0.36 * (1 - Math.pow(p, 1.5)), notchY: 0.55 + p * 0.5,   // near arms start higher and dive deeper
              bump: 0.02 + R() * 0.06, at: 0.3 + R() * 0.3 });            // a shoulder on the slope, and where it sits
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
       u.soft(u.W / 2, u.H * 0.52, u.W * 0.3, "#FFF8E8", 0.7);            // the far end: the brightest thing in the picture
@@ -1318,7 +1318,7 @@ def("W", "Woodland", "far", "trunks at random depths, sorted far to near: the ne
   for (var i = 0; i < D.trees; i++) T.push({ x: R(), z: R() });
   T.sort(function (a, b) { return a.z - b.z; });                          // far first — painter's order
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [1, u.shade(D.sky[1], -0.3)]]);
@@ -1359,7 +1359,7 @@ rhymeOf("Alps", "Neon ridges", "the same six ridges under a black sky, fogging t
     var k = x / u.W;
     return u.H * (l.base - l.amp * (0.55 * Math.sin(k * l.f[0] * u.TAU + l.ph[0]) + 0.35 * Math.abs(Math.sin(k * l.f[1] * u.TAU + l.ph[1])) + 0.1 * Math.sin(k * l.f[2] * u.TAU + l.ph[2])));
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.65, D.sky[1]]]);
@@ -1386,7 +1386,7 @@ rhymeOf("Canyon", "Ice canyon", "the same walls in four blues, thicker air — a
     walls.push({ p: p, inner: 0.05 + p * p * 0.43, top: 0.5 - p * 0.8, bot: 0.6 + p * p * 0.5,
                  kink: (R() - 0.5) * 0.06, ledge: 0.25 + R() * 0.45 });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.58, D.sky[1]]]);
       u.soft(u.W / 2, HY, u.W * 0.28, "#FFFFFF", 0.7);
@@ -1413,7 +1413,7 @@ rhymeOf("Dunes", "Moon dunes", "the same dunes in greyscale under a black sky �
             dunes: 4, sunX: 0.15, seed: 9 };
   var R = u.rng(D.seed), dunes = [];
   for (var j = 0; j < D.dunes; j++) dunes.push({ base: 0.45 + j * 0.07, amp: 0.05 + j * 0.02, f: 0.7 + R() * 1.0, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]]]);
       var fromLeft = D.sunX < 0.5;
@@ -1447,7 +1447,7 @@ rhymeOf("Fjord", "Rose fjord", "the same fjord at a pink evening — rose air, p
     var k = x / u.W;
     return u.H * (l.base - l.amp * (0.6 * Math.abs(Math.sin(k * l.f[0] * u.TAU + l.ph[0])) + 0.4 * Math.abs(Math.sin(k * l.f[1] * u.TAU + l.ph[1]))));
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, WL, 0, u.H, [u.mix(D.sky[1], D.water, 0.3), D.water]);
@@ -1486,7 +1486,7 @@ rhymeOf("Icebergs", "Lava islands", "the same three rows, values flipped — bla
       bergs.push({ z: z, x: (i + R() * 0.8) / D.perRow, pts: pts, ph: R() * 9, s: 0.5 + R() * 0.7 });
     }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
@@ -1525,7 +1525,7 @@ rhymeOf("Knoll", "Pixel knoll", "the same hills sampled every 22 px — three ch
   }
   var cam = 0, aim = 0;
   function top(h, x) { return u.H * (h.base - h.amp * (1 + Math.sin((x / u.W) * h.f * u.TAU + h.ph))); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
@@ -1557,7 +1557,7 @@ rhymeOf("Mesa", "Gumdrop mesa", "the same rock stacks in candy pink on a sugar p
     for (var i = 0; i < D.perRow; i++)
       mesas.push({ p: p, x: (i + 0.2 + R() * 0.6) / D.perRow + (R() - 0.5) * 0.1, w: 0.7 + R() * 0.6, h: 0.6 + R() * 0.8 });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.48, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.fog(D.sand, 0.8, D.air), D.sand]);
@@ -1589,7 +1589,7 @@ rhymeOf("Pines", "Snow pines", "the same rows in snow light — slate trees, nea
     rows.push(row);
   }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]]]);
@@ -1617,7 +1617,7 @@ rhymeOf("Quay", "Glitch quay", "the same posts in neon on black water, shaking �
   var D = { sky: ["#0A0A1A", "#2A1050"], water: "#08101A", post: "#20F0D0", air: "#5A2A9A",
             posts: 14, jitter: 1, vpX: 0.62 };
   var HY = u.H * 0.45;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.45, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.sky[1], D.water, 0.4), D.water]);
@@ -1683,7 +1683,7 @@ rhymeOf("Skyline", "Cozy village", "the same three planes, half as many building
       B.push(b);
     }
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [0.88, D.sky[2]]]);
@@ -1714,7 +1714,7 @@ rhymeOf("Valley", "Ember valley", "the same V under a smoke sky, with glowing or
     P.push({ p: p, edgeY: 0.36 * (1 - Math.pow(p, 1.5)), notchY: 0.55 + p * 0.5,
              bump: 0.02 + R() * 0.06, at: 0.3 + R() * 0.3 });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
       u.soft(u.W / 2, u.H * 0.52, u.W * 0.3, "#FFB060", 0.7);
@@ -1746,7 +1746,7 @@ rhymeOf("Woodland", "Mushroom wood", "the same trunks, pale and half as tall, ea
   for (var i = 0; i < D.trees; i++) T.push({ x: R(), z: R() });
   T.sort(function (a, b) { return a.z - b.z; });
   var cam = 0, aim = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]], [1, u.shade(D.sky[1], -0.3)]]);
@@ -1783,7 +1783,7 @@ def("O", "Orb", "round", "one big ball: a radial gradient with its inner point p
   var D = { bg: ["#1C1A32", "#0B0A16"], ball: "#5A8FE8", rim: "#8AD9F5", spec: 0.5,   // spec: how hot the highlight is (0 = matte)
             lx: -0.55, ly: -0.6, shadowA: 0.55 };                                      // lx, ly: where the light is (−1..1)
   var cx = u.W * 0.5, cy = u.H * 0.46, r = Math.min(u.W, u.H) * 0.27, GY = cy + r * 1.12;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#0A0916");
@@ -1800,7 +1800,7 @@ def("O", "Orb", "round", "one big ball: a radial gradient with its inner point p
 def("C", "Column", "round", "three pillars: a horizontal gradient dark → light → dark is the entire cylinder — plus a paler ellipse on top so the lid reads as flat", function make(u) {
   var D = { bg: ["#2A2444", "#151226"], stone: "#B8A88C", cols: 3, capLight: 0.45,   // capLight: how much brighter the lid is than the side
             lx: -0.3 };                                                             // lx: where the bright stripe sits, −1 left … 1 right
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       var GY = u.H * 0.8, h = u.H * 0.5, w = u.W / (D.cols * 2.4);
@@ -1824,7 +1824,7 @@ def("D", "Dome", "round", "a hemisphere on a plinth: half a shaded ball above a 
   var D = { bg: ["#3A4A6A", "#1A1E30"], dome: "#C8B8A0", base: "#6A6A78", slit: null,   // slit: x of a dark slot in the dome (share of r), or null for none
             lx: -0.6, ly: -0.5 };
   var cx = u.W * 0.5, r = Math.min(u.W, u.H) * 0.3, by = u.H * 0.66;                     // by: the line the dome stands on
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(u.H * 0.72, "#14121F");
@@ -1849,7 +1849,7 @@ def("E", "Egg", "round", "an egg is a ball under ctx.scale(0.76, 1): the same of
   var D = { bg: ["#EAD8C0", "#C8A888"], shell: "#F2E4CC", dark: "#8A5A3A", spec: 0.4,   // dark: the shadow side — warm, because the ground bounces light into it
             squeeze: 0.76, rock: 1.3, lx: -0.5, ly: -0.6 };                           // squeeze: width ÷ height; rock: how fast it sways
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3, GY = cy + r * 1.02;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#8A6A50");
@@ -1870,7 +1870,7 @@ def("E", "Eyeball", "round", "a white ball with an iris disc that slides to look
             lx: -0.5, ly: -0.55, follow: 6 };                                  // follow: how quickly the eye catches up with where it wants to look
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3;
   var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1;                                 // where it wants to look, and where the pupil actually is (it lags)
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(cy + r * 1.1, "#0C0A16");
@@ -1895,11 +1895,11 @@ def("E", "Eyeball", "round", "a white ball with an iris disc that slides to look
 
 def("J", "Jupiter", "round", "a banded planet: flat wobbly stripes clipped to a disc, then one radial gradient — clear in the middle, dark at the rim, offset toward the sun — lays the roundness on top", function make(u) {
   var D = { bg: ["#050510", "#0B0A18"], bands: ["#D9B48A", "#A8734A", "#E8D2B0", "#B8865A", "#F0E0C8", "#8A5A3A", "#D9B48A", "#C29060", "#E8D2B0"],
-            spot: "#C05A3A", night: "#050510", speed: 0.25, lx: -0.6, ly: -0.3 };   // speed: how fast the bands slide
+            spot: "#C05A3A", night: "#050510", speed: 0.5, lx: -0.6, ly: -0.3 };   // speed: how fast the bands slide
   var cx = u.W * 0.5, cy = u.H * 0.48, r = Math.min(u.W, u.H) * 0.36;
   var R = u.rng(7), stars = [];
   for (var s = 0; s < 40; s++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 1.0]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.6));
@@ -1925,10 +1925,10 @@ def("J", "Jupiter", "round", "a banded planet: flat wobbly stripes clipped to a 
 });
 
 def("L", "Lozenge", "round", "a capsule: a cylinder between two half-balls, all shaded from ONE light — it turns slowly, but the highlight stays on the light's side", function make(u) {
-  var D = { bg: ["#1E2A3A", "#0C1018"], pill: "#E86A8A", spin: 0.3, len: 1.8,   // len: the body's length in radii; spin: turns per second-ish
+  var D = { bg: ["#1E2A3A", "#0C1018"], pill: "#E86A8A", spin: 0.6, len: 1.8,   // len: the body's length in radii; spin: turns per second-ish
             lx: -0.5, ly: -0.6 };
   var cx = u.W * 0.5, cy = u.H * 0.45, r = Math.min(u.W, u.H) * 0.15, GY = u.H * 0.82;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#08090F");
@@ -1954,7 +1954,7 @@ def("P", "Pearl", "round", "a small ball with a wide soft highlight, a rim light
   var D = { bg: ["#2A1A2E", "#0E0812"], pearl: "#E8E0E6", rim: "#F5C0E0", dark: "#8A7A90",   // rim: the back-light colour leaking round the edge
             hueA: 320, hueB: 190, cushion: "#3A1A34", lx: -0.45, ly: -0.55 };               // hueA, hueB: the two tints either side of the highlight
   var cx = u.W * 0.5, cy = u.H * 0.5, r = Math.min(u.W, u.H) * 0.2, GY = cy + r * 0.85;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ctx.fillStyle = u.rad(cx, GY + r * 0.5, u.W * 0.7, [[0, u.shade(D.cushion, 0.25)], [0.5, D.cushion], [1, u.shade(D.cushion, -0.6)]], D.lx * u.W * 0.2, -r);
@@ -1978,7 +1978,7 @@ def("Q", "Quicksilver", "round", "mirror ball beside matte ball: the matte one i
   var D = { bg: ["#2E3444", "#141824"], matte: "#7A8494", skyHi: "#DCE8F5", skyLo: "#8AA0C0",   // what the mirror ball reflects: a sky…
             groundHi: "#5A4A3A", groundLo: "#141010", lx: -0.5, ly: -0.55 };                    // …over a ground
   var r = Math.min(u.W, u.H) * 0.2, cy = u.H * 0.47, ax = u.W * 0.28, bx = u.W * 0.72, GY = cy + r * 1.15;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#0C0D14");
@@ -2004,14 +2004,14 @@ def("Q", "Quicksilver", "round", "mirror ball beside matte ball: the matte one i
 
 def("T", "Torus", "round", "a ring shaded as a donut: one radial gradient whose stops peak at the tube's middle radius, pushed toward the light — plus a dark wash across the far half", function make(u) {
   var D = { bg: ["#1A2230", "#0A0E16"], tube: "#E8A040", dark: "#3A2010", fat: 0.42,   // fat: tube radius ÷ ring radius; dark: the colour at both edges of the tube
-            spin: 0.4, sprinkles: 0 };                                                   // spin: how fast the light circles; sprinkles: 0 for a plain ring
+            spin: 0.7, sprinkles: 0 };                                                   // spin: how fast the light circles; sprinkles: 0 for a plain ring
   var cx = u.W * 0.5, cy = u.H * 0.46, Ro = Math.min(u.W, u.H) * 0.34;
   var a = Ro * D.fat / (1 + D.fat), Rc = Ro - a, Ri = Rc - a;                            // tube radius, the tube's centre radius, the hole's radius
   var R = u.rng(5), sp = [];
   for (var j = 0; j < D.sprinkles; j++) { var an = R() * u.TAU, rr = Rc + (R() - 0.5) * a * 1.3; sp.push([cx + Math.cos(an) * rr, cy + Math.sin(an) * rr, R() * u.TAU, u.hsl(R() * 360, 0.85, 0.6)]); }
   var phase = 0, lastT = 0;
   function ring() { u.ctx.beginPath(); u.ctx.arc(cx, cy, Ro, 0, u.TAU); u.ctx.arc(cx, cy, Ri, 0, u.TAU, true); }   // outer edge, then the hole drawn backwards
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       u.sky(D.bg);
@@ -2045,7 +2045,7 @@ def("U", "Urn", "round", "a vase from a lathe: 40 thin slices, each as wide as a
     if (k < 0.94) return 0.3;                                                            // the stem
     return 0.46;                                                                         // the foot
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(bot, "#0E0B14");
@@ -2094,11 +2094,11 @@ def("Y", "Yolk", "round", "a fried egg: the white is a radial gradient that fade
 
 def("Z", "Zeppelin", "round", "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — and a faint shadow on the cloud floor far below", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], hull: "#D8D0C0", hullDark: "#4A5060", gondola: "#3A3038",   // hullDark: the shadow side, cool because the sky lights it
-            stretch: 2.4, speed: 0.6, lx: -0.5, ly: -0.6 };                                          // stretch: length ÷ height; speed: the drift
+            stretch: 2.4, speed: 1.0, lx: -0.5, ly: -0.6 };                                          // stretch: length ÷ height; speed: the drift
   var r = Math.min(u.W, u.H) * 0.11, cy = u.H * 0.4, GY = u.H * 0.78;
   var R = u.rng(6), puffs = [];
   for (var j = 0; j < 12; j++) puffs.push([R() * u.W, GY + R() * (u.H - GY) * 0.6, u.W * (0.06 + R() * 0.08)]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ctx.fillStyle = u.lin(0, GY - 10, 0, u.H, ["#F5F7FA", "#B8C8DC"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);   // the cloud floor
@@ -2126,7 +2126,7 @@ rhymeOf("Orb", "Matte orb", "the same ball with the highlight turned off and no 
   var D = { bg: ["#ECEAF0", "#C8C6D0"], ball: "#D8D6DE", rim: null, spec: 0,
             lx: -0.55, ly: -0.6, shadowA: 0.7 };
   var cx = u.W * 0.5, cy = u.H * 0.46, r = Math.min(u.W, u.H) * 0.27, GY = cy + r * 1.12;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#0A0916");
@@ -2144,7 +2144,7 @@ rhymeOf("Column", "Marble columns", "the same pillars in pale marble, five inste
   // rhyme of Column: dials moved — stone → marble, cols 3 → 5, capLight 0.45 → 0.3, bg palette
   var D = { bg: ["#D8DCE8", "#8A90A8"], stone: "#E8E4DC", cols: 5, capLight: 0.3,
             lx: -0.3 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       var GY = u.H * 0.8, h = u.H * 0.5, w = u.W / (D.cols * 2.4);
@@ -2169,7 +2169,7 @@ rhymeOf("Dome", "Observatory", "the same dome at night, steel-blue, with one dar
   var D = { bg: ["#05061A", "#141838"], dome: "#8A93A8", base: "#3A3E50", slit: 0.15,
             lx: -0.6, ly: -0.5 };
   var cx = u.W * 0.5, r = Math.min(u.W, u.H) * 0.3, by = u.H * 0.66;                     // by: the line the dome stands on
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(u.H * 0.72, "#14121F");
@@ -2195,7 +2195,7 @@ rhymeOf("Egg", "Dragon egg", "the same egg in dark red lacquer with a hotter hig
   var D = { bg: ["#2A0A10", "#0C0406"], shell: "#7A1424", dark: "#200408", spec: 0.9,
             squeeze: 0.72, rock: 0.6, lx: -0.5, ly: -0.6 };
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3, GY = cy + r * 1.02;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#8A6A50");
@@ -2217,7 +2217,7 @@ rhymeOf("Eyeball", "Cat eye", "the same eye in yellow-green with a slit pupil (a
             lx: -0.5, ly: -0.55, follow: 12 };
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3;
   var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1;                                 // where it wants to look, and where the pupil actually is (it lags)
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(cy + r * 1.1, "#0C0A16");
@@ -2247,7 +2247,7 @@ rhymeOf("Jupiter", "Candy planet", "the same striped planet in pastels with a pi
   var cx = u.W * 0.5, cy = u.H * 0.48, r = Math.min(u.W, u.H) * 0.36;
   var R = u.rng(7), stars = [];
   for (var s = 0; s < 40; s++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 1.0]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.6));
@@ -2277,7 +2277,7 @@ rhymeOf("Lozenge", "Pixel pill", "the same capsule in arcade green, shorter and 
   var D = { bg: ["#0A0A14", "#101020"], pill: "#3AF06A", spin: 1.2, len: 1.2,
             lx: -0.5, ly: -0.6 };
   var cx = u.W * 0.5, cy = u.H * 0.45, r = Math.min(u.W, u.H) * 0.15, GY = u.H * 0.82;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#08090F");
@@ -2304,7 +2304,7 @@ rhymeOf("Pearl", "Black pearl", "the same pearl in near-black on a leather cushi
   var D = { bg: ["#1A1410", "#080604"], pearl: "#2A2A38", rim: "#8AD9F5", dark: "#08080E",
             hueA: 260, hueB: 160, cushion: "#4A2A18", lx: -0.45, ly: -0.55 };
   var cx = u.W * 0.5, cy = u.H * 0.5, r = Math.min(u.W, u.H) * 0.2, GY = cy + r * 0.85;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ctx.fillStyle = u.rad(cx, GY + r * 0.5, u.W * 0.7, [[0, u.shade(D.cushion, 0.25)], [0.5, D.cushion], [1, u.shade(D.cushion, -0.6)]], D.lx * u.W * 0.2, -r);
@@ -2329,7 +2329,7 @@ rhymeOf("Quicksilver", "Gold ball", "the same two balls in gold: the mirror refl
   var D = { bg: ["#3A2A18", "#141008"], matte: "#C89A3A", skyHi: "#FFF0C0", skyLo: "#D8A040",
             groundHi: "#6A3A10", groundLo: "#1A0C04", lx: -0.5, ly: -0.55 };
   var r = Math.min(u.W, u.H) * 0.2, cy = u.H * 0.47, ax = u.W * 0.28, bx = u.W * 0.72, GY = cy + r * 1.15;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#0C0D14");
@@ -2363,7 +2363,7 @@ rhymeOf("Torus", "Doughnut", "the same ring with pink icing, brown edges, a fatt
   for (var j = 0; j < D.sprinkles; j++) { var an = R() * u.TAU, rr = Rc + (R() - 0.5) * a * 1.3; sp.push([cx + Math.cos(an) * rr, cy + Math.sin(an) * rr, R() * u.TAU, u.hsl(R() * 360, 0.85, 0.6)]); }
   var phase = 0, lastT = 0;
   function ring() { u.ctx.beginPath(); u.ctx.arc(cx, cy, Ro, 0, u.TAU); u.ctx.arc(cx, cy, Ri, 0, u.TAU, true); }   // outer edge, then the hole drawn backwards
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       u.sky(D.bg);
@@ -2398,7 +2398,7 @@ rhymeOf("Urn", "Sci-fi canister", "the same lathe profile in steel with a neon b
     if (k < 0.94) return 0.3;                                                            // the stem
     return 0.46;                                                                         // the foot
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(bot, "#0E0B14");
@@ -2453,7 +2453,7 @@ rhymeOf("Zeppelin", "Steampunk zeppelin", "the same airship in brass under a sep
   var r = Math.min(u.W, u.H) * 0.11, cy = u.H * 0.4, GY = u.H * 0.78;
   var R = u.rng(6), puffs = [];
   for (var j = 0; j < 12; j++) puffs.push([R() * u.W, GY + R() * (u.H - GY) * 0.6, u.W * (0.06 + R() * 0.08)]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ctx.fillStyle = u.lin(0, GY - 10, 0, u.H, ["#F5F7FA", "#B8C8DC"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);   // the cloud floor
@@ -2517,7 +2517,7 @@ def("B", "Block", "facet", "one cube, three flat shades: top lit, left the colou
 });
 
 def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it", function make(u) {
-  var D = { sky: ["#0E0C1E", "#1E1A36"], col: "#5AC8E8", spin: 0.4,
+  var D = { sky: ["#0E0C1E", "#1E1A36"], col: "#5AC8E8", spin: 0.7,
             sides: 6, crown: 0.45, pav: 1.1 };                              // crown/pav = the point above / below the rim, in radii
   var Lt = [-0.5, 0.75, 0.45], ln = Math.sqrt(Lt[0] * Lt[0] + Lt[1] * Lt[1] + Lt[2] * Lt[2]);
   Lt = [Lt[0] / ln, Lt[1] / ln, Lt[2] / ln];                                // the light: upper-left, a little toward us
@@ -2562,7 +2562,7 @@ def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set b
 
 def("H", "Hexprism", "facet", "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60° and the shades walk round", function make(u) {
   var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", cols: ["#B87A5A"],
-            count: 1, h: 0.5, r: 0.16, every: 3 };                          // count of prisms; h and r as fractions of H and W; every = seconds between idle turns
+            count: 1, h: 0.5, r: 0.16, every: 2 };                          // count of prisms; h and r as fractions of H and W; every = seconds between idle turns
   var R = u.rng(7), prisms = [];
   for (var i = 0; i < D.count; i++) prisms.push({ x: (i + 0.5) / D.count, h: D.h * (D.count > 1 ? 0.55 + R() * 0.7 : 1), c: D.cols[i % D.cols.length] });
   var turn = 0, target = 0, nextAt = D.every;
@@ -2597,7 +2597,7 @@ def("I", "Isotile", "facet", "an isometric floor: diamonds in two alternating co
   var D = { sky: ["#141226", "#221E3A"], a: "#6A8ACF", b: "#8AA6DF", edge: -0.45, ball: "#F58A8A",
             n: 8, speed: 0.6, glow: 0 };                                     // n tiles a side; glow = a warm torch tint over the floor (0 = none)
   var ball = { x: 4, y: 4 }, target = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = Math.min(u.W * 0.065, u.H * 0.1), ox = u.W / 2, oy = u.H * 0.12;
@@ -2631,7 +2631,7 @@ def("K", "Keep", "facet", "a castle tower from stacked blocks: one tall block, s
   function blk(x, y, s, c, h) {                                              // a block under THIS picture's sun — mirrored when the sun is on the right
     u.cube(x, y, s, c, { h: h, left: sunL ? c : u.shade(c, -0.42), right: sunL ? u.shade(c, -0.42) : c });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
@@ -2660,7 +2660,7 @@ def("P", "Pyramid", "facet", "two triangles, one lit and one dark, plus a shadow
   var D = { sky: ["#3A6FD0", "#C8DCF0"], sand: "#D9A86A", col: "#D9A86A",
             size: 0.19, h: 1.1, shadowA: 0.42 };                              // size = one footprint edge in W; h = apex height in edges; shadowA = how dark the shadow
   var lx = -0.7, ly = -0.6;                                                  // the sun: −1..1 across the picture, −1 high … 0.4 low
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = u.W * D.size, dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
@@ -2743,7 +2743,7 @@ def("S", "Stairs", "facet", "blocks of climbing height drawn left to right: lit 
 });
 
 def("V", "Voxels", "facet", "a little tree of cubes, sorted far to near before drawing — press turns it a quarter, and the same cubes are re-sorted and re-drawn", function make(u) {
-  var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", n: 5, every: 3,   // n = grid size; every = seconds between idle quarter-turns
+  var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", n: 5, every: 2,   // n = grid size; every = seconds between idle quarter-turns
             vox: [[2, 2, 0, "#8A5A3A"], [2, 2, 1, "#8A5A3A"],                 // [ix, iy, iz, colour] — the trunk...
                   [1, 1, 2, "#4A9A5A"], [2, 1, 2, "#5AAA6A"], [3, 1, 2, "#4A9A5A"], [1, 2, 2, "#5AAA6A"], [2, 2, 2, "#4A9A5A"], [3, 2, 2, "#5AAA6A"], [1, 3, 2, "#4A9A5A"], [2, 3, 2, "#5AAA6A"], [3, 3, 2, "#4A9A5A"],   // ...the canopy...
                   [2, 1, 3, "#6ABA7A"], [1, 2, 3, "#5AAA6A"], [2, 2, 3, "#6ABA7A"], [3, 2, 3, "#5AAA6A"], [2, 3, 3, "#6ABA7A"], [2, 2, 4, "#7ACA8A"]] };   // ...and the crown
@@ -2780,7 +2780,7 @@ def("V", "Voxels", "facet", "a little tree of cubes, sorted far to near before d
 
 def("W", "Wedge", "facet", "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down and its shadow slides with it", function make(u) {
   var D = { sky: ["#1E1C34", "#3A3858"], floor: "#1A1A2C", col: "#7AA0C8", block: "#F58A8A",
-            len: 3, h: 1.4, speed: 0.55 };                                  // len = ramp length in cells; h = the high end in cells; speed = slides per second
+            len: 3, h: 1.4, speed: 0.8 };                                  // len = ramp length in cells; h = the high end in cells; speed = slides per second
   var slide = 0, lastT = 0;
   return {
     frame: function (dt, t) {
@@ -2815,7 +2815,7 @@ def("X", "Xylophone", "facet", "eight flat blocks receding toward the back, each
     u.poly([[x, y], Rc, [Rc[0], Rc[1] - hz], [x, y - hz]], u.shade(c, -0.42)); // right end: dark
     u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or flashing)
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       if (t > nextAt) { hit[tune[seq % tune.length]] = t; seq++; nextAt = t + D.beat; }   // the tune plays itself
@@ -2846,7 +2846,7 @@ def("Y", "Yurt", "facet", "a round tent: the wall is a cylinder (dark → light 
   var D = { sky: ["#2A3A6A", "#B8C8E0"], floor: "#5A6A4A", wall: "#D9C8A8", roof: "#A85A4A", door: "#3A2A1A",
             roofH: 0.55, smoke: 6 };                                          // roofH = cone height in wall widths (low = a dome-ish cap); smoke = how many puffs
   var lx = -0.35;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var w = u.W * 0.36, hgt = u.H * 0.26, cx = u.W / 2, gy = u.H * 0.84;
@@ -3021,7 +3021,7 @@ rhymeOf("Isotile", "Dungeon floor", "the same floor in dark stone under a torch 
   var D = { sky: ["#0A0812", "#161222"], a: "#3A3640", b: "#4A4650", edge: -0.6, ball: "#9BE28A",
             n: 8, speed: 0.6, glow: 0.35 };
   var ball = { x: 4, y: 4 }, target = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = Math.min(u.W * 0.065, u.H * 0.1), ox = u.W / 2, oy = u.H * 0.12;
@@ -3056,7 +3056,7 @@ rhymeOf("Keep", "Sci-fi silo", "the same tower in steel blue, half again as tall
   function blk(x, y, s, c, h) {                                              // a block under THIS picture's sun — mirrored when the sun is on the right
     u.cube(x, y, s, c, { h: h, left: sunL ? c : u.shade(c, -0.42), right: sunL ? u.shade(c, -0.42) : c });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
@@ -3086,7 +3086,7 @@ rhymeOf("Pyramid", "Snow pyramid", "the same pyramid in white on white — a pal
   var D = { sky: ["#8AB0E0", "#E8F0F8"], sand: "#E8F0F8", col: "#DDE8F5",
             size: 0.19, h: 1.1, shadowA: 0.25 };
   var lx = -0.7, ly = -0.6;                                                  // the sun: −1..1 across the picture, −1 high … 0.4 low
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var s = u.W * D.size, dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
@@ -3246,7 +3246,7 @@ rhymeOf("Xylophone", "Glitch keys", "the same bars in two neon hues, heights jit
     u.poly([[x, y], Rc, [Rc[0], Rc[1] - hz], [x, y - hz]], u.shade(c, -0.42)); // right end: dark
     u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or flashing)
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
       if (t > nextAt) { hit[tune[seq % tune.length]] = t; seq++; nextAt = t + D.beat; }   // the tune plays itself
@@ -3278,7 +3278,7 @@ rhymeOf("Yurt", "Igloo dome", "the same tent in white on blue with a squat roof 
   var D = { sky: ["#1E3A7A", "#8AB8E8"], floor: "#E8F0F8", wall: "#E8F0F8", roof: "#D8E8F5", door: "#2A3A5A",
             roofH: 0.22, smoke: 2 };
   var lx = -0.35;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var w = u.W * 0.36, hgt = u.H * 0.26, cx = u.W / 2, gy = u.H * 0.84;
@@ -3342,9 +3342,9 @@ rhymeOf("Ziggurat", "Neon temple", "the same five tiers at night in violet, ever
 
 def("S", "Sun", "light", "a disc with limb darkening, a corona of stacked glows added together, slow faint rays — and a wide soft that brightens the sky around it", function make(u) {
   var D = { sky: ["#0B1030", "#2A4F9A"], core: "#FFFBE8", disc: "#FFD070", limb: "#F08A30", corona: "#FFC060",
-            size: 0.13, layers: 4, rays: 12, spin: 0.08 };                  // disc radius as a fraction of the width
+            size: 0.13, layers: 4, rays: 12, spin: 0.2 };                  // disc radius as a fraction of the width
   var sx = u.W * 0.5, sy = u.H * 0.45;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var r = u.W * D.size, c = u.ctx;
@@ -3373,7 +3373,7 @@ def("C", "Candle", "light", "a flame is two glows and a bright tip, wobbling; th
   var D = { wall: "#1A1424", flame: "#FFB040", tip: "#FFF6D8", blue: "#5A8AFF", wax: "#E8DCC0",
             wobble: 1.0, reach: 0.55, count: 1 };                           // reach: how far the wall is lit
   var cx = u.W * 0.5, top = u.H * 0.5, floor = u.H * 0.8;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.ctx.fillStyle = D.wall; u.ctx.fillRect(0, 0, u.W, u.H);
       u.ground(floor, "#100C18");
@@ -3403,7 +3403,7 @@ def("E", "Eclipse", "light", "a dark disc over a bright corona: streaky glows an
   var k = 0.85, cx = u.W * 0.5, cy = u.H * 0.45;                           // k: 0 = full sun, 1 = totality
   var R = u.rng(7), st = [];
   for (var j = 0; j < D.streaks; j++) st.push({ a: R() * u.TAU, len: 1.4 + R() * 1.6, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([u.mix(D.sky, D.dark, k), u.mix(u.shade(D.sky, 0.3), u.shade(D.dark, 0.1), k)]);   // the day drains out
       var r = u.W * D.size, c = u.ctx, br = 1 + 0.06 * Math.sin(t * D.breath * u.TAU);
@@ -3430,7 +3430,7 @@ def("F", "Flare", "light", "a lens flare: soft discs and rings strung along the 
   var sx = u.W * 0.3, sy = u.H * 0.3;
   var R = u.rng(4), gh = [];
   for (var j = 0; j < D.ghosts; j++) gh.push({ k: -0.6 + R() * 2.4, r: 0.02 + R() * 0.07, ring: R() < 0.4, hue: D.hues[j % D.hues.length] + R() * 20 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.poly([[0, u.H * 0.82], [u.W * 0.3, u.H * 0.7], [u.W * 0.55, u.H * 0.78], [u.W * 0.8, u.H * 0.66], [u.W, u.H * 0.74], [u.W, u.H], [0, u.H]], "#0E1428");
@@ -3459,7 +3459,7 @@ def("H", "Hearth", "light", "a dark room lit by one warm radial centred on the f
             flicker: 1.0, reach: 0.9 };                                      // mantle: null = no fireplace (outdoors)
   var fx = u.W * 0.5, fy = u.H * 0.72;
   var blocks = [[0.2, 0.05], [0.78, 0.06]];                                 // two furniture blocks: x, half-width
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(fy, "#0E0A12");
@@ -3491,11 +3491,11 @@ def("H", "Hearth", "light", "a dark room lit by one warm radial centred on the f
 
 def("K", "Kiln", "light", "a chamber glowing from within: a hot radial inside a dark box, breathing; embers drifting out; a wedge of glow spilling onto the floor", function make(u) {
   var D = { bg: ["#0C0A10", "#100D14"], brick: "#3A2A28", hot: "#FFD070", heat: "#FF6A20",
-            period: 3.0, embers: 24, drift: 1.0 };                           // period: seconds per breath
+            period: 2.0, embers: 24, drift: 1.0 };                           // period: seconds per breath
   var kx = u.W * 0.5, fy = u.H * 0.75;
   var R = u.rng(5), em = [];
   for (var j = 0; j < D.embers; j++) em.push({ ph: R(), spd: 0.12 + R() * 0.12, dx: (R() - 0.5) * u.W * 0.2, s: 0.6 + R() * 1.2 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(fy, "#0A080E");
@@ -3524,7 +3524,7 @@ def("L", "Lantern", "light", "a paper lantern: a warm gradient shell with dark r
   var D = { sky: ["#0A0818", "#1A1030"], paper: "#FF8A3A", core: "#FFF0C0", ribs: 7,
             sway: 1.0, count: 1, rise: 0 };                                  // rise > 0: the lanterns float upward and wrap
   var px = u.W * 0.5, py = u.H * 0.12, GY = u.H * 0.82;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, "#0C0A14");
@@ -3558,11 +3558,11 @@ def("L", "Lantern", "light", "a paper lantern: a warm gradient shell with dark r
 
 def("M", "Moonphases", "light", "a sphere shaded by a light that orbits over time — the terminator moves new → crescent → half → full; one offset radial plus one dark disc", function make(u) {
   var D = { sky: ["#03030A", "#0B0B1E"], moons: ["#D8D8E0"], dark: "#0E0E1A", glow: "#B8C8FF",
-            size: 0.2, month: 12, count: 1 };                                // month: seconds for one full cycle
+            size: 0.2, month: 8, count: 1 };                                // month: seconds for one full cycle
   var phase = null;
   var R = u.rng(12), stars = [];
   for (var j = 0; j < 50; j++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 1.0]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.4 + 0.3 * Math.sin(t * 2 + s)));
@@ -3589,7 +3589,7 @@ def("N", "Neon", "light", "a neon sign: one path stroked four times, wider and f
   var pts = [];
   for (var i = 0; i <= 40; i++) pts.push([u.W * (0.2 + 0.6 * i / 40), u.H * 0.45 + Math.sin(i * 0.9) * u.H * 0.1 + Math.sin(i * 0.37) * u.H * 0.05]);   // a word-like squiggle
   function trace(c, jx, jy) { c.beginPath(); for (var i = 0; i < pts.length; i++) { if (i === 0) c.moveTo(pts[i][0] + jx, pts[i][1] + jy); else c.lineTo(pts[i][0] + jx, pts[i][1] + jy); } c.stroke(); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var c = u.ctx;
       c.fillStyle = D.wall; c.fillRect(0, 0, u.W, u.H);
@@ -3615,11 +3615,11 @@ def("N", "Neon", "light", "a neon sign: one path stroked four times, wider and f
 
 def("Q", "Quasar", "light", "a hot core, two opposite jets (glows stretched with ctx.scale), and a torus-like accretion ring — all added, slowly rotating; pure light, no matter", function make(u) {
   var D = { sky: ["#020208", "#0A0618"], core: "#FFFFFF", jet: "#7AB8FF", disc: "#FF8A5A",
-            spin: 0.15, jetLen: 0.45, pulse: 0 };                            // pulse: seconds per beat (0 = steady)
+            spin: 0.35, jetLen: 0.45, pulse: 0 };                            // pulse: seconds per beat (0 = steady)
   var cx = u.W / 2, cy = u.H * 0.48;
   var R = u.rng(17), stars = [];
   for (var j = 0; j < 70; j++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 0.9]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.5));
@@ -3649,7 +3649,7 @@ def("Q", "Quasar", "light", "a hot core, two opposite jets (glows stretched with
 def("R", "Rimlight", "light", "a backlit figure: a dark silhouette (sphere + body) with a bright rim on the edge nearest the light, a soft light behind — press moves the light", function make(u) {
   var D = { sky: ["#0C0A1A", "#241A3A"], ground: "#0A0812", light: "#FFE8B0", body: "#1A1424", rim: "#FFE8B0", size: 0.11 };
   var lx = u.W * 0.72, ly = u.H * 0.3, GY = u.H * 0.8;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, D.ground);
@@ -3674,7 +3674,7 @@ def("U", "Ultraviolet", "light", "a blacklight room: a thin violet tube, its fal
   var tx = u.W * 0.5, ty = u.H * 0.12;
   var R = u.rng(6), sh = [];
   for (var j = 0; j < D.shapes; j++) sh.push({ x: 0.1 + R() * 0.8, y: 0.35 + R() * 0.45, r: 0.015 + R() * 0.03, a: R() < 0.5, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var c = u.ctx, hum = 1 + 0.05 * Math.sin(t * 40);                      // a tube hums: a fast tiny shiver in brightness
       c.fillStyle = D.room; c.fillRect(0, 0, u.W, u.H);
@@ -3731,7 +3731,7 @@ rhymeOf("Sun", "Red giant", "the same sun swollen and cooled — a crimson palet
   var D = { sky: ["#0A0508", "#3A0A14"], core: "#FFE0B0", disc: "#FF6A3A", limb: "#8A1A10", corona: "#FF5A3A",
             size: 0.22, layers: 6, rays: 12, spin: 0.03 };
   var sx = u.W * 0.5, sy = u.H * 0.45;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var r = u.W * D.size, c = u.ctx;
@@ -3761,7 +3761,7 @@ rhymeOf("Candle", "Birthday candles", "the same flame three times over in pastel
   var D = { wall: "#3A2A44", flame: "#FFC070", tip: "#FFF6D8", blue: "#8AB0FF", wax: "#F5B8D0",
             wobble: 1.0, reach: 0.4, count: 3 };
   var cx = u.W * 0.5, top = u.H * 0.5, floor = u.H * 0.8;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.ctx.fillStyle = D.wall; u.ctx.fillRect(0, 0, u.W, u.H);
       u.ground(floor, "#2A1E30");
@@ -3792,7 +3792,7 @@ rhymeOf("Eclipse", "Ring of fire", "the same eclipse, annular — the moon a tou
   var k = 0.85, cx = u.W * 0.5, cy = u.H * 0.45;
   var R = u.rng(7), st = [];
   for (var j = 0; j < D.streaks; j++) st.push({ a: R() * u.TAU, len: 1.4 + R() * 1.6, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([u.mix(D.sky, D.dark, k), u.mix(u.shade(D.sky, 0.3), u.shade(D.dark, 0.1), k)]);
       var r = u.W * D.size, c = u.ctx, br = 1 + 0.06 * Math.sin(t * D.breath * u.TAU);
@@ -3820,7 +3820,7 @@ rhymeOf("Flare", "Anime flare", "the same chain of ghosts, twelve of them, hexag
   var sx = u.W * 0.3, sy = u.H * 0.3;
   var R = u.rng(4), gh = [];
   for (var j = 0; j < D.ghosts; j++) gh.push({ k: -0.6 + R() * 2.4, r: 0.02 + R() * 0.07, ring: R() < 0.4, hue: D.hues[j % D.hues.length] + R() * 20 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.poly([[0, u.H * 0.82], [u.W * 0.3, u.H * 0.7], [u.W * 0.55, u.H * 0.78], [u.W * 0.8, u.H * 0.66], [u.W, u.H * 0.74], [u.W, u.H], [0, u.H]], "#1A0E28");
@@ -3850,7 +3850,7 @@ rhymeOf("Hearth", "Campfire night", "the same fire outdoors — a night-sky pale
             flicker: 1.0, reach: 0.7 };
   var fx = u.W * 0.5, fy = u.H * 0.72;
   var blocks = [[0.2, 0.05], [0.78, 0.06]];
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(fy, "#0A1410");
@@ -3887,7 +3887,7 @@ rhymeOf("Kiln", "Iron forge", "the same chamber running hotter — blue-white he
   var kx = u.W * 0.5, fy = u.H * 0.75;
   var R = u.rng(5), em = [];
   for (var j = 0; j < D.embers; j++) em.push({ ph: R(), spd: 0.12 + R() * 0.12, dx: (R() - 0.5) * u.W * 0.2, s: 0.6 + R() * 1.2 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(fy, "#08080C");
@@ -3917,7 +3917,7 @@ rhymeOf("Lantern", "Sky lanterns", "the same shell five times, cut loose and ris
   var D = { sky: ["#0A0818", "#1A1030"], paper: "#FFB050", core: "#FFF0C0", ribs: 7,
             sway: 0.5, count: 5, rise: 1 };
   var px = u.W * 0.5, py = u.H * 0.12, GY = u.H * 0.82;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, "#0C0A14");
@@ -3956,7 +3956,7 @@ rhymeOf("Moonphases", "Twin moons", "the same terminator on two moons of another
   var phase = null;
   var R = u.rng(12), stars = [];
   for (var j = 0; j < 50; j++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 1.0]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.4 + 0.3 * Math.sin(t * 2 + s)));
@@ -3984,7 +3984,7 @@ rhymeOf("Neon", "Broken neon", "the same sign dying — cyan, stuttering seven t
   var pts = [];
   for (var i = 0; i <= 40; i++) pts.push([u.W * (0.2 + 0.6 * i / 40), u.H * 0.45 + Math.sin(i * 0.9) * u.H * 0.1 + Math.sin(i * 0.37) * u.H * 0.05]);
   function trace(c, jx, jy) { c.beginPath(); for (var i = 0; i < pts.length; i++) { if (i === 0) c.moveTo(pts[i][0] + jx, pts[i][1] + jy); else c.lineTo(pts[i][0] + jx, pts[i][1] + jy); } c.stroke(); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var c = u.ctx;
       c.fillStyle = D.wall; c.fillRect(0, 0, u.W, u.H);
@@ -4015,7 +4015,7 @@ rhymeOf("Quasar", "Crab pulsar", "the same core and jets spinning thirteen times
   var cx = u.W / 2, cy = u.H * 0.48;
   var R = u.rng(17), stars = [];
   for (var j = 0; j < 70; j++) stars.push([R() * u.W, R() * u.H, 0.3 + R() * 0.9]);
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       for (var s = 0; s < stars.length; s++) u.dot(stars[s][0], stars[s][1], stars[s][2], u.rgba(u.INK, 0.5));
@@ -4046,7 +4046,7 @@ rhymeOf("Rimlight", "Sunset silhouette", "the same backlit figure at dusk — an
   // rhyme of Rimlight: dials moved — sky/ground palette to sunset, light + rim to amber, size 0.11 → 0.09
   var D = { sky: ["#3A2A6A", "#F58A5A"], ground: "#1A1020", light: "#FFB060", body: "#1A1020", rim: "#FFC070", size: 0.09 };
   var lx = u.W * 0.72, ly = u.H * 0.3, GY = u.H * 0.8;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, D.ground);
@@ -4072,7 +4072,7 @@ rhymeOf("Ultraviolet", "Bioluminescent bay", "the same dark room underwater — 
   var tx = u.W * 0.5, ty = u.H * 0.12;
   var R = u.rng(6), sh = [];
   for (var j = 0; j < D.shapes; j++) sh.push({ x: 0.1 + R() * 0.8, y: 0.35 + R() * 0.45, r: 0.015 + R() * 0.03, a: R() < 0.5, ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var c = u.ctx, hum = 1 + 0.05 * Math.sin(t * 40);
       c.fillStyle = D.room; c.fillRect(0, 0, u.W, u.H);
@@ -4140,7 +4140,7 @@ def("A", "Ash", "volume", "flakes falling over a burnt-out night: one z per flak
   var R = u.rng(D.seed), flakes = [];
   for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), sw: R() * 9 });
   flakes.sort(function (a, b) { return a.z - b.z; });                    // far first, near last — painter's order
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.soft(u.W * 0.5, u.H * 0.82, u.W * 0.6, D.glow, 0.35);            // something still burning below the rise
@@ -4177,7 +4177,7 @@ def("B", "Blaze", "volume", "flame in three depth planes: back tongues dark red,
     u.ctx.quadraticCurveTo(x + w / 2 + lean * 0.3, y - h * 0.55, x + w / 2, y);
     u.ctx.closePath(); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.82;
@@ -4204,7 +4204,7 @@ def("D", "Dustcloud", "volume", "a dust cloud rolling along the ground: each puf
   var R = u.rng(D.seed), puffs = [];
   for (var j = 0; j < D.puffs; j++) puffs.push({ x: R(), z: R(), ph: R() * 9 });
   puffs.sort(function (a, b) { return a.z - b.z; });                     // far first
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.72;
@@ -4300,7 +4300,7 @@ def("G", "Glitter", "volume", "four-point twinkles at many depths drifting up: f
 def("I", "Incense", "volume", "one thin ribbon of smoke: small soft dots along a sine path that widens, pales and thins with height — dark at the stick, air-coloured at the top", function make(u) {
   var D = { room: ["#1A1418", "#0A080C"], smoke: "#3A3A48", pale: "#C8C8D8", tip: "#FF8A3A", dots: 60, curl: 1 };
   var cx = u.W * 0.5, sy = u.H * 0.78, current = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       u.line(cx, u.H * 0.96, cx, sy, "#2A1E14", 3);                      // the stick
@@ -4359,7 +4359,7 @@ def("M", "Motes", "volume", "dust in a light shaft: the shaft is one gradient wi
   var R = u.rng(D.seed), motes = [];
   for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9 });
   motes.sort(function (a, b) { return a.z - b.z; });                     // far first
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       var x0 = u.W * D.shaftX, slope = u.W * 0.3, hw = u.W * 0.13;        // the shaft leans right as it falls
@@ -4389,7 +4389,7 @@ def("M", "Motes", "volume", "dust in a light shaft: the shaft is one gradient wi
 
 def("P", "Plume", "volume", "a smoke column of soft puffs: one z per puff sets size, darkness, speed and edge — near puffs big, dark, firm, fast; far ones small, pale, slow, soft", function make(u) {
   var D = { sky: ["#2A2F4A", "#6A7498", "#9AA0B8"], smoke: "#3A3A44", lit: "#9AA0B8", litY: -1,   // lit: the light on each puff; litY -1 from above, +1 from below
-            puffs: 40, rise: 0.22, wind: 0, seed: 3 };
+            puffs: 40, rise: 0.35, wind: 0, seed: 3 };
   var R = u.rng(D.seed), puffs = [];
   for (var j = 0; j < D.puffs; j++) puffs.push({ z: R(), ph: R(), sw: R() * 9, side: R() * 2 - 1 });
   puffs.sort(function (a, b) { return a.z - b.z; });                     // far first, near last — painter's order
@@ -4397,7 +4397,7 @@ def("P", "Plume", "volume", "a smoke column of soft puffs: one z per puff sets s
     u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(u.mix(c, D.lit, 0.35), a)], [hard, u.rgba(c, a * 0.9)], [1, u.rgba(c, 0)]], 0, D.litY * r * 0.35);
     u.ctx.beginPath(); u.ctx.arc(x, y, r, 0, u.TAU); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       var GY = u.H * 0.86, cx = u.W * 0.42, top = GY - u.H * 0.2;
@@ -4420,7 +4420,7 @@ def("P", "Plume", "volume", "a smoke column of soft puffs: one z per puff sets s
 });
 
 def("S", "Steam", "volume", "pale soft volumes rising off a cup, added onto a dark room: near wisps bigger, brighter, faster, firmer; far ones fade into the room; all curl upward", function make(u) {
-  var D = { room: ["#0E0C14", "#1E1A22"], steam: "#DCE8F5", cup: "#2A2430", wisps: 34, rise: 0.25, gain: 1, curl: 1, wind: 0, seed: 13 };   // gain: how hard the steam adds
+  var D = { room: ["#0E0C14", "#1E1A22"], steam: "#DCE8F5", cup: "#2A2430", wisps: 34, rise: 0.4, gain: 1, curl: 1, wind: 0, seed: 13 };   // gain: how hard the steam adds
   var R = u.rng(D.seed), wisps = [];
   for (var j = 0; j < D.wisps; j++) wisps.push({ z: R(), ph: R(), sw: R() * 9, side: R() * 2 - 1 });
   wisps.sort(function (a, b) { return a.z - b.z; });                     // far first
@@ -4428,7 +4428,7 @@ def("S", "Steam", "volume", "pale soft volumes rising off a cup, added onto a da
     u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(c, a)], [hard, u.rgba(c, a * 0.85)], [1, u.rgba(c, 0)]]);
     u.ctx.beginPath(); u.ctx.arc(x, y, r, 0, u.TAU); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       var cx = u.W * 0.5, top = u.H * 0.62;
@@ -4459,7 +4459,7 @@ def("V", "Vapour", "volume", "ground fog in four depth bands — far band pale, 
   for (var i = 0; i < D.bands; i++) for (var j = 0; j < D.per; j++) blobs.push({ band: i, x: R(), ph: R() * 9 });
   for (var k = 0; k < 9; k++) trees.push({ x: R(), d: R() });               // d: 0 far … 1 near
   trees.sort(function (a, b) { return a.d - b.d; });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]], [1, D.sky[2]]]);
       var hor = u.H * 0.45, ti = 0;
@@ -4503,7 +4503,7 @@ def("W", "Wildfire", "volume", "a field of small flames in perspective rows: row
     u.ctx.quadraticCurveTo(x + w / 2 + lean * 0.3, y - h * 0.55, x + w / 2, y);
     u.ctx.closePath(); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var hor = u.H * 0.42;
@@ -4594,7 +4594,7 @@ rhymeOf("Ash", "Snowfall", "the same falling flakes in white over a blue night, 
   var R = u.rng(D.seed), flakes = [];
   for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), sw: R() * 9 });
   flakes.sort(function (a, b) { return a.z - b.z; });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.soft(u.W * 0.5, u.H * 0.82, u.W * 0.6, D.glow, 0.35);
@@ -4632,7 +4632,7 @@ rhymeOf("Blaze", "Spirit fire", "the same three planes of flame in blue-green, b
     u.ctx.quadraticCurveTo(x + w / 2 + lean * 0.3, y - h * 0.55, x + w / 2, y);
     u.ctx.closePath(); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.82;
@@ -4660,7 +4660,7 @@ rhymeOf("Dustcloud", "Sandstorm", "the same lit puffs in ochre, sixty of them ro
   var R = u.rng(D.seed), puffs = [];
   for (var j = 0; j < D.puffs; j++) puffs.push({ x: R(), z: R(), ph: R() * 9 });
   puffs.sort(function (a, b) { return a.z - b.z; });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.72;
@@ -4759,7 +4759,7 @@ rhymeOf("Incense", "Cigarette", "the same ribbon in plain grey, curling twice as
   // rhyme of Incense: dials moved — smoke/pale palette to greys, curl 1 → 2.4, dots 60 → 40
   var D = { room: ["#141416", "#08080A"], smoke: "#4A4A4C", pale: "#A8A8AC", tip: "#FF6A2A", dots: 40, curl: 2.4 };
   var cx = u.W * 0.5, sy = u.H * 0.78, current = 0;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       u.line(cx, u.H * 0.96, cx, sy, "#2A1E14", 3);
@@ -4820,7 +4820,7 @@ rhymeOf("Motes", "Snow globe motes", "the same shaft of light in cold white, and
   var R = u.rng(D.seed), motes = [];
   for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9 });
   motes.sort(function (a, b) { return a.z - b.z; });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       var x0 = u.W * D.shaftX, slope = u.W * 0.3, hw = u.W * 0.13;
@@ -4859,7 +4859,7 @@ rhymeOf("Plume", "Chimney at dusk", "the same smoke column with the light on eac
     u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(u.mix(c, D.lit, 0.35), a)], [hard, u.rgba(c, a * 0.9)], [1, u.rgba(c, 0)]], 0, D.litY * r * 0.35);
     u.ctx.beginPath(); u.ctx.arc(x, y, r, 0, u.TAU); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       var GY = u.H * 0.86, cx = u.W * 0.42, top = GY - u.H * 0.2;
@@ -4891,7 +4891,7 @@ rhymeOf("Steam", "Sci-fi coolant", "the same wisps in cyan off a steel vent, add
     u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(c, a)], [hard, u.rgba(c, a * 0.85)], [1, u.rgba(c, 0)]]);
     u.ctx.beginPath(); u.ctx.arc(x, y, r, 0, u.TAU); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
       var cx = u.W * 0.5, top = u.H * 0.62;
@@ -4923,7 +4923,7 @@ rhymeOf("Vapour", "Swamp gas", "the same four fog bands tinted sickly green unde
   for (var i = 0; i < D.bands; i++) for (var j = 0; j < D.per; j++) blobs.push({ band: i, x: R(), ph: R() * 9 });
   for (var k = 0; k < 9; k++) trees.push({ x: R(), d: R() });
   trees.sort(function (a, b) { return a.d - b.d; });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.5, D.sky[1]], [1, D.sky[2]]]);
       var hor = u.H * 0.45, ti = 0;
@@ -4968,7 +4968,7 @@ rhymeOf("Wildfire", "Candle field", "the same perspective rows with five flames 
     u.ctx.quadraticCurveTo(x + w / 2 + lean * 0.3, y - h * 0.55, x + w / 2, y);
     u.ctx.closePath(); u.ctx.fill();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var hor = u.H * 0.42;
@@ -5063,7 +5063,7 @@ rhymeOf("Yule", "Campfire embers", "the same logs under an open night sky, the f
 def("F", "Flag", "wave", "a flag is vertical strips lifted by a travelling sine that grows toward the free end — shade each strip by its slope (cos) and the wiggle becomes folds", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], cloth: "#D8302A", band: "#F5F0E0", pole: "#8A8A96",
             strips: 40, wind: 1.0, waves: 1.6, shadeBy: 0.45 };              // shadeBy: how hard the slope shades the cloth
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var px = u.W * 0.18, top = u.H * 0.16, fw = u.W * 0.58, fh = u.H * 0.34, GY = u.H * 0.86;
@@ -5093,7 +5093,7 @@ def("F", "Flag", "wave", "a flag is vertical strips lifted by a travelling sine 
 def("H", "Helix", "wave", "a ribbon coiled round a rod: slice by slice x = sin θ, width = |cos θ|, back colour when cos < 0 — draw the far half, the rod, then the near half", function make(u) {
   var D = { sky: ["#0E1230", "#1A1E4A"], front: "#5AF0AA", back: "#1E6A4A", rod: "#8A8A96",
             ribbons: 1, turns: 3, slices: 96, radius: 0.2, speed: 0.8 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var cx = u.W / 2, top = u.H * 0.1, hgt = u.H * 0.72, R = u.W * D.radius, sh = hgt / D.slices, W2 = R * 0.9;   // W2: the ribbon's true width
@@ -5120,7 +5120,7 @@ def("H", "Helix", "wave", "a ribbon coiled round a rod: slice by slice x = sin �
 
 def("J", "Jetstream", "wave", "four ribbons of wind crossing the sky at different depths — each a band of parallel sines under a soft alpha gradient; far ones paler, thinner, slower", function make(u) {
   var D = { sky: ["#2A4A8F", "#7FA8D8", "#D9E3F0"], ink: "#FFFFFF", streams: 4, lines: 5, speed: 1.0, alpha: 0.45 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       for (var s = 0; s < D.streams; s++) {
@@ -5188,7 +5188,7 @@ def("K", "Kite", "wave", "a diamond of two triangles, lit and dark either side o
 def("L", "Loop", "wave", "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], front: "#F5C169", back: "#8A5A2A", car: "#D82A2A",
             segs: 72, width: 0.11, carSpeed: 1.2, radius: 0.3 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var cx = u.W / 2, R = u.H * D.radius, cy = u.H * 0.5, GY = cy + R, w = u.H * D.width;
@@ -5216,7 +5216,7 @@ def("L", "Loop", "wave", "a ribbon tied in a loop-de-loop: quads round a circle,
 def("O", "Ocean", "wave", "seven rows of travelling sines from horizon to foreground — spacing bunches toward the horizon, far rows fog into the sky, crests pale, troughs dark", function make(u) {
   var D = { sky: ["#8FB8E0", "#D9E8F5"], sea: "#1E5A8F", air: "#C8DCEE", foam: "#F0F6FF",
             rows: 7, wind: 1.0, horizon: 0.38, step: 4 };                   // step: px between points along each crest
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * D.horizon;
@@ -5319,7 +5319,7 @@ def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the
   for (var d = 0; d < D.depths; d++)                                         // far layer first: painter's order for free
     for (var w = 0; w < D.weeds; w++) weeds.push({ x: R() * u.W, z: (d + 0.5) / D.depths, h: 0.28 + R() * 0.3, ph: R() * 9 });
   for (var b = 0; b < D.bubbles; b++) bubbles.push({ x: R() * u.W, y: R(), z: R(), ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.water);
       u.soft(u.W * 0.5, -u.H * 0.2, u.H * 0.8, D.light, 0.25);               // the surface, lit from above
@@ -5358,7 +5358,7 @@ def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the
 def("W", "Wake", "wave", "a boat crossing rows of receding sea, trailing a V of ripples — rings left at its past positions, growing and fading with age, squashed flat by perspective", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#2A1E1A", sail: "#F5F0E0",
             rows: 6, rings: 14, speed: 1.0, spread: 0.45 };                 // spread: ring radius per unit distance behind — the V's angle
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.32, BY = u.H * 0.62;                                  // the horizon, and the boat's row
@@ -5394,7 +5394,7 @@ def("W", "Wake", "wave", "a boat crossing rows of receding sea, trailing a V of 
 def("X", "Xebec", "wave", "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the sails breathe, the hull rocks, the sea recedes behind", function make(u) {
   var D = { sky: ["#F5C169", "#F5E1B0", "#8FB8E0"], sea: "#2A5A8A", air: "#E8D8B8", hull: "#4A2A1A", sail: "#F0E6D0",
             rows: 6, belly: 1.0, alpha: 1 };                                // alpha: how solid the ship is
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[2]], [0.6, D.sky[1]], [1, D.sky[0]]]);
       var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5, sy = u.H * 0.66 + Math.sin(t * 0.9) * 2;
@@ -5478,7 +5478,7 @@ def("Z", "Zephyr", "wave", "the wind made visible: three translucent ribbons str
   for (var i = 0; i < D.ribbons; i++) paths.push({ y: 0.22 + i * 0.24, amp: 0.05 + R() * 0.05, f: 1 + R() * 1.2, off: R() * 4, sp: 0.8 + R() * 0.4 });
   for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9 });
   function pathY(p, x, t) { return u.H * (p.y + p.amp * Math.sin(x / u.W * p.f * u.TAU - t * 1.5 * p.sp)); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#5A8A5A");
@@ -5514,7 +5514,7 @@ rhymeOf("Flag", "Pirate flag", "the same strips in black under a storm sky, a st
   // rhyme of Flag: dials moved — cloth/band/sky palette, wind 1.0 → 1.9, waves 1.6 → 2.2
   var D = { sky: ["#2A2A3A", "#6A6A7A"], cloth: "#111118", band: "#E8E5F4", pole: "#5A5A66",
             strips: 40, wind: 1.9, waves: 2.2, shadeBy: 0.45 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var px = u.W * 0.18, top = u.H * 0.16, fw = u.W * 0.58, fh = u.H * 0.34, GY = u.H * 0.86;
@@ -5545,7 +5545,7 @@ rhymeOf("Helix", "Double helix", "the same slices with a second ribbon half a tu
   // rhyme of Helix: dials moved — ribbons 1 → 2, turns 3 → 2, front/back/rod palette
   var D = { sky: ["#0A0818", "#1A1030"], front: "#F05A8A", back: "#7A2A4A", rod: "#1A1030",
             ribbons: 2, turns: 2, slices: 96, radius: 0.2, speed: 0.8 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var cx = u.W / 2, top = u.H * 0.1, hgt = u.H * 0.72, R = u.W * D.radius, sh = hgt / D.slices, W2 = R * 0.9;
@@ -5573,7 +5573,7 @@ rhymeOf("Helix", "Double helix", "the same slices with a second ribbon half a tu
 rhymeOf("Jetstream", "Aurora streams", "the same four bands in green over a night sky — alpha up, speed down — and the wind becomes the northern lights", function make(u) {
   // rhyme of Jetstream: dials moved — sky/ink palette, alpha 0.45 → 0.7, speed 1.0 → 0.4
   var D = { sky: ["#05051A", "#0E1230", "#1A2040"], ink: "#5AF0AA", streams: 4, lines: 5, speed: 0.4, alpha: 0.7 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]], [1, D.sky[2]]]);
       for (var s = 0; s < D.streams; s++) {
@@ -5643,7 +5643,7 @@ rhymeOf("Loop", "Roller coaster", "the same loop as a red rail under a carnival 
   // rhyme of Loop: dials moved — front/back/car/sky palette, carSpeed 1.2 → 3.0
   var D = { sky: ["#1A1030", "#3A2A6A"], front: "#D82A2A", back: "#5A0A0A", car: "#F5C169",
             segs: 72, width: 0.11, carSpeed: 3.0, radius: 0.3 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var cx = u.W / 2, R = u.H * D.radius, cy = u.H * 0.5, GY = cy + R, w = u.H * D.width;
@@ -5672,7 +5672,7 @@ rhymeOf("Ocean", "Lava sea", "the same seven rows in orange under a black sky, a
   // rhyme of Ocean: dials moved — sky/sea/air/foam palette, wind 1.0 → 0.35
   var D = { sky: ["#0A0404", "#3A1008"], sea: "#C84A10", air: "#2A0E0A", foam: "#FFE080",
             rows: 7, wind: 0.35, horizon: 0.38, step: 4 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * D.horizon;
@@ -5778,7 +5778,7 @@ rhymeOf("Undertow", "Deep sea", "the same water gone near-black, the weed a dim 
   for (var d = 0; d < D.depths; d++)
     for (var w = 0; w < D.weeds; w++) weeds.push({ x: R() * u.W, z: (d + 0.5) / D.depths, h: 0.28 + R() * 0.3, ph: R() * 9 });
   for (var b = 0; b < D.bubbles; b++) bubbles.push({ x: R() * u.W, y: R(), z: R(), ph: R() * 9 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.water);
       u.soft(u.W * 0.5, -u.H * 0.2, u.H * 0.8, D.light, 0.25);
@@ -5818,7 +5818,7 @@ rhymeOf("Wake", "Speedboat", "the same rings behind a white hull with no sail, t
   // rhyme of Wake: dials moved — hull/sail palette (sail fully transparent), speed 1.0 → 2.4, spread 0.45 → 0.8
   var D = { sky: ["#6FA8E8", "#CFE6F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#F0F0F5", sail: "rgba(0,0,0,0)",
             rows: 6, rings: 14, speed: 2.4, spread: 0.8 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.32, BY = u.H * 0.62;
@@ -5855,7 +5855,7 @@ rhymeOf("Xebec", "Ghost ship", "the same ship in grey under a night sky, drawn a
   // rhyme of Xebec: dials moved — sky/sea/air/hull/sail palette, alpha 1 → 0.55
   var D = { sky: ["#3A4A6A", "#1A2040", "#05051A"], sea: "#0A1A2A", air: "#2A3A5A", hull: "#3A4A5A", sail: "#A8C8D8",
             rows: 6, belly: 1.0, alpha: 0.55 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[2]], [0.6, D.sky[1]], [1, D.sky[0]]]);
       var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5, sy = u.H * 0.66 + Math.sin(t * 0.9) * 2;
@@ -5941,7 +5941,7 @@ rhymeOf("Zephyr", "Autumn gale", "the same wind in a warm dusk, nearly twice as 
   for (var i = 0; i < D.ribbons; i++) paths.push({ y: 0.22 + i * 0.24, amp: 0.05 + R() * 0.05, f: 1 + R() * 1.2, off: R() * 4, sp: 0.8 + R() * 0.4 });
   for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9 });
   function pathY(p, x, t) { return u.H * (p.y + p.amp * Math.sin(x / u.W * p.f * u.TAU - t * 1.5 * p.sp)); }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#5A8A5A");
@@ -6006,8 +6006,8 @@ def("C", "Contact", "shadow", "a ball on the ground with a tight dark shadow —
 
 def("J", "Jump", "shadow", "two balls hop along; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles", function make(u) {
   var D = { sky: ["#1E2A3A", "#3A5068"], floor: "#3A4A3A", grass: "#5A8A4A", ball: "#F5C169", ghost: "#8AD9F5",
-            hop: 0.24, hops: 1.1, speed: 0.12 };                                // hop height (of H), hops per second, path speed (of W per second)
-  return {
+            hop: 0.24, hops: 1.1, speed: 0.2 };                                // hop height (of H), hops per second, path speed (of W per second)
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.05;
@@ -6031,7 +6031,7 @@ def("L", "Longshadow", "shadow", "a low sun: posts throw long parallelogram shad
             elev: 0.32, dir: 1, tilt: 0.28, posts: 5, shadowA: 0.35 };          // sun elevation (radians), side (+1 = sun on the left), how much shadows lean toward the viewer, count
   var R = u.rng(31), posts = [];
   for (var j = 0; j < D.posts; j++) posts.push({ x: 0.12 + j * 0.76 / (D.posts - 1) + (R() - 0.5) * 0.06, h: 0.16 + R() * 0.2, w: 0.035 + R() * 0.02 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.42, GY = u.H * 0.7;
@@ -6091,7 +6091,7 @@ def("U", "Umbra", "shadow", "an area light: the shadow has a dark core (umbra) a
   var D = { sky: ["#1A1E2E", "#2A3048"], floor: "#3A4058", ball: "#8AD9F5", lamp: "#FFF3D0",
             lightW: 0.3, lightX: 0.3, lightY: 0.12, steps: 9, shadowA: 0.6 };  // light width (of W), position, how many ellipses build the gradient, core darkness
   var lx = null, ly = null;                                                     // pressed light position (null = the slow sway)
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.08, ox = u.W * 0.55, oy = GY - r;         // the floor, the ball
@@ -6150,9 +6150,9 @@ def("O", "Occlusion", "shadow", "five identical flat discs crossing paths: what 
 
 def("G", "Ground", "shadow", "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks — press moves the vanishing point", function make(u) {
   var D = { sky: ["#2A3A5A", "#8AA0C8"], floor: "#3A4A5A", lines: "#C8D8F0", ball: "#F58A8A",
-            rows: 12, cols: 9, fogK: 0.9, speed: 0.15 };                       // grid density, how much the far floor fades into the air, the ball's speed
+            rows: 12, cols: 9, fogK: 0.9, speed: 0.3 };                       // grid density, how much the far floor fades into the air, the ball's speed
   var vx = u.W * 0.5;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.42, air = D.sky[1];
@@ -6185,7 +6185,7 @@ def("M", "Mirror", "shadow", "a floor reflection: the object drawn again upside-
     u.cube(x, FY, s, D.block);
     u.sphere(x, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var FY = u.H * 0.64;
@@ -6208,7 +6208,7 @@ def("M", "Mirror", "shadow", "a floor reflection: the object drawn again upside-
 
 def("B", "Bokeh", "shadow", "depth of field: lights at many depths; the ones on the focus plane are small and sharp, the ones far from it big, soft and dim — the plane slides; press sets it by y", function make(u) {
   var D = { sky: ["#0A0A18", "#1A1830"], hues: [40, 200, 320], n: 40, seed: 5,   // palette of the lights, how many
-            blurK: 4, dimK: 6, sweep: 0.25 };                                    // how fast size grows / brightness drops with distance from focus; sweep speed of the plane
+            blurK: 4, dimK: 6, sweep: 0.45 };                                    // how fast size grows / brightness drops with distance from focus; sweep speed of the plane
   var R = u.rng(D.seed), lights = [];
   for (var j = 0; j < D.n; j++) {
     var z = R();                                                                 // 0 far (high on the canvas) … 1 near (low)
@@ -6216,7 +6216,7 @@ def("B", "Bokeh", "shadow", "depth of field: lights at many depths; the ones on 
   }
   lights.sort(function (a, b) { return a.z - b.z; });                            // far first
   var focus = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var f = focus !== null ? focus : 0.5 + 0.45 * Math.sin(t * D.sweep * u.TAU);   // the focus plane, 0 far … 1 near
@@ -6242,7 +6242,7 @@ def("T", "Tiltshift", "shadow", "a miniature: rows of little cubes, one sharp ba
   var R = u.rng(23), town = [];
   for (var r = 0; r < D.rows; r++) for (var c = 0; c < D.perRow; c++)
     town.push({ r: r, c: c, h: 0.6 + R() * 1.2, col: D.cols[Math.floor(R() * D.cols.length)], dx: (R() - 0.5) * 0.4 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.3;
@@ -6280,7 +6280,7 @@ def("V", "Vignette", "shadow", "the same view twice: plain on the left, on the r
     if (D.tint) { u.ctx.fillStyle = D.tint; u.ctx.fillRect(x0, 0, w, u.H); }
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var hw = u.W / 2;
       scene(0, hw, t);
@@ -6300,7 +6300,7 @@ def("V", "Vignette", "shadow", "the same view twice: plain on the left, on the r
 
 def("I", "Inkwash", "shadow", "a sumi-e landscape in one ink: five silhouette layers at rising alpha — far faint, near dark — and a few brush strokes; no colour at all, just value as distance", function make(u) {
   var D = { paper: "#F2EDE2", ink: "#1E2230", layers: 5, fill: true,             // paper, the one ink, how many ridges, painted (true) or outlined (false)
-            farA: 0.12, nearA: 0.9, drift: 0.02, hues: ["#1E2230", "#2A1A3A", "#1A3A2A", "#3A1E1A"] };   // alpha of the farthest / nearest ridge, parallax speed, inks the press cycles through
+            farA: 0.12, nearA: 0.9, drift: 0.06, hues: ["#1E2230", "#2A1A3A", "#1A3A2A", "#3A1E1A"] };   // alpha of the farthest / nearest ridge, parallax speed, inks the press cycles through
   var R = u.rng(41), ridges = [], hue = 0;
   for (var j = 0; j < D.layers; j++) ridges.push({ y: 0.32 + j * 0.11, amp: 0.05 + R() * 0.05, f: 1.2 + R() * 2, ph: R() * 9 });
   return {
@@ -6331,7 +6331,7 @@ def("I", "Inkwash", "shadow", "a sumi-e landscape in one ink: five silhouette la
 
 def("N", "Noir", "shadow", "hard light through a blind: bright bars across a dark room and a sphere — the bars shift where they cross the ball, and that shift is its roundness; press moves the light angle", function make(u) {
   var D = { room: "#0C0A14", wall: "#1A1622", light: "#F5E6C0", ball: "#3A3A4A",
-            angle: -0.55, gap: 0.09, barK: 0.45, speed: 0.02, bend: 0.4 };       // bar angle (radians; 0 = horizontal, π/2 = vertical), spacing (of W), lit share of each gap, drift, how far the bars jump on the ball (× radius)
+            angle: -0.55, gap: 0.09, barK: 0.45, speed: 0.06, bend: 0.4 };       // bar angle (radians; 0 = horizontal, π/2 = vertical), spacing (of W), lit share of each gap, drift, how far the bars jump on the ball (× radius)
   var angle0 = D.angle;                                                          // the press swings the light around this resting angle
   function bars(offset, alpha) {                                                 // parallel stripes covering the canvas, rotated by the angle
     var gap = u.W * D.gap, n = Math.ceil((u.W + u.H) * 2 / gap) + 2;
@@ -6340,7 +6340,7 @@ def("N", "Noir", "shadow", "hard light through a blind: bright bars across a dar
     for (var i = -n; i < n; i++) u.ctx.fillRect(-u.W - u.H, i * gap + offset, (u.W + u.H) * 2, gap * D.barK);
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([D.room, D.wall]);
       var GY = u.H * 0.78, r = u.W * 0.13, ox = u.W * 0.5, oy = GY - r;
@@ -6362,7 +6362,7 @@ def("N", "Noir", "shadow", "hard light through a blind: bright bars across a dar
 
 def("X", "Xray", "shadow", "three translucent panes over a scene: where they overlap they darken more, so the stacking order shows — a lens follows the pointer and shows the panes sharp inside, faint outside", function make(u) {
   var D = { sky: ["#F0ECE4", "#D8D2C4"], panes: ["#F58A8A", "#8AD9F5", "#F5C169"], ink: "#3A2A2A",
-            alpha: 0.55, outside: 0.3, blend: "multiply", lensR: 0.28, drift: 0.4 };   // pane alpha inside the lens, alpha outside, how panes combine, lens radius (of W), pane drift speed
+            alpha: 0.55, outside: 0.3, blend: "multiply", lensR: 0.28, drift: 0.8 };   // pane alpha inside the lens, alpha outside, how panes combine, lens radius (of W), pane drift speed
   var lens = null;
   function scene(t) {
     u.sky(D.sky);
@@ -6381,7 +6381,7 @@ def("X", "Xray", "shadow", "three translucent panes over a scene: where they ove
     }
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       scene(t);
       panes(t, D.outside);                                                       // faint everywhere…
@@ -6427,7 +6427,7 @@ rhymeOf("Jump", "Pixel jump", "the same two hoppers in an arcade palette — a n
   // rhyme of Jump: dials moved — palette to arcade, hop 0.24 → 0.38, hops 1.1 → 1.6
   var D = { sky: ["#000020", "#20206A"], floor: "#1A6A1A", grass: "#40C040", ball: "#FFE040", ghost: "#40E0FF",
             hop: 0.38, hops: 1.6, speed: 0.12 };
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.05;
@@ -6452,7 +6452,7 @@ rhymeOf("Longshadow", "Noon", "the same posts under a high sun — elevation 72�
             elev: 1.25, dir: 1, tilt: 0.28, posts: 5, shadowA: 0.45 };
   var R = u.rng(31), posts = [];
   for (var j = 0; j < D.posts; j++) posts.push({ x: 0.12 + j * 0.76 / (D.posts - 1) + (R() - 0.5) * 0.06, h: 0.16 + R() * 0.2, w: 0.035 + R() * 0.02 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.42, GY = u.H * 0.7;
@@ -6514,7 +6514,7 @@ rhymeOf("Umbra", "Spotlight", "the same lamp shrunk to a point — a fifteenth o
   var D = { sky: ["#1A0A10", "#2A1018"], floor: "#3A1A22", ball: "#F5C169", lamp: "#FFFFFF",
             lightW: 0.02, lightX: 0.3, lightY: 0.12, steps: 3, shadowA: 0.6 };
   var lx = null, ly = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.08, ox = u.W * 0.55, oy = GY - r;
@@ -6577,7 +6577,7 @@ rhymeOf("Ground", "Synthwave grid", "the same floor in hot pink on black with a 
   var D = { sky: ["#0A0018", "#2A0040"], floor: "#000000", lines: "#FF2A9A", ball: "#40E0FF",
             rows: 16, cols: 9, fogK: 0.5, speed: 0.15 };
   var vx = u.W * 0.5;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.42, air = D.sky[1];
@@ -6611,7 +6611,7 @@ rhymeOf("Mirror", "Ice reflection", "the same object over a frozen lake — pale
     u.cube(x, FY, s, D.block);
     u.sphere(x, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var FY = u.H * 0.64;
@@ -6643,7 +6643,7 @@ rhymeOf("Bokeh", "City bokeh", "the same lights at night, seventy of them in amb
   }
   lights.sort(function (a, b) { return a.z - b.z; });
   var focus = null;
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var f = focus !== null ? focus : 0.5 + 0.45 * Math.sin(t * D.sweep * u.TAU);
@@ -6670,7 +6670,7 @@ rhymeOf("Tiltshift", "Toy town", "the same miniature in candy colours with seven
   var R = u.rng(23), town = [];
   for (var r = 0; r < D.rows; r++) for (var c = 0; c < D.perRow; c++)
     town.push({ r: r, c: c, h: 0.6 + R() * 1.2, col: D.cols[Math.floor(R() * D.cols.length)], dx: (R() - 0.5) * 0.4 });
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var HY = u.H * 0.3;
@@ -6709,7 +6709,7 @@ rhymeOf("Vignette", "Old photo", "the same two views in sepia with a brown wash 
     if (D.tint) { u.ctx.fillStyle = D.tint; u.ctx.fillRect(x0, 0, w, u.H); }
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       var hw = u.W / 2;
       scene(0, hw, t);
@@ -6771,7 +6771,7 @@ rhymeOf("Noir", "Prison bars", "the same hard light standing up: vertical bars, 
     for (var i = -n; i < n; i++) u.ctx.fillRect(-u.W - u.H, i * gap + offset, (u.W + u.H) * 2, gap * D.barK);
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([D.room, D.wall]);
       var GY = u.H * 0.78, r = u.W * 0.13, ox = u.W * 0.5, oy = GY - r;
@@ -6813,7 +6813,7 @@ rhymeOf("Xray", "Stained glass", "the same three panes in saturated red, blue an
     }
     u.ctx.restore();
   }
-  return {
+  return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       scene(t);
       panes(t, D.outside);
@@ -6862,7 +6862,7 @@ function buildCard(effect) {
   hint.className = "bhint";
   card.appendChild(hint);
 
-  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true, useRhyme: false };
+  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true, useRhyme: false, pressed: false, down: false };
   st.refresh = function () {
     var v = variantOf(st);
     b.textContent = effect.letter + " · " + v.name;
@@ -6880,15 +6880,46 @@ function buildCard(effect) {
     startCard(st);                                     // seeing the change at once IS the lesson
   });
   a.addEventListener("click", function () { openInEditor(effect, st.useRhyme); });
-  canvas.addEventListener("pointerdown", function (e) {
+  function pressAt(e) {
     var rect = canvas.getBoundingClientRect();
     var mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    if (!st.running) startCard(st);
     if (st.inst && st.inst.press) {
       try { st.inst.press(mx, my); } catch (err) { failCard(st, err); }
     }
+  }
+  canvas.addEventListener("pointerdown", function (e) {
+    if (!st.running) startCard(st);
+    st.pressed = true;                                 // the hint badge has done its job
+    st.down = true;
+    pressAt(e);
+  });
+  canvas.addEventListener("pointermove", function (e) {   // drag = an invisible slider,
+    if (st.down && st.inst && st.inst.drag) pressAt(e);    // for cards whose press is continuous
+  });
+  ["pointerup", "pointercancel", "pointerleave"].forEach(function (ev) {
+    canvas.addEventListener(ev, function () { st.down = false; });
   });
   return card;
+}
+
+/* a small pulsing badge, top-right, until the card has been touched once -
+   so nobody has to guess that a picture can be poked or dragged */
+function badge(u, drag, t) {
+  var c = u.ctx, txt = drag ? "\u2190 drag \u2192" : "click \u2726";
+  c.save();
+  c.globalCompositeOperation = "source-over";
+  c.globalAlpha = 0.6 + 0.3 * Math.sin(t * 3);
+  c.font = "11px system-ui, sans-serif";
+  var w = c.measureText(txt).width + 14, x = u.W - w - 8, y = 8;
+  c.fillStyle = "rgba(10,8,20,0.7)";
+  c.beginPath();
+  if (c.roundRect) c.roundRect(x, y, w, 18, 9); else c.rect(x, y, w, 18);
+  c.fill();
+  c.fillStyle = "#F5C169";
+  c.textAlign = "center"; c.textBaseline = "middle";
+  c.fillText(txt, x + w / 2, y + 9.5);
+  c.restore();
+  c.textAlign = "left"; c.textBaseline = "alphabetic";
 }
 
 function placeholder(st) {
@@ -6951,6 +6982,7 @@ function restCard(st) {
 }
 
 var rafId = null, lastTs = null, lastCount = -1;
+var tempo = 1;                                         // the page-wide time-lapse dial (x1 / x2 / x4)
 
 function ensureLoop() {
   if (rafId === null) { lastTs = null; rafId = requestAnimationFrame(tick); }
@@ -6965,13 +6997,14 @@ function tick(ts) {
     if (!st.running) continue;
     any = true;
     if (!st.visible) continue;
-    st.elapsed += dt;
+    st.elapsed += dt * tempo;
     var c = st.u.ctx;
     c.globalCompositeOperation = "source-over";        // every frame starts clean,
     c.globalAlpha = 1;                                 // whatever the last one left
     c.setLineDash([]);
-    try { st.inst.frame(dt, st.elapsed); } catch (err) { failCard(st, err); continue; }
-    if (st.elapsed > 60) restCard(st);
+    try { st.inst.frame(dt * tempo, st.elapsed); } catch (err) { failCard(st, err); continue; }
+    if (!st.pressed) badge(st.u, !!st.inst.drag, st.elapsed);
+    if (st.elapsed > 60 * tempo) restCard(st);
   }
   if (any) rafId = requestAnimationFrame(tick);
   else { rafId = null; updateStatus(); }
@@ -6992,6 +7025,14 @@ runAllBtn.addEventListener("click", function () {
 stopAllBtn.addEventListener("click", function () {
   for (var i = 0; i < cards.length; i++) cards[i].running = false;
   updateStatus();
+});
+[1, 2, 4].forEach(function (k) {                       // tempo buttons: a time-lapse for skimming
+  var btn = document.getElementById("tempo" + k);
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    tempo = k;
+    [1, 2, 4].forEach(function (j) { var b2 = document.getElementById("tempo" + j); if (b2) b2.classList.toggle("primary", j === k); });
+  });
 });
 
 var io = null;
@@ -7035,7 +7076,7 @@ var errBox = document.getElementById("err");
 var cv = document.getElementById("cv");
 var edname = document.getElementById("edname");
 var current = { effect: EFFECTS[0], useRhyme: false };
-var pv = { inst: null, raf: null, elapsed: 0, u: null };
+var pv = { inst: null, raf: null, elapsed: 0, u: null, pressed: false, down: false };
 
 function dedent(src) {
   var lines = src.split("\n");
@@ -7105,10 +7146,11 @@ function runPreview() {
   pv.inst = inst;
   pv.u = u;
   pv.elapsed = 0;
+  pv.pressed = false;
   var last = null;
   function step(ts) {
     if (last === null) last = ts;
-    var dt = Math.min(0.05, (ts - last) / 1000);
+    var dt = Math.min(0.05, (ts - last) / 1000) * tempo;
     last = ts;
     pv.elapsed += dt;
     u.ctx.globalCompositeOperation = "source-over";
@@ -7116,7 +7158,8 @@ function runPreview() {
     u.ctx.setLineDash([]);
     try { pv.inst.frame(dt, pv.elapsed); }
     catch (e) { errBox.textContent = "The code hit a snag mid-frame: " + e.message; stopPreview(); return; }
-    if (pv.elapsed < 60) pv.raf = requestAnimationFrame(step);
+    if (!pv.pressed) badge(u, !!pv.inst.drag, pv.elapsed);
+    if (pv.elapsed < 60 * tempo) pv.raf = requestAnimationFrame(step);
     else pv.raf = null;
   }
   pv.raf = requestAnimationFrame(step);
@@ -7128,12 +7171,15 @@ resetBtn.addEventListener("click", function () {
   stopPreview();
   openInEditor(current.effect, current.useRhyme);
 });
-cv.addEventListener("pointerdown", function (e) {
+function previewPress(e) {
   if (!pv.inst || !pv.inst.press) return;
   var r = cv.getBoundingClientRect();
   try { pv.inst.press(e.clientX - r.left, e.clientY - r.top); }
   catch (err) { errBox.textContent = "The press handler hit a snag: " + err.message; }
-});
+}
+cv.addEventListener("pointerdown", function (e) { pv.pressed = true; pv.down = true; previewPress(e); });
+cv.addEventListener("pointermove", function (e) { if (pv.down && pv.inst && pv.inst.drag) previewPress(e); });
+["pointerup", "pointercancel", "pointerleave"].forEach(function (ev) { cv.addEventListener(ev, function () { pv.down = false; }); });
 
 openInEditor(EFFECTS[0], false);
 

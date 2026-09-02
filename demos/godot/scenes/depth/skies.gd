@@ -22,10 +22,10 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- A · Aurora --------------------------------------------------------
-	d.append({ "letter": "A", "name": "Aurora",
+	d.append({ "letter": "A", "name": "Aurora", "drag": true,
 		"hint": "curtains of light: one thin vertical gradient per strip, its top and bottom riding slow sines — colour is position, motion is phase",
 		"dials": { "sky0": Color("07071A"), "sky1": Color("0E1230"), "hi": Color("5AF0AA"), "lo": Color("9A5AF0"),
-			"strips": 48, "speed": 0.35, "glow": 0.7,
+			"strips": 48, "speed": 0.6, "glow": 0.7,
 			"label": "one gradient per strip — the curtain is 48 gradients standing side by side" },
 		"rhyme": { "name": "Glitch aurora", "hint": "the same curtains in magenta and cyan, 16 fat strips instead of 48, three times the speed — coarse and twitchy",
 			"dials": { "hi": Color("40F0F0"), "lo": Color("F040C0"), "strips": 16, "speed": 1.1, "glow": 0.8,
@@ -56,10 +56,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- B · Bluehour ------------------------------------------------------
-	d.append({ "letter": "B", "name": "Bluehour",
+	d.append({ "letter": "B", "name": "Bluehour", "drag": true,
 		"hint": "the twenty minutes after sunset: indigo above, a warm sliver at the horizon, and stars arriving one by one as the gradient darkens",
 		"dials": { "top": Color("0B0F3A"), "mid": Color("2A3F8F"), "horizon": Color("E8A07A"), "ground": Color("06060F"),
-			"minutes": 14.0, "stars": 70,
+			"minutes": 8.0, "stars": 70,
 			"label": "the warm sliver is the sun, below the horizon, still lighting the air above it" },
 		"rhyme": { "name": "Alien bluehour", "hint": "the same dusk under a green sky with a copper horizon, twice as many stars, and the hour over in six seconds",
 			"dials": { "top": Color("0A2A1A"), "mid": Color("2A7A5A"), "horizon": Color("E89A5A"), "minutes": 6.0, "stars": 140,
@@ -90,11 +90,11 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- D · Dawn ----------------------------------------------------------
-	d.append({ "letter": "D", "name": "Dawn",
+	d.append({ "letter": "D", "name": "Dawn", "drag": true,
 		"hint": "sunrise as a clock: four palette keyframes for the top and four for the horizon, mixed by time — the sun is just a disc that climbs while the colours change",
 		"dials": { "tops": [Color("05051A"), Color("2A1E5A"), Color("5A7FD0"), Color("6FA8E8")],
 			"hors": [Color("1A1030"), Color("C2507A"), Color("F5A15A"), Color("CFE6F5")],
-			"length": 16.0, "sun_size": 0.09, "sea": true,
+			"length": 9.0, "sun_size": 0.09, "sea": true,
 			"label": "mix(keyframe[i], keyframe[i+1], f) — the whole sunrise is one lerp between palettes" },
 		"rhyme": { "name": "Candy dawn", "hint": "the same sunrise in pastel — mint to peach to cream — a sun twice as big, and no sea",
 			"dials": { "tops": [Color("3A2A5A"), Color("8A6AB8"), Color("A8D8C8"), Color("BFE8F5")],
@@ -127,11 +127,11 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- E · Eventide ------------------------------------------------------
-	d.append({ "letter": "E", "name": "Eventide",
+	d.append({ "letter": "E", "name": "Eventide", "drag": true,
 		"hint": "sunset is dawn played backwards with a redder palette — and an afterglow band that outlives the sun",
 		"dials": { "tops": [Color("5A8FD8"), Color("3A4A9A"), Color("2A1E4A"), Color("08081C")],
 			"hors": [Color("B8D8F5"), Color("F58A5A"), Color("C2507A"), Color("2A1A3A")],
-			"length": 16.0, "sun_size": 0.09, "afterglow": Color("F5C169"), "floor": Color("06060F"),
+			"length": 9.0, "sun_size": 0.09, "afterglow": Color("F5C169"), "floor": Color("06060F"),
 			"label": "same clock as Dawn, keyframes reversed — a sunset is a data change, not a new program" },
 		"rhyme": { "name": "Desert eventide", "hint": "the same sunset over sand — ochre and rust palette, a huge low sun, and a copper afterglow",
 			"dials": { "tops": [Color("8AAED8"), Color("C8785A"), Color("5A2A3A"), Color("0A0810")],
@@ -160,7 +160,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- G · Goldenhour ----------------------------------------------------
-	d.append({ "letter": "G", "name": "Goldenhour",
+	d.append({ "letter": "G", "name": "Goldenhour", "drag": true,
 		"hint": "a low sun paints everything on one side gold and the other side violet — the hills are HORIZONTAL gradients from lit to shadowed",
 		"dials": { "sky0": Color("3A3F8F"), "sky1": Color("E8A868"), "sky2": Color("FFD9A0"), "lit": Color("F5C169"), "shade": Color("3A2A5A"),
 			"sun": Color("FFF3D0"), "hills": 4, "sun_x": 0.12,
@@ -203,7 +203,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- H · Haze ----------------------------------------------------------
-	d.append({ "letter": "H", "name": "Haze",
+	d.append({ "letter": "H", "name": "Haze", "drag": true,
 		"hint": "heat haze: the horizon band is cut into thin slices and each slice slides sideways on a sine — the shimmer grows toward the ground",
 		"dials": { "sky0": Color("3A6FD0"), "sky1": Color("9FC8F0"), "sky2": Color("F5E1B0"), "sand": Color("D9A86A"), "far": Color("B9A8C8"),
 			"heat": 1.0, "slices": 26,
@@ -240,11 +240,11 @@ static func defs() -> Array:
 	d.append({ "letter": "N", "name": "Nebula",
 		"hint": "a gas cloud is soft radial blobs in three depth layers — far ones small and dim, near ones big and bright — drifting at speeds that match their depth",
 		"dials": { "sky0": Color("05040F"), "sky1": Color("0F0A22"), "hues": [270.0, 320.0, 200.0], "sat": 0.7, "lum": 0.55,
-			"blobs": 34, "drift": 1.0, "seed": 5,
+			"blobs": 34, "drift": 2.5, "seed": 5,
 			"label": "depth = size × brightness × speed, all from one number z" },
 		"rhyme": { "name": "Ink nebula", "hint": "the same cloud in two inks — indigo and rust — with 60 blobs and a slower drift; a different seed, so a different cloud",
 			"dials": { "sky0": Color("0A0A10"), "sky1": Color("14121C"), "hues": [230.0, 20.0], "sat": 0.6, "lum": 0.45,
-				"blobs": 60, "drift": 0.4, "seed": 9,
+				"blobs": 60, "drift": 1.0, "seed": 9,
 				"label": "the seed is a dial too — same recipe, a different sky every time you change it" } },
 		"init": func(b: Dictionary) -> void:
 			var D: Dictionary = b.D
@@ -275,11 +275,11 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- N · Nightfall -----------------------------------------------------
-	d.append({ "letter": "N", "name": "Nightfall",
-		"hint": "a full day in 24 seconds: five palettes on a circular clock, the sun and moon on opposite arcs, stars fading in with the dark",
+	d.append({ "letter": "N", "name": "Nightfall", "drag": true,
+		"hint": "a full day in 14 seconds: five palettes on a circular clock, the sun and moon on opposite arcs, stars fading in with the dark",
 		"dials": { "tops": [Color("6FA8E8"), Color("4A6FC8"), Color("2A1E5A"), Color("05051A"), Color("2A1E5A")],
 			"hors": [Color("CFE6F5"), Color("F5C169"), Color("C2507A"), Color("1A1030"), Color("F5A15A")],
-			"day": 24.0,
+			"day": 14.0,
 			"label": "the clock is circular: keyframe[i] → keyframe[(i+1) mod n], so midnight wraps to dawn" },
 		"rhyme": { "name": "Fast-forward night", "hint": "the same day in six seconds instead of 24, with a purple-and-teal palette — a time-lapse",
 			"dials": { "tops": [Color("3AA8C8"), Color("2A6FA8"), Color("3A1E6A"), Color("05051A"), Color("4A1E5A")],
@@ -324,7 +324,7 @@ static func defs() -> Array:
 	d.append({ "letter": "O", "name": "Overcast",
 		"hint": "a grey day is bands of cloud, each a gradient with a lighter far edge, drifting at speeds that say how far away they are",
 		"dials": { "top": Color("5A6478"), "bottom": Color("B8BFCC"), "cloud": Color("7A8396"), "floor": Color("3A3F50"),
-			"bands": 6, "wind": 1.0, "flash_every": 0.0,
+			"bands": 6, "wind": 1.6, "flash_every": 0.0,
 			"label": "clouds are gradients too: lit on top, dark underneath, paler the farther they are" },
 		"rhyme": { "name": "Stormfront", "hint": "the same cloud bands, near-black, in a gale — with a flash every few seconds that lights their undersides",
 			"dials": { "top": Color("1A1E2A"), "bottom": Color("4A5060"), "cloud": Color("2A2F3A"), "floor": Color("14161E"),
@@ -370,7 +370,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- R · Rainbow -------------------------------------------------------
-	d.append({ "letter": "R", "name": "Rainbow",
+	d.append({ "letter": "R", "name": "Rainbow", "drag": true,
 		"hint": "a bow is seven concentric arcs of hue, alpha fading at both edges — a gradient bent into a circle, drawn where the light isn't",
 		"dials": { "sky0": Color("4A6FA8"), "sky1": Color("9FB8D8"), "sky2": Color("D9E3F0"), "floor": Color("2F4A3A"),
 			"width": 0.12, "alpha": 0.55, "sat": 0.9, "lum": 0.6, "secondary": true, "speed": 1.0, "night": false,
@@ -411,10 +411,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- T · Twilight ------------------------------------------------------
-	d.append({ "letter": "T", "name": "Twilight",
+	d.append({ "letter": "T", "name": "Twilight", "drag": true,
 		"hint": "the Belt of Venus: a pink band floating above a blue-grey band (the Earth's own shadow) — two horizontal gradients stacked, rising as the sun sinks",
 		"dials": { "top": Color("2A3A8F"), "pink": Color("E8A0B8"), "shadow": Color("4A5A8A"), "horizon": Color("F5D9B0"),
-			"length": 18.0, "grid": false,
+			"length": 9.0, "grid": false,
 			"label": "the grey band IS the planet's shadow on its own air — depth you can see from the ground" },
 		"rhyme": { "name": "Cyber twilight", "hint": "the same two bands in neon — hot pink over electric blue over a black horizon — a synthwave poster",
 			"dials": { "top": Color("0A0020"), "pink": Color("FF2A9A"), "shadow": Color("1A5AFF"), "horizon": Color.BLACK,
@@ -443,7 +443,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Z · Zenith --------------------------------------------------------
-	d.append({ "letter": "Z", "name": "Zenith",
+	d.append({ "letter": "Z", "name": "Zenith", "drag": true,
 		"hint": "the plainest sky: deep blue overhead, pale at the horizon, because you look through more air sideways — plus a bright patch that follows the sun",
 		"dials": { "zenith": Color("1E4FB8"), "horizon": Color("CFE6F5"), "sun_glow": Color("FFF3D0"), "sun": Color("FFF3D0"),
 			"grass0": Color("6A9A6A"), "grass1": Color("3A5A3A"), "glow_r": 0.55, "sun_x": 0.7, "sun_y": 0.25,

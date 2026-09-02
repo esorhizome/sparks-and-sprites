@@ -122,7 +122,7 @@ static func defs() -> Array:
 	# ---- G · Gem -----------------------------------------------------------
 	d.append({ "letter": "G", "name": "Gem",
 		"hint": "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it",
-		"dials": { "sky": [Color("0E0C1E"), Color("1E1A36")], "col": Color("5AC8E8"), "spin": 0.4,
+		"dials": { "sky": [Color("0E0C1E"), Color("1E1A36")], "col": Color("5AC8E8"), "spin": 0.7,
 			"sides": 6, "crown": 0.45, "pav": 1.1,               # crown/pav = the point above / below the rim, in radii
 			"label": "shade = how squarely the face meets the light — turning changes nothing but that, and the stone reads solid" },
 		"rhyme": { "name": "Ruby cut", "hint": "the same stone in red, turning three times as fast — the facets flicker past the light instead of drifting",
@@ -175,7 +175,7 @@ static func defs() -> Array:
 	d.append({ "letter": "H", "name": "Hexprism",
 		"hint": "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60° and the shades walk round",
 		"dials": { "sky": [Color("141226"), Color("26223E")], "floor": Color("1A1A2C"), "cols": [Color("B87A5A")],
-			"count": 1, "h": 0.5, "r": 0.16, "every": 3.0,       # count of prisms; h and r as fractions of H and W; every = seconds between idle turns
+			"count": 1, "h": 0.5, "r": 0.16, "every": 2.0,       # count of prisms; h and r as fractions of H and W; every = seconds between idle turns
 			"label": "one rule for every side — shade by the way it faces — and the top stays lit whatever the turn" },
 		"rhyme": { "name": "Basalt columns", "hint": "five grey columns of different heights, side by side, all turning together — a rock shelf from one rule",
 			"dials": { "cols": [Color("4A4A52"), Color("5A5A62"), Color("3E3E46")], "count": 5, "h": 0.42,
@@ -221,7 +221,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- I · Isotile -------------------------------------------------------
-	d.append({ "letter": "I", "name": "Isotile",
+	d.append({ "letter": "I", "name": "Isotile", "drag": true,
 		"hint": "an isometric floor: diamonds in two alternating colours with a darker line on their right and bottom edges — and a ball whose shadow never leaves the floor",
 		"dials": { "sky": [Color("141226"), Color("221E3A")], "a": Color("6A8ACF"), "b": Color("8AA6DF"), "edge": -0.45, "ball": Color("F58A8A"),
 			"n": 8, "speed": 0.6, "glow": 0.0,                   # n tiles a side; glow = a warm torch tint over the floor (0 = none)
@@ -267,7 +267,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- K · Keep ----------------------------------------------------------
-	d.append({ "letter": "K", "name": "Keep",
+	d.append({ "letter": "K", "name": "Keep", "drag": true,
 		"hint": "a castle tower from stacked blocks: one tall block, small blocks for the battlements, a dark doorway — every face obeys the same light, so it is one building",
 		"dials": { "sky": [Color("2A3A6A"), Color("8AA0C8")], "floor": Color("3A5A3A"), "stone": Color("9A8E86"), "flag": Color("F58A8A"),
 			"h": 2.4, "wind": 1.0,                               # h = tower height in widths; wind = flag speed (sign = direction)
@@ -308,7 +308,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- P · Pyramid -------------------------------------------------------
-	d.append({ "letter": "P", "name": "Pyramid",
+	d.append({ "letter": "P", "name": "Pyramid", "drag": true,
 		"hint": "two triangles, one lit and one dark, plus a shadow stretched along the ground away from the light — press moves the sun and both swap",
 		"dials": { "sky": [Color("3A6FD0"), Color("C8DCF0")], "sand": Color("D9A86A"), "col": Color("D9A86A"),
 			"size": 0.19, "h": 1.1, "shadowA": 0.42,             # size = one footprint edge in W; h = apex height in edges; shadowA = how dark the shadow
@@ -475,7 +475,7 @@ static func defs() -> Array:
 	d.append({ "letter": "W", "name": "Wedge",
 		"hint": "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down and its shadow slides with it",
 		"dials": { "sky": [Color("1E1C34"), Color("3A3858")], "floor": Color("1A1A2C"), "col": Color("7AA0C8"), "block": Color("F58A8A"),
-			"len": 3.0, "h": 1.4, "speed": 0.55,                 # len = ramp length in cells; h = the high end in cells; speed = slides per second
+			"len": 3.0, "h": 1.4, "speed": 0.8,                 # len = ramp length in cells; h = the high end in cells; speed = slides per second
 			"label": "one lit face, one dark face, and a shadow that keeps up — that is a ramp and a thing on it" },
 		"rhyme": { "name": "Skate ramp", "hint": "the same ramp in concrete grey, lower and faster, under a day sky — a skate ramp with a gold block for a board",
 			"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "floor": Color("4A4A52"), "col": Color("8A8A92"), "block": Color("F5C169"),
@@ -507,7 +507,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- X · Xylophone -----------------------------------------------------
-	d.append({ "letter": "X", "name": "Xylophone",
+	d.append({ "letter": "X", "name": "Xylophone", "drag": true,
 		"hint": "eight flat blocks receding toward the back, each drawn a little smaller than the one before — size shrinking with distance is the cue; press a bar and its top flashes",
 		"dials": { "sky": [Color("1A1430"), Color("2C2448")], "floor": Color("1A1A2C"), "hues": [0.0, 30.0, 55.0, 110.0, 180.0, 210.0, 260.0, 300.0],
 			"n": 8, "shrink": 0.07, "thick": 0.28, "jitter": 0.0, "beat": 0.45,   # shrink per bar toward the back; thick = bar height; jitter = height wobble; beat = seconds per note
@@ -552,7 +552,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Y · Yurt ----------------------------------------------------------
-	d.append({ "letter": "Y", "name": "Yurt",
+	d.append({ "letter": "Y", "name": "Yurt", "drag": true,
 		"hint": "a round tent: the wall is a cylinder (dark → light → dark across), the roof a cone (the same band pinched into a triangle) — press moves the light and both slide",
 		"dials": { "sky": [Color("2A3A6A"), Color("B8C8E0")], "floor": Color("5A6A4A"), "wall": Color("D9C8A8"), "roof": Color("A85A4A"), "door": Color("3A2A1A"),
 			"roofH": 0.55, "smoke": 6,                           # roofH = cone height in wall widths (low = a dome-ish cap); smoke = how many puffs

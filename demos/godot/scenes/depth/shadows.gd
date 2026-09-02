@@ -228,10 +228,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- J · Jump ----------------------------------------------------------
-	d.append({ "letter": "J", "name": "Jump",
+	d.append({ "letter": "J", "name": "Jump", "drag": true,
 		"hint": "two balls hop along; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles",
 		"dials": { "sky": [Color("1E2A3A"), Color("3A5068")], "floor": Color("3A4A3A"), "grass": Color("5A8A4A"), "ball": Color("F5C169"), "ghost": Color("8AD9F5"),
-			"hop": 0.24, "hops": 1.1, "speed": 0.12,                # hop height (of H), hops per second, path speed (of W per second)
+			"hop": 0.24, "hops": 1.1, "speed": 0.2,                # hop height (of H), hops per second, path speed (of W per second)
 			"label": "the ball's y says nothing on its own; the gap to its shadow says 'altitude'" },
 		"rhyme": { "name": "Pixel jump", "hint": "the same two hoppers in an arcade palette — a navy sky, neon grass — hopping half again as high and half again as often",
 			"dials": { "sky": [Color("000020"), Color("20206A")], "floor": Color("1A6A1A"), "grass": Color("40C040"), "ball": Color("FFE040"), "ghost": Color("40E0FF"),
@@ -261,7 +261,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- L · Longshadow ----------------------------------------------------
-	d.append({ "letter": "L", "name": "Longshadow",
+	d.append({ "letter": "L", "name": "Longshadow", "drag": true,
 		"hint": "a low sun: posts throw long parallelogram shadows across the floor, length = height / tan(elevation) — press moves the sun and the shadows swing",
 		"dials": { "sky": [Color("3A2A5A"), Color("F5A15A")], "floor": Color("E8B87A"), "post": Color("4A3A6A"), "sun": Color("FFF3D0"),
 			"elev": 0.32, "dir": 1, "tilt": 0.28, "posts": 5, "shadow_a": 0.35, "ink": null,   # sun elevation (radians), side (+1 = sun on the left), lean toward the viewer, count; ink null = the kit's pale text
@@ -357,7 +357,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label, K.alpha(ao_col, 0.7)) })
 
 	# ---- U · Umbra ---------------------------------------------------------
-	d.append({ "letter": "U", "name": "Umbra",
+	d.append({ "letter": "U", "name": "Umbra", "drag": true,
 		"hint": "an area light: the shadow has a dark core (umbra) and a soft rim (penumbra) that widens the wider and nearer the light — press moves the light",
 		"dials": { "sky": [Color("1A1E2E"), Color("2A3048")], "floor": Color("3A4058"), "ball": Color("8AD9F5"), "lamp": Color("FFF3D0"),
 			"light_w": 0.3, "light_x": 0.3, "light_y": 0.12, "steps": 9, "shadow_a": 0.6, "glow_k": 1.0,   # light width (of W), position, how many ellipses build the gradient, core darkness, glow radius (× light width)
@@ -462,10 +462,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label, K.alpha(ink, 0.7)) })
 
 	# ---- G · Ground --------------------------------------------------------
-	d.append({ "letter": "G", "name": "Ground",
+	d.append({ "letter": "G", "name": "Ground", "drag": true,
 		"hint": "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks — press moves the vanishing point",
 		"dials": { "sky": [Color("2A3A5A"), Color("8AA0C8")], "floor": Color("3A4A5A"), "lines": Color("C8D8F0"), "ball": Color("F58A8A"),
-			"rows": 12, "cols": 9, "fog_k": 0.9, "speed": 0.15,       # grid density, how much the far floor fades into the air, the ball's speed
+			"rows": 12, "cols": 9, "fog_k": 0.9, "speed": 0.3,       # grid density, how much the far floor fades into the air, the ball's speed
 			"label": "rows bunch as p², columns meet at one point, colour fades into the air — three cues, one floor" },
 		"rhyme": { "name": "Synthwave grid", "hint": "the same floor in hot pink on black with a cyan ball — 16 rows, half the fog, so the grid stays crisp all the way to the horizon",
 			"dials": { "sky": [Color("0A0018"), Color("2A0040")], "floor": Color.BLACK, "lines": Color("FF2A9A"), "ball": Color("40E0FF"),
@@ -509,7 +509,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- M · Mirror --------------------------------------------------------
-	d.append({ "letter": "M", "name": "Mirror",
+	d.append({ "letter": "M", "name": "Mirror", "drag": true,
 		"hint": "a floor reflection: the object drawn again upside-down under the floor line, darker and fading with distance from it, with a faint ripple — press moves the object",
 		"dials": { "sky": [Color("1A1030"), Color("3A2A5A")], "floor": Color("141020"), "ball": Color("C9A0F5"), "block": Color("5A7AB8"),
 			"ref_a": 0.55, "fade": 0.8, "ripple": 2.0, "ink": null,     # reflection strength, how fast it fades (of the pool depth), ripple amplitude in px
@@ -551,10 +551,10 @@ static func defs() -> Array:
 			_bottom(n, b, D, K.alpha(D.ink, 0.7) if D.ink != null else null) })
 
 	# ---- B · Bokeh ---------------------------------------------------------
-	d.append({ "letter": "B", "name": "Bokeh",
+	d.append({ "letter": "B", "name": "Bokeh", "drag": true,
 		"hint": "depth of field: lights at many depths; the ones on the focus plane are small and sharp, the ones far from it big, soft and dim — the plane slides; press sets it by y",
 		"dials": { "sky": [Color("0A0A18"), Color("1A1830")], "hues": [40.0, 200.0, 320.0], "n": 40, "seed": 5,   # palette of the lights, how many
-			"blur_k": 4.0, "dim_k": 6.0, "sweep": 0.25,                 # how fast size grows / brightness drops with distance from focus; sweep speed of the plane
+			"blur_k": 4.0, "dim_k": 6.0, "sweep": 0.45,                 # how fast size grows / brightness drops with distance from focus; sweep speed of the plane
 			"label": "sharp = where the eye is looking; everything else grows into a soft disc — blur is a distance" },
 		"rhyme": { "name": "City bokeh", "hint": "the same lights at night, seventy of them in amber and cyan — street lamps and shop signs — with the focus sweeping half as fast",
 			"dials": { "sky": [Color("050510"), Color("0E0E1E")], "hues": [35.0, 195.0], "n": 70, "sweep": 0.12,
@@ -602,7 +602,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- T · Tiltshift -----------------------------------------------------
-	d.append({ "letter": "T", "name": "Tiltshift",
+	d.append({ "letter": "T", "name": "Tiltshift", "drag": true,
 		"hint": "a miniature: rows of little cubes, one sharp band across the middle and rows above and below drawn thrice with offsets — the fake blur makes a town look toy-sized",
 		"dials": { "sky": [Color("8AB8E8"), Color("D8E8F5")], "floor": Color("7A9A6A"),
 			"cols": [Color("F58A8A"), Color("F5C169"), Color("8AD9F5"), Color("C9A0F5"), Color("9BE28A"), Color("F5A15A")],
@@ -654,7 +654,7 @@ static func defs() -> Array:
 			_bottom(n, b, D, K.alpha(ink, 0.7) if D.ink != null else null) })
 
 	# ---- V · Vignette ------------------------------------------------------
-	d.append({ "letter": "V", "name": "Vignette",
+	d.append({ "letter": "V", "name": "Vignette", "drag": true,
 		"hint": "the same view twice: plain on the left, on the right a radial darkening at the rim — the dark edges push the eye to the centre and the centre reads as far",
 		"dials": { "sky": [Color("3A5A9A"), Color("D8C8A8")], "hill": Color("4A6A4A"), "far": Color("8A9AB8"), "sun": Color("FFF3D0"), "tint": null,   # tint: an overall colour wash (null = none)
 			"inner": 0.35, "dark": 0.8,                                 # where the darkening starts (of the half-radius), how black the rim gets
@@ -695,7 +695,7 @@ static func defs() -> Array:
 	d.append({ "letter": "I", "name": "Inkwash",
 		"hint": "a sumi-e landscape in one ink: five silhouette layers at rising alpha — far faint, near dark — and a few brush strokes; no colour at all, just value as distance",
 		"dials": { "paper": Color("F2EDE2"), "ink": Color("1E2230"), "layers": 5, "fill": true,   # paper, the one ink, how many ridges, painted (true) or outlined (false)
-			"far_a": 0.12, "near_a": 0.9, "drift": 0.02,                # alpha of the farthest / nearest ridge, parallax speed
+			"far_a": 0.12, "near_a": 0.9, "drift": 0.06,                # alpha of the farthest / nearest ridge, parallax speed
 			"hues": [Color("1E2230"), Color("2A1A3A"), Color("1A3A2A"), Color("3A1E1A")],   # inks the press cycles through
 			"label": "one ink, five alphas — the farthest ridge is mostly paper. That is atmospheric perspective with nothing else" },
 		"rhyme": { "name": "Blueprint", "hint": "the same ridges as white outlines on drafting blue — value inverted: the near ridge is the brightest line, the far one nearly vanishes into the paper",
@@ -747,10 +747,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label, K.alpha(ink, 0.65)) })
 
 	# ---- N · Noir ----------------------------------------------------------
-	d.append({ "letter": "N", "name": "Noir",
+	d.append({ "letter": "N", "name": "Noir", "drag": true,
 		"hint": "hard light through a blind: bright bars across a dark room and a sphere — the bars shift where they cross the ball, and that shift is its roundness; press moves the light angle",
 		"dials": { "room": Color("0C0A14"), "wall": Color("1A1622"), "light": Color("F5E6C0"), "ball": Color("3A3A4A"),
-			"angle": -0.55, "gap": 0.09, "bar_k": 0.45, "speed": 0.02, "bend": 0.4,   # bar angle (radians; 0 = horizontal, π/2 = vertical), spacing (of W), lit share of each gap, drift, how far the bars jump on the ball (× radius)
+			"angle": -0.55, "gap": 0.09, "bar_k": 0.45, "speed": 0.06, "bend": 0.4,   # bar angle (radians; 0 = horizontal, π/2 = vertical), spacing (of W), lit share of each gap, drift, how far the bars jump on the ball (× radius)
 			"label": "stripes that agree are a wall; stripes that jump are a thing in front of it — hard light draws form by breaking pattern" },
 		"rhyme": { "name": "Prison bars", "hint": "the same hard light standing up: vertical bars, wider apart and thinner, in a cold blue-grey — the ball still bends them",
 			"dials": { "room": Color("0A0E18"), "wall": Color("1A2230"), "light": Color("C8D8F0"), "ball": Color("4A4A5A"),
@@ -785,10 +785,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- X · Xray ----------------------------------------------------------
-	d.append({ "letter": "X", "name": "Xray",
+	d.append({ "letter": "X", "name": "Xray", "drag": true,
 		"hint": "three translucent panes over a scene: where they overlap they darken more, so the stacking order shows — a lens follows the pointer and shows the panes sharp inside, faint outside",
 		"dials": { "sky": [Color("F0ECE4"), Color("D8D2C4")], "panes": [Color("F58A8A"), Color("8AD9F5"), Color("F5C169")], "ink": Color("3A2A2A"),
-			"alpha": 0.55, "outside": 0.3, "blend": "multiply", "lens_r": 0.28, "drift": 0.4,   # pane alpha inside the lens, alpha outside, how panes combine, lens radius (of W), pane drift speed
+			"alpha": 0.55, "outside": 0.3, "blend": "multiply", "lens_r": 0.28, "drift": 0.8,   # pane alpha inside the lens, alpha outside, how panes combine, lens radius (of W), pane drift speed
 			"label": "where two panes cross the colour multiplies: darker means more layers — depth counted in sheets" },
 		"rhyme": { "name": "Stained glass", "hint": "the same three panes in saturated red, blue and gold on a dark ground, blended with screen instead of multiply — overlaps glow instead of darkening",
 			"dials": { "sky": [Color("101018"), Color("20202A")], "panes": [Color("E02040"), Color("2060E0"), Color("F0C000")], "ink": Color("F5F0E8"),

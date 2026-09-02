@@ -2159,6 +2159,7 @@ func _bake_all() -> void:
 ## ---------------------------------------------------------------- cards
 
 func _build_page() -> void:
+	_close_big()
 	for card in cards:
 		(card.spr as AnimatedSprite2D).queue_free()
 		for ex in card.extra:
@@ -2210,6 +2211,12 @@ func _process(delta: float) -> void:
 			if card.wait > 1.1:
 				card.wait = 0.0
 				spr.play("fx")
+	if not big.is_empty():                       # the big view mirrors its card, frame for frame
+		var src: AnimatedSprite2D = big.card.spr
+		var bs: AnimatedSprite2D = big.spr
+		bs.animation = src.animation
+		bs.frame = src.frame
+		bs.flip_h = src.flip_h
 	queue_redraw()
 
 func _draw() -> void:
@@ -2220,7 +2227,7 @@ func _draw() -> void:
 		[FAMS[pd.fam][0], part, page + 1, pagedefs.size(), FAMS[pd.fam][1]],
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.66, 0.64, 0.77))
 	draw_string(ThemeDB.fallback_font, Vector2(14, 42),
-		"←/→ turn the page · click a card to replay from frame 0 · the strip below each card IS the baked texture · Esc = menu",
+		"←/→ turn the page · click a card to open it large (and replay it) · the strip below each card IS the baked texture · Esc = menu",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.52, 0.5, 0.62))
 	if not baked:
 		draw_string(ThemeDB.fallback_font, Vector2(14, 80), "baking 26 sheets…",
@@ -2257,20 +2264,82 @@ func _draw() -> void:
 			HORIZONTAL_ALIGNMENT_CENTER, STAGE.x + 12, 11, Color(0.72, 0.7, 0.82))
 		draw_string(ThemeDB.fallback_font, Vector2(r.position.x - 6, r.position.y + 174),
 			eff.hint, HORIZONTAL_ALIGNMENT_CENTER, STAGE.x + 12, 9, Color(0.5, 0.48, 0.6))
+	if not big.is_empty():                       # the big view: a dimmed page, the sprite (a child,
+		var beff: Dictionary = big.card.eff       # drawn after this) and its caption
+		draw_rect(Rect2(Vector2.ZERO, Vector2(960, 540)), Color(0.05, 0.04, 0.09, 0.86))
+		draw_rect(BIG_RECT, Color(0.08, 0.065, 0.13))
+		draw_line(BIG_RECT.position + Vector2(0, BIG_RECT.size.y * 0.72), BIG_RECT.position + Vector2(BIG_RECT.size.x, BIG_RECT.size.y * 0.72), Color(0.79, 0.77, 0.89, 0.4), 1.5)
+		draw_rect(BIG_RECT.grow(2.0), Color(0.66, 0.64, 0.77, 0.8), false, 2.0)
+		draw_string(ThemeDB.fallback_font, Vector2(BIG_RECT.position.x, BIG_RECT.end.y + 22),
+			"%s · %s  (%d × %d px, %.0f fps, %s, %s)" % [beff.letter, beff.name, int(beff.n), S, beff.fps,
+				"loop" if beff.loop else "one-shot", "add" if beff.add else "over"],
+			HORIZONTAL_ALIGNMENT_CENTER, BIG_RECT.size.x, 14, Color(0.9, 0.88, 0.97))
+		draw_multiline_string(ThemeDB.fallback_font, Vector2(BIG_RECT.position.x - 60, BIG_RECT.end.y + 40), beff.hint,
+			HORIZONTAL_ALIGNMENT_CENTER, BIG_RECT.size.x + 120, 11, 2, Color(0.66, 0.64, 0.77))
+		draw_string(ThemeDB.fallback_font, Vector2(14, 530),
+			"click inside to replay · click outside or Esc to close", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.72, 0.7, 0.82))
+
+## ---- the big view: click a card and it opens, 3.4× larger, in the middle
+## of the window. The big sprite shares the card's SpriteFrames and simply
+## copies the card's current frame each tick — so the specials (Beam's
+## start/loop/end, Waddle's ping-pong, Glitch's per-frame clocks) show
+## exactly what the small card is doing. Click inside to retrigger the card;
+## click outside or press Esc to close.
+var big: Dictionary = {}
+const BIG_RECT := Rect2(Vector2(230, 84), Vector2(500, 380))
+
+func _open_big(card: Dictionary) -> void:
+	_close_big()
+	var src: AnimatedSprite2D = card.spr
+	var spr := AnimatedSprite2D.new()
+	spr.sprite_frames = src.sprite_frames
+	spr.animation = src.animation
+	spr.position = BIG_RECT.position + Vector2(BIG_RECT.size.x / 2.0, BIG_RECT.size.y * 0.5)
+	spr.scale = Vector2(3.4, 3.4)
+	spr.material = src.material                      # light still adds, soot still covers
+	add_child(spr)
+	big = { "card": card, "spr": spr }
+	_show_cards(false)                               # the small sprites hide behind the dim page
+
+func _close_big() -> void:
+	if big.is_empty():
+		return
+	(big.spr as AnimatedSprite2D).queue_free()
+	big = {}
+	_show_cards(true)
+
+func _show_cards(on: bool) -> void:
+	for card in cards:
+		(card.spr as AnimatedSprite2D).visible = on
+		for ex in card.extra:
+			if ex is CanvasItem: (ex as CanvasItem).visible = on
+
+func _retrigger(card: Dictionary) -> void:
+	if card.eff.has("tick"):
+		card.clicked = true                      # the special decides what a click means
+	else:
+		(card.spr as AnimatedSprite2D).stop()
+		(card.spr as AnimatedSprite2D).play("fx")
+		card.wait = 0.0
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		if not big.is_empty():
+			if BIG_RECT.has_point(event.position):
+				_retrigger(big.card)
+			else:
+				_close_big()
+			return
 		for card in cards:
 			if (card.rect as Rect2).grow(6.0).has_point(event.position):
-				if card.eff.has("tick"):
-					card.clicked = true          # the special decides what a click means
-				else:
-					(card.spr as AnimatedSprite2D).stop()
-					(card.spr as AnimatedSprite2D).play("fx")
-					card.wait = 0.0
+				_retrigger(card)
+				_open_big(card)
 	if event is InputEventKey and event.pressed:
 		match event.keycode:
 			KEY_ESCAPE:
+				if not big.is_empty():
+					_close_big()
+					return
 				get_tree().change_scene_to_file("res://scenes/menu.tscn")
 			KEY_RIGHT, KEY_PAGEDOWN:
 				page = (page + 1) % pagedefs.size()

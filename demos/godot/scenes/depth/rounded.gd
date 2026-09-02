@@ -170,7 +170,7 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- O · Orb -----------------------------------------------------------
-	d.append({ "letter": "O", "name": "Orb",
+	d.append({ "letter": "O", "name": "Orb", "drag": true,
 		"hint": "one big ball: a radial gradient with its inner point pushed toward the light — that offset IS the roundness; the contact shadow leans the other way",
 		"dials": { "bg": [Color("1C1A32"), Color("0B0A16")], "ball": Color("5A8FE8"), "rim": Color("8AD9F5"), "spec": 0.5,
 			"lx": -0.55, "ly": -0.6, "shadowA": 0.55,
@@ -194,7 +194,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- C · Column --------------------------------------------------------
-	d.append({ "letter": "C", "name": "Column",
+	d.append({ "letter": "C", "name": "Column", "drag": true,
 		"hint": "three pillars: a horizontal gradient dark → light → dark is the entire cylinder — plus a paler ellipse on top so the lid reads as flat",
 		"dials": { "bg": [Color("2A2444"), Color("151226")], "stone": Color("B8A88C"), "cols": 3, "capLight": 0.45, "lx": -0.3,
 			"label": "a cylinder is one horizontal gradient: bright where it faces the lamp, dark where it turns away" },
@@ -217,7 +217,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- D · Dome ----------------------------------------------------------
-	d.append({ "letter": "D", "name": "Dome",
+	d.append({ "letter": "D", "name": "Dome", "drag": true,
 		"hint": "a hemisphere on a plinth: half a shaded ball above a clip line, a short cylinder it sits on, and a cast shadow that says how tall it is",
 		"dials": { "bg": [Color("3A4A6A"), Color("1A1E30")], "dome": Color("C8B8A0"), "base": Color("6A6A78"), "slit": null,   # slit: x of a dark slot (share of r), or null
 			"lx": -0.6, "ly": -0.5,
@@ -251,7 +251,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- E · Egg -----------------------------------------------------------
-	d.append({ "letter": "E", "name": "Egg",
+	d.append({ "letter": "E", "name": "Egg", "drag": true,
 		"hint": "an egg is a ball under ctx.scale(0.76, 1): the same offset gradient, squeezed — a warm shadow side, a soft ground shadow, and a slow rock",
 		"dials": { "bg": [Color("EAD8C0"), Color("C8A888")], "shell": Color("F2E4CC"), "dark": Color("8A5A3A"), "spec": 0.4,   # dark: warm, because the ground bounces light into it
 			"squeeze": 0.76, "rock": 1.3, "lx": -0.5, "ly": -0.6,                                                          # squeeze: width ÷ height; rock: how fast it sways
@@ -280,7 +280,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- E · Eyeball -------------------------------------------------------
-	d.append({ "letter": "E", "name": "Eyeball",
+	d.append({ "letter": "E", "name": "Eyeball", "drag": true,
 		"hint": "a white ball with an iris disc that slides to look at you — the pupil moves, the highlight stays put on the light's side, and that difference sells the roundness",
 		"dials": { "bg": [Color("2A1E3A"), Color("120C1E")], "white": Color("F2EEF0"), "hue": 200.0, "asp": 1.0,   # asp: pupil width ÷ height — 1 is round, 0.25 a cat's slit
 			"lx": -0.5, "ly": -0.55, "follow": 6.0,                                                            # follow: how quickly the eye catches up
@@ -316,16 +316,16 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- J · Jupiter -------------------------------------------------------
-	d.append({ "letter": "J", "name": "Jupiter",
+	d.append({ "letter": "J", "name": "Jupiter", "drag": true,
 		"hint": "a banded planet: flat wobbly stripes clipped to a disc, then one radial gradient — clear in the middle, dark at the rim, offset toward the sun — lays the roundness on top",
 		"dials": { "bg": [Color("050510"), Color("0B0A18")],
 			"bands": [Color("D9B48A"), Color("A8734A"), Color("E8D2B0"), Color("B8865A"), Color("F0E0C8"), Color("8A5A3A"), Color("D9B48A"), Color("C29060"), Color("E8D2B0")],
-			"spot": Color("C05A3A"), "night": Color("050510"), "speed": 0.25, "lx": -0.6, "ly": -0.3,   # speed: how fast the bands slide
+			"spot": Color("C05A3A"), "night": Color("050510"), "speed": 0.5, "lx": -0.6, "ly": -0.3,   # speed: how fast the bands slide
 			"label": "the stripes are flat; the dark overlay is the whole sphere — the terminator is where it fades to night" },
 		"rhyme": { "name": "Candy planet", "hint": "the same striped planet in pastels with a pink spot, bands sliding twice as fast — cozy sci-fi",
 			"dials": { "bg": [Color("1A1030"), Color("2A1E4A")],
 				"bands": [Color("F5C0D8"), Color("B8E8F5"), Color("FFF0B8"), Color("C8F5C8"), Color("F5D0F5"), Color("B8D8F5"), Color("FFD8C0"), Color("D8F5E8"), Color("F5C0D8")],
-				"spot": Color("FF7AA8"), "night": Color("1A1030"), "speed": 0.6,
+				"spot": Color("FF7AA8"), "night": Color("1A1030"), "speed": 1.0,
 				"label": "pastel stripes, same dark overlay — the roundness lives in the overlay, not in the colours" } },
 		"init": func(b: Dictionary) -> void:
 			b.cx = b.W * 0.5; b.cy = b.H * 0.48; b.r = minf(b.W, b.H) * 0.36
@@ -363,9 +363,9 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- L · Lozenge -------------------------------------------------------
-	d.append({ "letter": "L", "name": "Lozenge",
+	d.append({ "letter": "L", "name": "Lozenge", "drag": true,
 		"hint": "a capsule: a cylinder between two half-balls, all shaded from ONE light — it turns slowly, but the highlight stays on the light's side",
-		"dials": { "bg": [Color("1E2A3A"), Color("0C1018")], "pill": Color("E86A8A"), "spin": 0.3, "len": 1.8,   # len: the body's length in radii; spin: turns per second-ish
+		"dials": { "bg": [Color("1E2A3A"), Color("0C1018")], "pill": Color("E86A8A"), "spin": 0.6, "len": 1.8,   # len: the body's length in radii; spin: turns per second-ish
 			"lx": -0.5, "ly": -0.6,
 			"label": "three shapes, one light: the caps' highlight and the body's bright stripe meet because they agree on lx, ly" },
 		"rhyme": { "name": "Pixel pill", "hint": "the same capsule in arcade green, shorter and spinning four times as fast — a power-up",
@@ -395,7 +395,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- P · Pearl ---------------------------------------------------------
-	d.append({ "letter": "P", "name": "Pearl",
+	d.append({ "letter": "P", "name": "Pearl", "drag": true,
 		"hint": "a small ball with a wide soft highlight, a rim light from behind, and two hues bleeding across the highlight — nacre is a sphere plus a colour shift",
 		"dials": { "bg": [Color("2A1A2E"), Color("0E0812")], "pearl": Color("E8E0E6"), "rim": Color("F5C0E0"), "dark": Color("8A7A90"),   # rim: the back-light leaking round the edge
 			"hueA": 320.0, "hueB": 190.0, "cushion": Color("3A1A34"), "lx": -0.45, "ly": -0.55,                                        # hueA, hueB: the two tints either side of the highlight
@@ -439,7 +439,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Q · Quicksilver ---------------------------------------------------
-	d.append({ "letter": "Q", "name": "Quicksilver",
+	d.append({ "letter": "Q", "name": "Quicksilver", "drag": true,
 		"hint": "mirror ball beside matte ball: the matte one is a smooth radial; the mirror one is a sky band over a dark ground band, clipped to the disc, plus one sharp white dot",
 		"dials": { "bg": [Color("2E3444"), Color("141824")], "matte": Color("7A8494"), "skyHi": Color("DCE8F5"), "skyLo": Color("8AA0C0"),   # what the mirror reflects: a sky…
 			"groundHi": Color("5A4A3A"), "groundLo": Color("141010"), "lx": -0.5, "ly": -0.55,                                          # …over a ground
@@ -475,10 +475,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- T · Torus ---------------------------------------------------------
-	d.append({ "letter": "T", "name": "Torus",
+	d.append({ "letter": "T", "name": "Torus", "drag": true,
 		"hint": "a ring shaded as a donut: one radial gradient whose stops peak at the tube's middle radius, pushed toward the light — plus a dark wash across the far half",
 		"dials": { "bg": [Color("1A2230"), Color("0A0E16")], "tube": Color("E8A040"), "dark": Color("3A2010"), "fat": 0.42,   # fat: tube radius ÷ ring radius; dark: both edges of the tube
-			"spin": 0.4, "sprinkles": 0,                                                                                    # spin: how fast the light circles; sprinkles: 0 for a plain ring
+			"spin": 0.7, "sprinkles": 0,                                                                                    # spin: how fast the light circles; sprinkles: 0 for a plain ring
 			"label": "on the lit side the crown sits toward the outside, on the far side toward the hole — the offset does that for free" },
 		"rhyme": { "name": "Doughnut", "hint": "the same ring with pink icing, brown edges, a fatter tube and 28 sprinkles — goofy and edible",
 			"dials": { "bg": [Color("F5E6D8"), Color("D8C0A8")], "tube": Color("F58AB8"), "dark": Color("8A5A30"), "fat": 0.5,
@@ -522,7 +522,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- U · Urn -----------------------------------------------------------
-	d.append({ "letter": "U", "name": "Urn",
+	d.append({ "letter": "U", "name": "Urn", "drag": true,
 		"hint": "a vase from a lathe: 40 thin slices, each as wide as a profile function says, each a horizontal dark → light → dark cylinder gradient — round things from stacked rings",
 		"dials": { "bg": [Color("3A3048"), Color("16121E")], "clay": Color("B86A48"), "band": Color("4A2A24"), "slices": 40,   # band: a painted stripe round the belly
 			"lx": -0.35, "ly": -0.5,
@@ -596,7 +596,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Z · Zeppelin ------------------------------------------------------
-	d.append({ "letter": "Z", "name": "Zeppelin",
+	d.append({ "letter": "Z", "name": "Zeppelin", "drag": true,
 		"hint": "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — and a faint shadow on the cloud floor far below",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "hull": Color("D8D0C0"), "hullDark": Color("4A5060"), "gondola": Color("3A3038"),   # hullDark: cool, because the sky lights it
 			"stretch": 2.4, "speed": 0.6, "lx": -0.5, "ly": -0.6,                                                                       # stretch: length ÷ height; speed: the drift

@@ -108,7 +108,7 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- A · Ash -----------------------------------------------------------
-	d.append({ "letter": "A", "name": "Ash",
+	d.append({ "letter": "A", "name": "Ash", "drag": true,
 		"hint": "flakes falling over a burnt-out night: one z per flake sets size, greyness, speed and a touch of blur — near ones big and fast, far ones tiny and slow",
 		"dials": { "sky": [Color("0A0608"), Color("2A1410")], "glow": Color("F58A4A"), "near": Color("E8E4E0"), "far": Color("5A5458"),
 			"flakes": 80, "fall": 0.35, "wind": 0.0, "seed": 31,
@@ -145,7 +145,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- B · Blaze ---------------------------------------------------------
-	d.append({ "letter": "B", "name": "Blaze",
+	d.append({ "letter": "B", "name": "Blaze", "drag": true,
 		"hint": "flame in three depth planes: back tongues dark red, soft, slow; middle orange; front ones yellow-white, sharp, fast — additive, so overlaps burn hot",
 		"dials": { "sky": [Color("0A0508"), Color("1E0A08")], "planes": [Color("8A1E10"), Color("F07A20"), Color("FFF0A0")],   # far → near
 			"per": 6, "speed": 1.0, "gust": 0.0, "seed": 7,
@@ -188,7 +188,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- D · Dustcloud -----------------------------------------------------
-	d.append({ "letter": "D", "name": "Dustcloud",
+	d.append({ "letter": "D", "name": "Dustcloud", "drag": true,
 		"hint": "a dust cloud rolling along the ground: each puff is a ball lit from one side (inner point pushed toward the light); near puffs darker, bigger, faster",
 		"dials": { "sky": [Color("C8B89A"), Color("E8D8B8")], "dust": Color("B08A5A"), "puffs": 36, "roll": 1.0, "lightX": -1.0, "seed": 17,   # lightX: -1 sun on the left, +1 on the right
 			"label": "one radial gradient per puff, inner point toward the sun; z sets size, darkness, speed and where it sits" },
@@ -312,7 +312,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- I · Incense -------------------------------------------------------
-	d.append({ "letter": "I", "name": "Incense",
+	d.append({ "letter": "I", "name": "Incense", "drag": true,
 		"hint": "one thin ribbon of smoke: small soft dots along a sine path that widens, pales and thins with height — dark at the stick, air-coloured at the top",
 		"dials": { "room": [Color("1A1418"), Color("0A080C")], "smoke": Color("3A3A48"), "pale": Color("C8C8D8"), "tip": Color("FF8A3A"), "dots": 60, "curl": 1.0,
 			"label": "height is distance here: darker, thinner and sharper at the stick; paler, wider and fainter as it climbs" },
@@ -398,7 +398,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- M · Motes ---------------------------------------------------------
-	d.append({ "letter": "M", "name": "Motes",
+	d.append({ "letter": "M", "name": "Motes", "drag": true,
 		"hint": "dust in a light shaft: the shaft is one gradient with alpha, a mote is bright only inside it — near motes large and lazy, far ones tiny",
 		"dials": { "room": [Color("141018"), Color("0A080C")], "light": Color("FFE8B0"), "motes": 60, "shaftX": 0.35, "bounce": 0.0, "seed": 29,   # bounce: 0 float, 1 snow-globe hop
 			"label": "the light is a gradient with alpha; a mote is bright where the light is and big only when it is near" },
@@ -444,10 +444,10 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- P · Plume ---------------------------------------------------------
-	d.append({ "letter": "P", "name": "Plume",
+	d.append({ "letter": "P", "name": "Plume", "drag": true,
 		"hint": "a smoke column of soft puffs: one z per puff sets size, darkness, speed and edge — near puffs big, dark, firm, fast; far ones small, pale, slow, soft",
 		"dials": { "sky": [Color("2A2F4A"), Color("6A7498"), Color("9AA0B8")], "smoke": Color("3A3A44"), "lit": Color("9AA0B8"), "litY": -1.0,   # lit: the light on each puff; litY -1 from above, +1 from below
-			"puffs": 40, "rise": 0.22, "wind": 0.0, "seed": 3,
+			"puffs": 40, "rise": 0.35, "wind": 0.0, "seed": 3,
 			"label": "one z per puff drives size × darkness × speed × edge together; sort far to near so near covers far" },
 		"rhyme": { "name": "Chimney at dusk", "hint": "the same smoke column with the light on each puff moved to its UNDERSIDE, warm orange, against a sunset — the low sun lights it from below",
 			"dials": { "sky": [Color("2A1E4A"), Color("8A4A6A"), Color("F5A15A")], "lit": Color("F5A15A"), "litY": 1.0,
@@ -484,9 +484,9 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- S · Steam ---------------------------------------------------------
-	d.append({ "letter": "S", "name": "Steam",
+	d.append({ "letter": "S", "name": "Steam", "drag": true,
 		"hint": "pale soft volumes rising off a cup, added onto a dark room: near wisps bigger, brighter, faster, firmer; far ones fade into the room; all curl upward",
-		"dials": { "room": [Color("0E0C14"), Color("1E1A22")], "steam": Color("DCE8F5"), "cup": Color("2A2430"), "wisps": 34, "rise": 0.25, "gain": 1.0, "curl": 1.0, "wind": 0.0, "seed": 13,   # gain: how hard the steam adds
+		"dials": { "room": [Color("0E0C14"), Color("1E1A22")], "steam": Color("DCE8F5"), "cup": Color("2A2430"), "wisps": 34, "rise": 0.4, "gain": 1.0, "curl": 1.0, "wind": 0.0, "seed": 13,   # gain: how hard the steam adds
 			"label": "light adds: near wisps bigger, brighter, faster, firmer-edged — far ones melt into the room's dark" },
 		"rhyme": { "name": "Sci-fi coolant", "hint": "the same wisps in cyan off a steel vent, adding nearly twice as hard — leaking reactor, not breakfast",
 			"dials": { "room": [Color("06080E"), Color("0E1620")], "steam": Color("60E8FF"), "cup": Color("3A4450"), "gain": 1.8,
@@ -522,7 +522,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- V · Vapour --------------------------------------------------------
-	d.append({ "letter": "V", "name": "Vapour",
+	d.append({ "letter": "V", "name": "Vapour", "drag": true,
 		"hint": "ground fog in four depth bands — far band pale, thin, slow; near band darker, thick, fast — and tree silhouettes paler the more fog stands before them",
 		"dials": { "sky": [Color("3A4A6A"), Color("8A98B0"), Color("B8C0CC")], "fog": Color("C8CCD8"), "tree": Color("0A1210"), "bands": 4, "per": 12, "drift": 1.0, "seed": 19,
 			"label": "fog is layers: each band paler, thinner and slower the farther back — and it pales whatever stands behind it" },
@@ -570,7 +570,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- W · Wildfire ------------------------------------------------------
-	d.append({ "letter": "W", "name": "Wildfire",
+	d.append({ "letter": "W", "name": "Wildfire", "drag": true,
 		"hint": "a field of small flames in perspective rows: rows shrink and bunch toward the horizon (horizon + p²); size, brightness and flicker come from the row",
 		"dials": { "sky": [Color("0A0406"), Color("3A0E0A")], "far": Color("8A1E10"), "near": Color("FFE08A"), "rows": 7, "dense": 12, "flicker": 1.0, "smoke": 10, "wind": 0.0, "seed": 37,   # dense: flames in the farthest row
 			"label": "rows at horizon + p² shrink and bunch; z here is the row — size, colour, alpha and flicker all follow it" },

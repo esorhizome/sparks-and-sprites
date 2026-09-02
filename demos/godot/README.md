@@ -43,15 +43,19 @@ has its Godot twin here:
 | Depth atlas (all 104 + 104 rhymes) | `scenes/depth.gd` + `scenes/depth/` | depth | 16 |
 | Depth-fade wireframe (3D, Godot-only) | `scenes/depth_wire_3d.gd` + `shaders/depth_fade.gdshader` | — | 16 |
 
-One demo has no web twin: **Flipbook VFX** is a PNG-sequence loop (frames generated in code — swap in your own) wearing rim glow, a breathing aura, a circuit track, an orbiting mote, click-bursts and a right-click light/dark ground swap, all conducted by tweens, timers and signals. Where the folio (key **G**) is the *breadth* demo — 26 baked sheets — this one (key **H**) is the *depth* demo: one loop, fully dressed. Long-form companion: [`cheatsheets/godot-flipbook-vfx.md`](../../cheatsheets/godot-flipbook-vfx.md).
+One demo has no web twin: **Flipbook VFX** is a PNG-sequence loop (frames generated in code — swap in your own) wearing rim glow, a breathing aura, a circuit track, an orbiting mote, click-bursts and a right-click light/dark ground swap, all conducted by tweens, timers and signals. Where the folio (key **G**) is the *breadth* demo — 104 baked sheets, and **clicking any card opens it 3.4× larger in the middle of the window** (the big sprite mirrors the card's frames, so the specials show exactly what the small card is doing) — this one (key **H**) is the *depth* demo: one loop, fully dressed. Long-form companion: [`cheatsheets/godot-flipbook-vfx.md`](../../cheatsheets/godot-flipbook-vfx.md).
 
 ## The depth atlas, in full
 
 `scenes/depth.gd` (key **J**) pages through the web atlas's eight families —
 skies, distance, rounded forms, facets, light sources, volumes near & far,
 waves & ribbons, shadows & focus — one file per family in `scenes/depth/`,
-eight cards to a page. **Right-click a card for its rhyme**: here a rhyme
-is literally a dials swap — every card keeps its numbers in one dictionary
+eight cards to a page. Click a card to move its light, camera or weather —
+and **drag** where the badge says so (the canvas is an invisible slider:
+scrub a sunrise, pan a range, swing a lamp round a ball). **Double-click a
+card to open it large** in the middle of the window; the painters draw
+relative to their stage size, so the big one is the same code at 2.7×.
+**Right-click a card for its rhyme**: here a rhyme is literally a dials swap — every card keeps its numbers in one dictionary
 `D`, and the rhyme is the same painter with two or three values changed.
 
 The port turns on one honest fact: **Godot's `_draw()` has no gradient-fill

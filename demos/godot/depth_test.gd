@@ -49,6 +49,31 @@ func _tick() -> void:
 		_click(Vector2(352, 130), MOUSE_BUTTON_RIGHT)     # the second card: swap to its rhyme
 	if frame % 12 == 9:
 		_click(Vector2(352, 130), MOUSE_BUTTON_LEFT)      # press the rhyme too
+	if frame % 12 == 10:
+		var mm := InputEventMouseMotion.new()             # a drag across the rhyme (button still held)
+		mm.position = Vector2(420, 140)
+		Input.parse_input_event(mm)
+		var up := InputEventMouseButton.new()
+		up.button_index = MOUSE_BUTTON_LEFT
+		up.pressed = false
+		up.position = Vector2(420, 140)
+		Input.parse_input_event(up)
+	if frame % 24 == 11:
+		var dc := InputEventMouseButton.new()             # double-click: open the big view …
+		dc.button_index = MOUSE_BUTTON_LEFT
+		dc.pressed = true
+		dc.double_click = true
+		dc.position = Vector2(584, 130)
+		Input.parse_input_event(dc)
+	if frame % 24 == 13:
+		_click(Vector2(480, 280), MOUSE_BUTTON_LEFT)      # … press inside it …
+	if frame % 24 == 15:
+		_click(Vector2(480, 280), MOUSE_BUTTON_RIGHT)     # … swap to its rhyme …
+	if frame % 24 == 17:
+		var k2 := InputEventKey.new()                     # … and close it with Esc
+		k2.keycode = KEY_ESCAPE
+		k2.pressed = true
+		Input.parse_input_event(k2)
 	if frame % 12 == 0:
 		var k := InputEventKey.new()
 		k.keycode = KEY_RIGHT

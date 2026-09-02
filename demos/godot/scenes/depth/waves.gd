@@ -245,7 +245,7 @@ static func defs() -> Array:
 	var d: Array = []
 
 	# ---- F · Flag ----------------------------------------------------------
-	d.append({ "letter": "F", "name": "Flag",
+	d.append({ "letter": "F", "name": "Flag", "drag": true,
 		"hint": "a flag is vertical strips lifted by a travelling sine that grows toward the free end — shade each strip by its slope (cos) and the wiggle becomes folds",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "cloth": Color("D8302A"), "band": Color("F5F0E0"), "pole": Color("8A8A96"),
 			"strips": 40, "wind": 1.0, "waves": 1.6, "shade_by": 0.45,        # shade_by: how hard the slope shades the cloth
@@ -286,7 +286,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- H · Helix ---------------------------------------------------------
-	d.append({ "letter": "H", "name": "Helix",
+	d.append({ "letter": "H", "name": "Helix", "drag": true,
 		"hint": "a ribbon coiled round a rod: slice by slice x = sin θ, width = |cos θ|, back colour when cos < 0 — draw the far half, the rod, then the near half",
 		"dials": { "sky": [Color("0E1230"), Color("1A1E4A")], "front": Color("5AF0AA"), "back": Color("1E6A4A"), "rod": Color("8A8A96"),
 			"ribbons": 1, "turns": 3, "slices": 96, "radius": 0.2, "speed": 0.8,
@@ -328,7 +328,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- J · Jetstream -----------------------------------------------------
-	d.append({ "letter": "J", "name": "Jetstream",
+	d.append({ "letter": "J", "name": "Jetstream", "drag": true,
 		"hint": "four ribbons of wind crossing the sky at different depths — each a band of parallel sines under a soft alpha gradient; far ones paler, thinner, slower",
 		"dials": { "sky": [Color("2A4A8F"), Color("7FA8D8"), Color("D9E3F0")], "ink": Color.WHITE, "streams": 4, "lines": 5, "speed": 1.0, "alpha": 0.45,
 			"label": "one number z sets alpha, width, amplitude and speed — a far stream is less of everything" },
@@ -445,7 +445,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- L · Loop ----------------------------------------------------------
-	d.append({ "letter": "L", "name": "Loop",
+	d.append({ "letter": "L", "name": "Loop", "drag": true,
 		"hint": "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "front": Color("F5C169"), "back": Color("8A5A2A"), "car": Color("D82A2A"),
 			"segs": 72, "width": 0.11, "car_speed": 1.2, "radius": 0.3,
@@ -486,7 +486,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- O · Ocean ---------------------------------------------------------
-	d.append({ "letter": "O", "name": "Ocean",
+	d.append({ "letter": "O", "name": "Ocean", "drag": true,
 		"hint": "seven rows of travelling sines from horizon to foreground — spacing bunches toward the horizon, far rows fog into the sky, crests pale, troughs dark",
 		"dials": { "sky": [Color("8FB8E0"), Color("D9E8F5")], "sea": Color("1E5A8F"), "air": Color("C8DCEE"), "foam": Color("F0F6FF"),
 			"rows": 7, "wind": 1.0, "horizon": 0.38, "step": 4,                # step: px between points along each crest
@@ -635,7 +635,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- U · Undertow ------------------------------------------------------
-	d.append({ "letter": "U", "name": "Undertow",
+	d.append({ "letter": "U", "name": "Undertow", "drag": true,
 		"hint": "under the surface: caustic stripes wobbling in the light, seaweed ribbons swaying at three depths — far ones paler, slower — and bubbles rising faster the nearer they are",
 		"dials": { "water": [Color("1A6A9A"), Color("052040")], "air": Color("2A6A9A"), "weed": Color("2A8A4A"), "light": Color("B8F0FF"), "bubble": Color("E8F8FF"),
 			"depths": 3, "weeds": 4, "bubbles": 22, "sway": 1.0, "glow": false,
@@ -711,7 +711,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- W · Wake ----------------------------------------------------------
-	d.append({ "letter": "W", "name": "Wake",
+	d.append({ "letter": "W", "name": "Wake", "drag": true,
 		"hint": "a boat crossing rows of receding sea, trailing a V of ripples — rings left at its past positions, growing and fading with age, squashed flat by perspective",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "sea": Color("1E5A8F"), "air": Color("C8DCEE"), "hull": Color("2A1E1A"), "sail": Color("F5F0E0"),
 			"rows": 6, "rings": 14, "speed": 1.0, "spread": 0.45,             # spread: ring radius per unit distance behind — the V's angle
@@ -761,7 +761,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- X · Xebec ---------------------------------------------------------
-	d.append({ "letter": "X", "name": "Xebec",
+	d.append({ "letter": "X", "name": "Xebec", "drag": true,
 		"hint": "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the sails breathe, the hull rocks, the sea recedes behind",
 		"dials": { "sky": [Color("F5C169"), Color("F5E1B0"), Color("8FB8E0")], "sea": Color("2A5A8A"), "air": Color("E8D8B8"), "hull": Color("4A2A1A"), "sail": Color("F0E6D0"),
 			"rows": 6, "belly": 1.0, "alpha": 1.0,                             # alpha: how solid the ship is
@@ -840,7 +840,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- Z · Zephyr --------------------------------------------------------
-	d.append({ "letter": "Z", "name": "Zephyr",
+	d.append({ "letter": "Z", "name": "Zephyr", "drag": true,
 		"hint": "the wind made visible: three translucent ribbons streaming across on long sine paths, twisting (width by |cos|) and fading toward their tails — leaves ride the same paths",
 		"dials": { "sky": [Color("8FB8E0"), Color("E8F0F8")], "ribbon": Color.WHITE, "back": Color("B8D8F5"), "leaf": Color("7AB85A"),
 			"ribbons": 3, "leaves": 6, "speed": 1.0, "len": 0.8, "segs": 40,   # len: ribbon length as a share of W
