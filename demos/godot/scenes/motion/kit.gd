@@ -11,9 +11,15 @@ extends RefCounted
 ## offset before returning.
 ##
 ## Card state lives in the card dictionary b:
-##   b.rect — the card's stage area (absolute scene coords)
+##   b.rect — the card's stage area (Rect2 at ZERO: every card is drawn by
+##            its own Painter node, so local space IS card space)
 ##   b.w, b.h — the stage size (local maths space)
 ##   b.gy — the standard ground line's y (h · 0.78)
+##   b.D  — the active dials: the def's "dials" dictionary, with the rhyme's
+##          dials merged over it when the card is showing its rhyme. A rhyme
+##          IS a dials swap and nothing else — locomotion.gd merges and
+##          re-runs init().
+##   b.t  — seconds since this card (or its rhyme) woke
 
 const INK := Color(0.91, 0.898, 0.957)
 const DIM := Color(0.91, 0.898, 0.957, 0.25)
@@ -22,6 +28,7 @@ const TARGET := Color(0.961, 0.757, 0.412)  ## where it wants to be — always a
 const BONE := Color(0.788, 0.769, 0.894)    ## limbs and joints
 const GOOD := Color(0.608, 0.886, 0.541)    ## helpers, friends
 const HOT := Color(0.961, 0.541, 0.541)     ## impulses, lasers
+const MAGIC := Color(0.788, 0.627, 0.961)   ## spells, ghosts, weirdness
 const NIGHT := Color(0.075, 0.063, 0.125)
 
 static func setup(b: Dictionary) -> void:
@@ -89,3 +96,39 @@ static func label(n: CanvasItem, b: Dictionary, txt: String, p: Vector2,
 ## The framerate-proof lerp factor: cover this fraction of any remaining gap.
 static func smooth(rate: float, dt: float) -> float:
 	return 1.0 - exp(-rate * dt)
+
+static func line(n: CanvasItem, a: Vector2, c: Vector2, col: Color = INK, w: float = 1.0) -> void:
+	n.draw_line(a, c, col, w)
+
+static func rect(n: CanvasItem, r: Rect2, col: Color = INK) -> void:
+	n.draw_rect(r, col)
+
+## A polygon from a list of Vector2 (filled, or outlined when stroke > 0).
+static func poly(n: CanvasItem, pts: Array, col: Color = INK, stroke: float = 0.0) -> void:
+	if pts.size() < 2:
+		return
+	var packed := PackedVector2Array(pts)
+	if stroke > 0.0:
+		packed.append(pts[0])
+		n.draw_polyline(packed, col, stroke)
+	elif pts.size() >= 3:
+		n.draw_colored_polygon(packed, col)
+
+## Seeded random: the same seed gives the same layout on every machine
+## (the web kit's rng(seed); mulberry32 there, Godot's generator here).
+static func rng(seed_v: int) -> RandomNumberGenerator:
+	var r := RandomNumberGenerator.new()
+	r.seed = seed_v
+	return r
+
+static func _hash(i: float) -> float:
+	var s := sin(i * 127.1 + 311.7) * 43758.5453
+	return s - floor(s)
+
+## Smooth 1-D value noise in -1..1 — random heights at the integers,
+## smoothstepped between (Perlin's little cousin). Same formula as the web.
+static func noise(x: float) -> float:
+	var i := floorf(x)
+	var f := x - i
+	var k := f * f * (3.0 - 2.0 * f)
+	return (_hash(i) + (_hash(i + 1.0) - _hash(i)) * k) * 2.0 - 1.0

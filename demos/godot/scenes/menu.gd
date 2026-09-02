@@ -27,7 +27,7 @@ const DEMOS := [
 	["A", "Elemental buttons — all 104, paged by family", "res://scenes/elemental_buttons.tscn"],
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
 	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
-	["F", "Locomotion lexicon — 26 movement styles, A to Z", "res://scenes/locomotion.tscn"],
+	["F", "Locomotion lexicon — 104 movement styles, A to Z four times (+104 rhymes)", "res://scenes/locomotion.tscn"],
 	["G", "Flipbook folio — 104 baked VFX sheets, A to Z four times", "res://scenes/flipbook.tscn"],
 	["H", "Flipbook VFX — one loop, wearing its effects", "res://scenes/flipbook_vfx.tscn"],
 	["J", "Depth atlas — 104 illusions of depth in 2D (+104 rhymes)", "res://scenes/depth.tscn"],

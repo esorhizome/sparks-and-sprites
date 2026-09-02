@@ -37,7 +37,7 @@ has its Godot twin here:
 | Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 | Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
-| Locomotion lexicon (all 26) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
+| Locomotion lexicon (all 104 + 104 rhymes) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
 | Flipbook folio (all 104) | `scenes/flipbook.gd` | flipbook | 15 |
 | Flipbook VFX (Godot-only) | `scenes/flipbook_vfx.gd` + `shaders/rim_glow.gdshader`, `shaders/circuit_flow.gdshader` | — | 15 (also 03, 06, 12) |
 | Depth atlas (all 104 + 104 rhymes) | `scenes/depth.gd` + `scenes/depth/` | depth | 16 |
@@ -127,15 +127,24 @@ become alpha ramps or scale-y reveals, named in place wherever they occur.
 ## The locomotion lexicon, in full
 
 `scenes/locomotion.gd` is the same treatment for **procedural animation
-maths**: the web page's 26 movement styles, A to Z (springs, steering
-brains, IK three ways, verlet bodies, a walking gait), five family files
-in `scenes/motion/`, paged in one scene. `scenes/motion/kit.gd` owns the
-stage, the ground line, the vector arrows, and the mote protagonist. One
-port-specific note: all demo maths is **card-local** (0,0 at the card's
-corner, exactly like the web version's canvas coordinates) — the scene
-adds the offset with a draw transform, so the web and GDScript versions
-of every formula match line for line. No rhymes on this one: the cards
-*are* the dials, and the chapter's tweaking box says which to turn.
+maths**: the web page's 104 movement styles, A to Z four times (springs,
+headings and vehicles, steering brains, crowds and fields, paths and
+schedules, IK three ways, verlet bodies, walking gaits, and the clock and
+camera themselves — two teaching laps and two genre laps), nine family
+files in `scenes/motion/`, paged eight cards at a time in one scene.
+`scenes/motion/kit.gd` owns the stage, the ground line, the vector
+arrows, the mote protagonist, and the small maths drawer (`smooth`,
+`noise`, `rng`). Every card is drawn by its own clipping `Painter` node in
+**card-local** space (0,0 at the card's corner, exactly like the web
+version's canvas coordinates), so the web and GDScript versions of every
+formula match line for line. **Right-click any card for its rhyme** — here
+a rhyme is literally `D.merge(rhyme.dials)` over the card's dials
+dictionary followed by `init()` again: two or three numbers change and
+nothing else, which is the whole lesson. Double-click enlarges a card
+(the styles are written relative to `b.w × b.h`, so a bigger card is just
+a bigger `b`); the drag cards repeat their press while the button is held;
+1 / 2 / 4 set the tempo as extra substeps per frame, so springs and
+verlet piles stay stable at ×4.
 
 ## The flipbook folio, in full
 
@@ -207,6 +216,7 @@ godot --headless --path . -s res://smoke_test.gd     # every scene + injected in
 godot --headless --path . -s res://bestiary_test.gd  # all 104 buttons + their 104 rhymes: init/tick/press/draw
 godot --headless --path . -s res://codex_test.gd     # all 104 cube effects + their 104 rhymes, same regimen
 godot --headless --path . -s res://grimoire_test.gd  # all 104 text effects + their 104 rhymes, same regimen
-godot --headless --path . -s res://lexicon_test.gd   # all 26 movement styles: tick, press, draw, A-to-Z census
+godot --headless --path . -s res://lexicon_test.gd   # all 104 movement styles + 104 rhymes: tick, press, drag, rhyme, enlarge, A-to-Z ×4 census
+godot --headless --path . -s res://motion_family_check.gd -- res://scenes/motion/clocks.gd 14   # one lexicon family, originals + rhymes, two sizes
 godot --headless --path . -s res://flipbook_test.gd  # all 104 sheets: defs census (A–Z ×4) + the bake→slice→play pipeline + the specials
 ```
