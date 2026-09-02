@@ -58,3 +58,17 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Premultiplied alpha | Colour stored already ×alpha; a mismatch with the blend mode = dark fringes on fading glows |
 | SubUV | Unreal's word for reading one cell of a sprite sheet by offsetting UVs |
 | steps() | CSS timing function that jumps in N discrete hops — a flipbook player with no JavaScript |
+| Gradient | A smooth change of colour across a distance; *linear* along a line, *radial* outward from a centre |
+| Colour stop | One (position 0–1, colour) pair on a gradient; the gradient interpolates between stops |
+| Depth cue | A flat pattern the eye reads as space: paler = far, shaded = round, shadow = grounded |
+| Atmospheric perspective | Far things mixed toward the colour of the air (paler, bluer, lower contrast) — `mix(colour, air, depth)` |
+| Terminator | The line on a lit ball where light turns to shadow; where it sits tells you the light's direction |
+| Rim light | A bright edge on the side *away* from the viewer's light — a second light behind the subject |
+| Specular highlight | The small hot spot where a surface mirrors the light source directly |
+| Contact shadow | The tight dark patch where a thing touches the ground; it shrinks and fades as the thing lifts |
+| Painter's algorithm | Draw far things first, near things last — overlap does the depth ordering for free |
+| Isometric | A 2:1 grid view with no perspective: `x = (ix − iy)·0.866, y = (ix + iy)·0.5 − iz` |
+| Depth of field / bokeh | Only one distance is sharp; the rest blurs — the discs of blurred lights are the bokeh |
+| Vignette | Darkening toward the edges of the frame; pulls the eye to the centre |
+| Vertex colour | A colour stored on each mesh vertex; the GPU interpolates between them (a gradient for free) |
+| Depth fade | Mixing a surface toward a far colour by its distance from the camera — fog, per material |

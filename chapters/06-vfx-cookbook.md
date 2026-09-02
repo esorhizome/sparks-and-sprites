@@ -6,7 +6,7 @@
 
 Each effect names its **mechanism** first — because once you know the mechanism, every engine's version is recognisably the same dish.
 
-(Everything in this cookbook is drawn *live*, every frame. The other way to ship a VFX — draw it **once** into a transparent sprite sheet and replay the frames — is [chapter 15](15-transparent-flipbooks.md), with 26 baked examples in [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html).)
+(Everything in this cookbook is drawn *live*, every frame. The other way to ship a VFX — draw it **once** into a transparent sprite sheet and replay the frames — is [chapter 15](15-transparent-flipbooks.md), with 104 baked examples in [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html). And when a flame, smoke column or sparkle field needs to read as *deep* — near tongues bright and sharp, far ones dark and soft — that is [chapter 16](16-depth-without-a-third-dimension.md)'s *Volumes near & far* family in [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html).)
 
 ## Glow
 
