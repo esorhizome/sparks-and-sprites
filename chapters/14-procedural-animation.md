@@ -12,21 +12,51 @@ The good news arrives early, and it is one sentence long:
 
 That sentence is most of procedural animation. The rest of the chapter is a tour of the different ways to "close the gap" — each way with its own personality, cost, and name-brand jargon.
 
-▶ *See it all:* **[the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html)** — 26 movement styles, A to Z, every one editable in the page. Press *Run all*, or wake one card at a time; most cards aim at where you click. The same 26 are fully ported to GDScript in the downloadable Godot project ([`demos/godot/scenes/motion/`](../demos/godot/scenes/motion/), menu key **F**).
+▶ *See it all:* **[the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html)** — 104 movement styles, A to Z four times, every one editable in the page, and every one with a **rhyme** (the same motion with two or three dials turned — 208 styles in all). Laps one and two teach the machinery; laps three and four are **genre laps** (sci-fi, adventure, action, fantasy, arcade, cozy, minimalist, glitchy, goofy) built to be skimmed like [animate.style](https://animate.style/): recognise the motion you were imagining, open its code, turn its numbers. Press *Run all*, or wake one card at a time; most cards aim at where you click. The same 104 (+104 rhymes) are fully ported to GDScript in the downloadable Godot project ([`demos/godot/scenes/motion/`](../demos/godot/scenes/motion/), menu key **F**; right-click a card for its rhyme).
 
-## The five kinds of memory
+## The nine kinds of memory
 
-Every movement style in existence stores a different amount of state between frames, and that's the honest way to sort them:
+Every movement style in existence stores a different amount of state between frames, and that's the honest way to sort them. The first lap of the lexicon (its original 26) is shown in the last column; the other three laps are mapped in the next section.
 
-| Family | What it remembers | The feel | Lexicon cards |
+| Family | What it remembers | The feel | First-lap cards |
 |---|---|---|---|
 | **Clocks & circles** | nothing — position is a formula of time | hypnotic, perfectly repeating, undriftable | H · O · E · U · P |
-| **Slopes & springs** | a velocity | weighty, breathing, interruptible | L · D · Y · J · B |
-| **Brains & steering** | a velocity plus an intention | alive, fallible, animal | A · C · W · Z · M · V · S |
+| **Slopes & springs** | a velocity | weighty, breathing, interruptible | L · D · J · B |
+| **Headings & vehicles** | an angle, and how fast it may change | banking, turning circles, momentum with a nose | Y |
+| **Brains & steering** | a velocity plus an intention | alive, fallible, animal | A · C · W · Z |
+| **Crowds & fields** | one rule per body, or one formula per point in space | weather, flocks, formations | M · V · S |
+| **Paths, grids & schedules** | a route, and a distance along it | deliberate, on rails, on time | — (lap 2 onward) |
 | **Chains & joints** | a list of joint positions | limbed, reaching, grounded | T · I · F · Q |
 | **Bodies & ground** | position *and last position* per point | honest physics, comedy, consequence | R · K · X · N · G |
+| **Time & cameras** | the clock's own speed, and where the window is | slow motion, hitstop, lag, a camera that breathes | — (lap 2 onward) |
 
 A character can use several at once: the lexicon's walker (**G · Gait**) steers its body with a spring, places its feet with thresholds, flies each step along a parabola, and bends its knees with two-bone IK — four families in one creature.
+
+## The four laps
+
+Lap two adds the concepts the first lap left out — no new families were needed for most of it, which is the quiet point: once the kit exists, another 26 styles is another 26 ideas. Laps three and four are the genre laps: real machinery, but *recognisable as a game thing*, and every caption names the teaching card it borrows from.
+
+| Family | Lap 2 (teaching) | Laps 3–4 (genre) — and what each borrows |
+|---|---|---|
+| **Clocks & circles** | J·Jitter (white noise vs smooth noise vs sines), N·Nest (nested coordinate frames), X·Xfade (blending two motions) | B·Bullethell (Orbit's polar emit), U·Ufo (Hover + the alien of ch. 05), O·Orrery (Orbit + Nest, Kepler speed), M·Mirror (Eight + Nest, kaleidoscope), I·Idle (Hover, layered), Y·Yacht (Undulate + Normals: tilt = the wave's slope) |
+| **Slopes & springs** | D·Dash (burst + exponential decay), E·Ease (five easing curves vs a spring), I·Inertia (friction, three surfaces), W·Weight (mass: `ω = √(k/m)`), Y·Yank (minimum-jerk reach) | U·Umbrella (Weight: terminal velocity from `v²` drag), Q·Quicksand (Inertia + Knock), S·Slime (Bounce + Jump: squash & stretch from velocity), C·Cat (Jump: anticipation then one aimed parabola) |
+| **Headings & vehicles** | L·Lookat (smoothed aim inside a cone), U·Upright (an angular spring), V·Vehicle (the bicycle model), M·Motor (rolling: `ω = v ÷ r`) | A·Asteroids (Yaw + Inertia), D·Drone (Damp, tilt = acceleration), T·Tank (Vehicle + Lookat: differential drive), H·Homing (Yaw + Chase, proximity fuse), R·Rocket (Jump: thrust vs shrinking mass), X·Xhair (Arrive + Magnet: aim assist), L·Leaf (Pendulum + Jitter: lift across the face) |
+| **Brains & steering** | F·Flee (seek and pursuit times −1), O·Obstacle (whisker avoidance), Z·Zones (a state machine by radius) | G·Ghost (Arrive + Lookat: moves only unseen), T·Tractorbeam (Magnet + Arrive), F·Firefly (Wander + Arrive), B·Butterfly (Jitter + Arrive), Z·Zombies (Arrive + separation), V·Volley (Chase + Jump: solve the landing point) |
+| **Crowds & fields** | — | W·Whirlpool (Vectorfield + Magnet), H·Herd (Swarm + Magnet), X·Xing (Obstacle + Arrive: predictive avoidance), I·Invaders (Zigzag: a formation on a beat), C·Conveyor (Vectorfield + Platform) |
+| **Paths, grids & schedules** | A·Astar (pathfinding on a grid), B·Bezier (three lerps deep), P·Path (Catmull-Rom, arc-length speed), K·Keyframe (keyframes vs a spring), E·Elevator (a trapezoidal velocity profile) | K·Kart (Arrive + Path: rubber-band AI), F·Frog (Jump + Platform + Nest), G·Grid (Lerp: lane movement, buffered turns), P·Platform (Hover + Zigzag + Jump: inherited velocity), J·Juggle (Jump + Orbit: a schedule of throws) |
+| **Chains & joints** | Q·Queue (leader following from a history buffer) | O·Octopus (Tentacle + Undulate + Dash), V·Vine (Tentacle: a chain that grows toward light), D·Dragon (Tentacle + Wander + Undulate), E·Echo (Queue: motion echo), W·Worm (Undulate + Gait: anchor swapping), S·Spider (Gait + Ik: six legs, tripod gait), M·Mech (Gait + Lookat: heavy strides, thump) |
+| **Bodies & ground** | G·Grapple (raycast + rope constraint + release), R·Rope (verlet, dragged) | N·Ninja (Jump: wall-jump and wall-slide), J·Jelly (Ragdoll + Knock: a soft body), A·Avalanche (Normals + Motor), K·Kite (Rope + Pendulum: lift), N·Newton (Pendulum + Knock: the cradle), P·Pinball (Xmarks + Knock: flippers and bumpers), Y·Yoyo (Rope + Bounce + Motor) |
+| **Time & cameras** | C·Camera (dead zone + look-ahead), H·Hitstop, S·Substep (framerate independence), T·Timescale | L·Lag (snap vs interpolate vs dead-reckon), Q·Quantize (space and time snapped), Z·Zap (a telegraphed teleport), R·Rubberband (client prediction yanked back) |
+
+## Three questions, answered on camera
+
+*(These came up while planning the laps, and each got a card instead of a paragraph.)*
+
+**Is slower motion just more frames?** No — and **T·Timescale** shows it: the same bouncing scene three times at 0.25×, 1×, 2×, with a frame counter under each ticking at the *same* rate. Slow motion is a smaller `dt` handed to the same code, not more drawings; the frames are drawn as often as ever, they just describe less time each. (Animators' "more drawings = slower" is the flipbook world's spelling of the same thing — a baked sheet has no `dt`, so its only dial *is* the drawing count: chapter 15's **T·Tempo**.) The code consequence is in **S·Substep**: anything written as `x += (target − x) · 0.1` per frame changes speed with the framerate, while `1 − exp(−k·dt)` and fixed-step substeps do not — and **H·Hitstop** is the trick of setting `dt = 0` for eighty milliseconds on impact. In engines the global version is one property: Godot `Engine.time_scale`, Unity `Time.timeScale`, Unreal `SetGlobalTimeDilation`; the local versions (a slow-mo bubble, a frozen pair) are `dt × scale` on just those objects.
+
+**Can one thing track another?** Yes, trivially — a position is a variable, and **Q·Queue**, **C·Camera**, **X·Xhair**, and **T·Tractorbeam** are four ways to read one: from the past (a history buffer), smoothed with a dead zone, with friction and magnetism, and as a force. Chapter 15's **A·Axolotl** does it for sprite sheets.
+
+**Can 2D fake perspective?** Yes — that question grew into [chapter 16](16-depth-without-a-third-dimension.md) and [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html). In the lexicon, **O·Orrery**, **N·Nest**, and **M·Mirror** show the coordinate-space half of the trick: a point described relative to a moving frame, projected onto the page.
 
 ## Moving a character — the escalating menu
 
@@ -128,6 +158,10 @@ The maths is engine-agnostic; only the spelling changes accent:
 | ground normal | derivative → `(m, −1)` | `RayCast2D.get_collision_normal` | `RaycastHit.normal` | `FHitResult.ImpactNormal` |
 | spring-damper | five lines in card D | same five lines (or `spring` in some addons) | `SmoothDamp`, or the five lines | `FMath::CriticallyDampedSmoothing`, spring arms |
 | verlet + constraints | cards R and K | same code in `_physics_process`; or hand bodies to the physics engine (`RigidBody2D`) | same, or `Rigidbody` + joints | same, or full physics assets |
+| pathfinding | card A·Astar's grid | `AStarGrid2D`, or `NavigationAgent2D` on a navmesh | `NavMeshAgent` | `AIController::MoveTo` on a NavMesh |
+| a following camera | card C·Camera | `Camera2D` drag margins + `position_smoothing` | Cinemachine (dead zone, look-ahead built in) | `SpringArmComponent`, camera lag settings |
+| time scale / hitstop | cards T and H | `Engine.time_scale`; per-object `dt × scale` | `Time.timeScale` | `SetGlobalTimeDilation`, `CustomTimeDilation` |
+| splines | cards B and P | `Curve2D` + `PathFollow2D` (arc-length for free) | `Splines` package | `SplineComponent` |
 
 Note the pattern in the last three rows: engines *package* the fancier maths (raycasts, springs, ragdolls) so you rarely hand-roll it in production — but the hand-rolled versions in the lexicon are 20–80 lines each, and having written one once is what makes the engine's version legible.
 
@@ -140,4 +174,4 @@ Note the pattern in the last three rows: engines *package* the fancier maths (ra
 
 ---
 
-*Quick-reference version: [the movement-maths cheatsheet](../cheatsheets/procedural-animation.md). The gallery: [the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html). Kin chapters: [05 · Movement & personality](05-movement-and-personality.md) (easing as character), [06 · The VFX cookbook](06-vfx-cookbook.md) (particles and shake). Going deeper, free and legal: [The Nature of Code](https://natureofcode.com/) — a whole free book on steering, springs, and flocking, in friendly JavaScript.*
+*Quick-reference version: [the movement-maths cheatsheet](../cheatsheets/procedural-animation.md). The gallery: [the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html) (104 styles + 104 rhymes). Kin chapters: [05 · Movement & personality](05-movement-and-personality.md) (easing as character), [06 · The VFX cookbook](06-vfx-cookbook.md) (particles and shake). Going deeper, free and legal: [The Nature of Code](https://natureofcode.com/) — a whole free book on steering, springs, and flocking, in friendly JavaScript.*

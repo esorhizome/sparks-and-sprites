@@ -35,6 +35,21 @@ One line each. Full versions with examples: [chapter 01](../chapters/01-first-wo
 | Variable font | One font file rendering a whole range of weights (300–700…) from one axis number |
 | Caret | The text cursor: the blinking block or bar marking where the next letter lands |
 | Procedural animation | Motion computed at runtime from formulas, not played back from keyframes |
+| Time scale | A multiplier on dt; slow motion is a smaller dt per frame, not more frames (lexicon T·Timescale) |
+| Hitstop | Freezing dt to 0 for ~80–120 ms on an impact, so the hit registers (lexicon H·Hitstop) |
+| Substep | Running the simulation several times per drawn frame with a smaller dt, for stability and framerate independence |
+| Dead zone (camera) | A box inside which the camera does not move; look-ahead shifts it in the direction of travel (lexicon C·Camera) |
+| A* | Grid pathfinding: expand the cheapest open cell by `f = g + h` until the goal is reached (lexicon A·Astar) |
+| Bézier / Catmull-Rom | Curves from control points: Bézier uses handles (three lerps deep); Catmull-Rom passes through its points |
+| Arc-length parametrisation | Re-indexing a curve by distance travelled so motion along it has constant speed |
+| Bicycle model | Car steering: `heading += v / wheelbase · tan(steer) · dt` (lexicon V·Vehicle) |
+| Differential drive | Tank steering from two track speeds: `v = (vL + vR)/2`, `ω = (vR − vL)/width` (lexicon T·Tank) |
+| Dead reckoning | Guessing a remote object's position by extrapolating its last known velocity (lexicon L·Lag) |
+| Rubber-banding | A predicted position yanked back to the authoritative one — or race AI that speeds up the trailing racer (lexicon R·Rubberband, K·Kart) |
+| Minimum jerk | The smoothest reach: `10k³ − 15k⁴ + 6k⁵`, zero jerk at both ends — why hands look human (lexicon Y·Yank) |
+| Soft body | A ring of verlet points held by neighbour springs and an area term, so it wobbles (lexicon J·Jelly) |
+| Tripod gait | Six legs stepping in two alternating groups of three (lexicon S·Spider) |
+| Aim assist | Reticle friction inside a target's radius plus a pull toward the nearest target (lexicon X·Xhair) |
 | Vector | An x and a y that together mean "this far, that way" — subtract points to get one |
 | Polar coordinates | A point named by (angle, radius); `x = cos(θ)·r, y = sin(θ)·r` converts back |
 | atan2 | The inverse-trig function that names the angle from here to there (handles all quadrants) |
