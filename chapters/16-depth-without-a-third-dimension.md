@@ -106,6 +106,10 @@ Where the chapter above says "gradient", each engine spells it thus; the *placin
 - **Unreal:** *LinearGradient*, *RadialGradientExponential*, *Lerp*, *Fresnel* (a rim light for free on any mesh), *CameraDepthFade*; in 2D the same material goes on a UMG *Image* or a Paper2D sprite; Niagara's *Sprite Size by Speed* and *Color over Life* do the volume cue natively. [`demos/unreal/recipes/depth-atlas.md`](../demos/unreal/recipes/depth-atlas.md) walks the eight cues with the atlas's exact numbers.
 - **Web:** canvas gradients (the atlas); CSS `linear-gradient`/`radial-gradient` for anything that's a box; `filter: blur()` and `box-shadow` for the focus and shadow cues — a `box-shadow` whose offset, blur and alpha grow with "elevation" *is* the contact-shadow rule, which is why every design system ships it.
 
+## A note on flashing light
+
+One card in the atlas, **X·Xenon**, is a strobe — a hard flash every second and a half — and its rhyme, *Camera flash*, fires on every press. Flashing light can trigger seizures in photosensitive people, so that card is **opt-in**: it never starts with *Run all*, it shows a plain notice in its place, and it runs only when you click it, on the web and in the Godot port (the card carries a `warn` field; the runtime does the rest). If you build your own gallery, do the same for anything that flashes faster than about three times a second, and keep the notice itself static — a warning that flashes defeats its purpose.
+
 ## What usually goes wrong
 
 - **The light disagrees with itself.** Every sphere lit from the upper-left, one cube lit from the right: the eye rejects the scene as a whole and can't say why. Pick one light direction per scene and derive every shade from it (the atlas's `lx, ly` dials exist for this).

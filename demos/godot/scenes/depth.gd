@@ -58,9 +58,20 @@ class Painter extends Node2D:
 			(def.tick as Callable).call(b, dt)
 		queue_redraw()
 	func _draw() -> void:
+		if def.has("warn") and not b.armed:          # an opt-in card: a plain notice until clicked
+			_warning(def.warn)
+			return
 		(def.draw as Callable).call(self, b)
 		if not b.pressed:                            # the affordance badge, gone after the first touch
 			_badge(def.get("drag", false), b.t)
+	## The opt-in notice: static (nothing here may flash) and honest.
+	func _warning(text: String) -> void:
+		var f := ThemeDB.fallback_font
+		draw_rect(Rect2(0, 0, b.W, b.H), Color("191527"))
+		draw_rect(Rect2(6, 6, b.W - 12, b.H - 12), Color("F5C169"), false, 2.0)
+		draw_string(f, Vector2(0, b.H * 0.42), "⚠ " + text, HORIZONTAL_ALIGNMENT_CENTER, b.W, 13, Color("F5C169"))
+		draw_string(f, Vector2(0, b.H * 0.6), "this card does not start on its own", HORIZONTAL_ALIGNMENT_CENTER, b.W, 10, Color(0.91, 0.9, 0.96, 0.85))
+		draw_string(f, Vector2(0, b.H * 0.72), "click to show it (you can look away first)", HORIZONTAL_ALIGNMENT_CENTER, b.W, 10, Color(0.91, 0.9, 0.96, 0.85))
 	## The "click / drag" pill at the card's top-right corner, pulsing.
 	func _badge(drag: bool, t: float) -> void:
 		var txt := "← drag →" if drag else "click ✦"
@@ -93,7 +104,7 @@ func _fresh_state(def: Dictionary, rhyme: bool, size := STAGE) -> Dictionary:
 	if rhyme and def.has("rhyme"):
 		D.merge((def.rhyme as Dictionary).dials, true)   # the rhyme's dials win
 	var b := { "W": size.x, "H": size.y, "t": 0.0, "D": D, "rhyme": rhyme, "pressed": false,
-		"rng": RandomNumberGenerator.new() }
+		"armed": not def.has("warn"), "rng": RandomNumberGenerator.new() }
 	(b.rng as RandomNumberGenerator).seed = 7
 	if def.has("init"):
 		(def.init as Callable).call(b)
@@ -127,8 +138,10 @@ func _toggle_rhyme(card: Dictionary) -> void:
 	if not (card.def as Dictionary).has("rhyme"):
 		return
 	var was_pressed: bool = p.b.pressed
+	var was_armed: bool = p.b.armed
 	p.b = _fresh_state(card.def, not p.b.rhyme, Vector2(p.b.W, p.b.H))
 	p.b.pressed = was_pressed
+	p.b.armed = was_armed                            # an opt-in stays opted in
 
 ## Double-click: the same picture, 2.7× larger, in the middle of the window.
 ## The painters draw relative to b.W × b.H, so enlarging is just a bigger b.
@@ -146,6 +159,7 @@ func _open_big(card: Dictionary) -> void:
 	p.def = def
 	p.b = _fresh_state(def, src.b.rhyme, BIG)
 	p.b.pressed = true                               # no badge on the big one
+	p.b.armed = src.b.armed                          # but the opt-in notice stays until clicked
 	clip.add_child(p)
 	big = { "def": def, "painter": p, "clip": clip, "rect": Rect2(BIG_POS, BIG) }
 	holder.visible = false                           # the small cards hide behind the dim page
@@ -159,6 +173,10 @@ func _close_big() -> void:
 
 func _press(def: Dictionary, p: Painter, local: Vector2) -> void:
 	p.b.pressed = true
+	if not p.b.armed:                                # the first click on an opt-in card only arms it
+		p.b.armed = true
+		p.b.t = 0.0
+		return
 	if def.has("press"):
 		(def.press as Callable).call(p.b, local)
 
@@ -230,8 +248,10 @@ func _input(event: InputEvent) -> void:
 			if br.has_point(event.position):
 				var bp: Painter = big.painter
 				if event.button_index == MOUSE_BUTTON_RIGHT:
+					var was_armed: bool = bp.b.armed
 					bp.b = _fresh_state(big.def, not bp.b.rhyme, BIG)
 					bp.b.pressed = true
+					bp.b.armed = was_armed
 				else:
 					_press(big.def, bp, event.position - br.position)
 					dragging = big

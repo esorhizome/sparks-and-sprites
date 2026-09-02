@@ -81,6 +81,14 @@ function rhymeOf(orig, name, hint, make) {
     }
 }
 
+/* A WARNING marks a card that must be opted into: it never starts with
+   "Run all" — it shows a plain notice instead, and runs only when clicked.
+   Used for the one strobe in the atlas (Xenon), for photosensitive readers. */
+function warnOf(name, text) {
+  for (var i = 0; i < EFFECTS.length; i++)
+    if (EFFECTS[i].name === name) { EFFECTS[i].warn = text; return; }
+}
+
 function variantOf(st) {
   return (st.useRhyme && st.effect.rhyme) ? st.effect.rhyme : st.effect;
 }
@@ -4122,6 +4130,8 @@ rhymeOf("Xenon", "Camera flash", "the same tube fired by hand — no clock, one 
     press: function (x, y) { tx = x; ty = y; lastFlash = lastT; }
   };
 });
+
+warnOf("Xenon", "contains flashing light");   // the strobe (and its Camera-flash rhyme) is opt-in: click to show
 /* ============================== VOLUMES NEAR & FAR ==============================
    Smoke, flame, sparkle, fog: things without edges. What makes a puff of
    smoke look NEAR is not one cue but five moving together — bigger, darker
@@ -6862,7 +6872,7 @@ function buildCard(effect) {
   hint.className = "bhint";
   card.appendChild(hint);
 
-  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true, useRhyme: false, pressed: false, down: false };
+  var st = { effect: effect, canvas: canvas, u: null, inst: null, running: false, elapsed: 0, visible: true, useRhyme: false, pressed: false, down: false, armed: !effect.warn };
   st.refresh = function () {
     var v = variantOf(st);
     b.textContent = effect.letter + " · " + v.name;
@@ -6888,6 +6898,12 @@ function buildCard(effect) {
     }
   }
   canvas.addEventListener("pointerdown", function (e) {
+    if (!st.armed) {                                   // an opt-in card: the first click only arms it
+      st.armed = true;
+      st.pressed = true;
+      startCard(st);
+      return;
+    }
     if (!st.running) startCard(st);
     st.pressed = true;                                 // the hint badge has done its job
     st.down = true;
@@ -6937,9 +6953,33 @@ function placeholder(st) {
   u.ctx.textAlign = "left";
 }
 
+/* the opt-in notice: plain, static (nothing here may flash), and honest */
+function warning(u, text) {
+  var c = u.ctx;
+  u.sky(["#1A1532", "#131020"]);
+  c.strokeStyle = "#F5C169"; c.lineWidth = 2;
+  c.strokeRect(10, 10, u.W - 20, u.H - 20);
+  c.fillStyle = "#F5C169";
+  c.font = "700 15px system-ui, sans-serif";
+  c.textAlign = "center"; c.textBaseline = "middle";
+  c.fillText("⚠ " + text, u.W / 2, u.H * 0.4);
+  c.fillStyle = "rgba(232,229,244,0.85)";
+  c.font = "12px system-ui, sans-serif";
+  c.fillText("this card does not start on its own", u.W / 2, u.H * 0.58);
+  c.fillText("click to show it (you can look away first)", u.W / 2, u.H * 0.7);
+  c.textAlign = "left"; c.textBaseline = "alphabetic";
+}
+
 function startCard(st) {
   var u = apiFor(st.canvas);
   st.u = u;
+  if (!st.armed) {                                     // opt-in cards wait for a click
+    st.running = false;
+    st.inst = null;
+    warning(u, st.effect.warn);
+    updateStatus();
+    return;
+  }
   try { st.inst = variantOf(st).make(u); } catch (err) { failCard(st, err); return; }
   st.elapsed = 0;
   st.running = true;
@@ -7109,9 +7149,9 @@ function previewHint() {
 function openInEditor(effect, useRhyme) {
   current = { effect: effect, useRhyme: !!(useRhyme && effect.rhyme) };
   var v = current.useRhyme ? effect.rhyme : effect;
-  edname.textContent = current.useRhyme
+  edname.textContent = (current.useRhyme
     ? effect.letter + " · " + v.name + " — a rhyme of " + effect.name + " — " + v.hint
-    : effect.letter + " · " + v.name + " — " + v.hint;
+    : effect.letter + " · " + v.name + " — " + v.hint) + (effect.warn ? "  ⚠ " + effect.warn + " — Run starts it" : "");
   codeBox.value = dedent(v.make.toString());
   stopPreview();
   errBox.textContent = "";

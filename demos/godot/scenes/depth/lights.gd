@@ -595,7 +595,7 @@ static func defs() -> Array:
 			K.label(n, b, D.label) })
 
 	# ---- X · Xenon ---------------------------------------------------------
-	d.append({ "letter": "X", "name": "Xenon",
+	d.append({ "letter": "X", "name": "Xenon", "warn": "contains flashing light",
 		"hint": "a strobe tube: a hard white bar, a blue-white falloff, a short pulse every 1.5 s that lights the whole scene for an instant; dim in between",
 		"dials": { "room": Color("0A0A12"), "flash": Color("DCEBFF"), "bar": Color.WHITE, "every": 1.5, "decay": 9.0, "auto": true,   # decay: how fast a flash dies (per second)
 			"label": "a flash is the falloff with its alpha on a clock — the scene exists only while the light does" },
