@@ -48,6 +48,7 @@ systems are configured property by property. No prefabs, no imported assets.
 | `CubeVfx2D.cs` | cube-vfx | the codex protagonist in 2D: six equippable effects (keys 1–6) |
 | `CubeVfx3D.cs` | cube-vfx | the same anatomy in real 3D: bursts, a halo light, a waterhose |
 | `FlipbookVfx.cs` | flipbook | bake a transparent sprite sheet in code → `Sprite.Create` slices → swap by index (keys 1–3) |
+| `DepthAtlas2D.cs` | depth | six depth cues painted into a `Texture2D` from `Gradient`-style maths: sky clock, fogged ridges, lit orb, three-shade block, depth-sorted plume, contact shadow (keys 1–6, click = light / lift) |
 
 `ElementalButtons.cs` ports the bestiary's **anatomy** and a handful of
 ambassador elements; the full 104 live on

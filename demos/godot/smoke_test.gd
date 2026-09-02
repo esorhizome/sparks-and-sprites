@@ -9,9 +9,9 @@ const SCENES := [
 	"scroll_uv", "glow", "dissolve", "sound_blips", "trails", "trails_fragments",
 	"waterdrops", "halo", "metal_chrome", "glow_buttons", "cursor_sparkle",
 	"starfield", "shake", "planet_3d", "orbit_glow_3d", "elemental_buttons",
-	"cube_vfx", "text_fx", "locomotion", "flipbook", "flipbook_vfx",
+	"cube_vfx", "text_fx", "locomotion", "flipbook", "flipbook_vfx", "depth", "depth_wire_3d",
 ]
-const PAGED := ["elemental_buttons", "cube_vfx", "text_fx", "locomotion", "flipbook"]   # these page through their families
+const PAGED := ["elemental_buttons", "cube_vfx", "text_fx", "locomotion", "flipbook", "depth"]   # these page through their families
 
 var i := 0
 var frame := 0

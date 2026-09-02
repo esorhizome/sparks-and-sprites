@@ -40,8 +40,37 @@ has its Godot twin here:
 | Locomotion lexicon (all 26) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
 | Flipbook folio (all 104) | `scenes/flipbook.gd` | flipbook | 15 |
 | Flipbook VFX (Godot-only) | `scenes/flipbook_vfx.gd` + `shaders/rim_glow.gdshader`, `shaders/circuit_flow.gdshader` | — | 15 (also 03, 06, 12) |
+| Depth atlas (all 104 + 104 rhymes) | `scenes/depth.gd` + `scenes/depth/` | depth | 16 |
+| Depth-fade wireframe (3D, Godot-only) | `scenes/depth_wire_3d.gd` + `shaders/depth_fade.gdshader` | — | 16 |
 
 One demo has no web twin: **Flipbook VFX** is a PNG-sequence loop (frames generated in code — swap in your own) wearing rim glow, a breathing aura, a circuit track, an orbiting mote, click-bursts and a right-click light/dark ground swap, all conducted by tweens, timers and signals. Where the folio (key **G**) is the *breadth* demo — 26 baked sheets — this one (key **H**) is the *depth* demo: one loop, fully dressed. Long-form companion: [`cheatsheets/godot-flipbook-vfx.md`](../../cheatsheets/godot-flipbook-vfx.md).
+
+## The depth atlas, in full
+
+`scenes/depth.gd` (key **J**) pages through the web atlas's eight families —
+skies, distance, rounded forms, facets, light sources, volumes near & far,
+waves & ribbons, shadows & focus — one file per family in `scenes/depth/`,
+eight cards to a page. **Right-click a card for its rhyme**: here a rhyme
+is literally a dials swap — every card keeps its numbers in one dictionary
+`D`, and the rhyme is the same painter with two or three values changed.
+
+The port turns on one honest fact: **Godot's `_draw()` has no gradient-fill
+call.** `scenes/depth/kit.gd` shows the two spellings the whole atlas is
+built from — a linear gradient is `draw_polygon` with one colour per vertex
+(the GPU interpolates for free), and a radial gradient is a triangle fan
+with a bright centre vertex, drawn in one
+`RenderingServer.canvas_item_add_triangle_array` call. Push that centre
+vertex toward the light and a disc becomes a lit ball — the same offset
+trick as the web page. For nodes, `GradientTexture2D` is the zero-code
+route.
+
+**Depth-fade wireframe** (key **K**) is the one 3D scene in the set: a line
+mesh (a sphere cage with a knot inside) under three materials on keys
+1/2/3 — `shaders/depth_fade.gdshader` fading lines with view-space
+distance (live as it turns), a per-vertex colour gradient baked into
+`ARRAY_COLOR`, and a flat control. Dropping fix 1 onto an existing
+wireframe gallery is one line: `mesh_instance.material_override =
+depth_fade_material()` — the mesh never changes.
 
 ## The bestiary, in full
 

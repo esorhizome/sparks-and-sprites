@@ -28,8 +28,10 @@ const DEMOS := [
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
 	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
 	["F", "Locomotion lexicon — 26 movement styles, A to Z", "res://scenes/locomotion.tscn"],
-	["G", "Flipbook folio — 52 baked VFX sheets, A to Z twice", "res://scenes/flipbook.tscn"],
+	["G", "Flipbook folio — 104 baked VFX sheets, A to Z four times", "res://scenes/flipbook.tscn"],
 	["H", "Flipbook VFX — one loop, wearing its effects", "res://scenes/flipbook_vfx.tscn"],
+	["J", "Depth atlas — 104 illusions of depth in 2D (+104 rhymes)", "res://scenes/depth.tscn"],
+	["K", "Depth-fade wireframe (3D) — one line mesh, three materials", "res://scenes/depth_wire_3d.tscn"],
 ]
 
 func _ready() -> void:

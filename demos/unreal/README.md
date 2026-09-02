@@ -71,6 +71,7 @@ table in `recipes/` holds in both dimensions unless a row says otherwise.
 | Cube codex (character VFX) | `Source/.../SSCubeVfx.*` + `recipes/cube-vfx.md` | C++ actor with Niagara effect slots + family map |
 | Glyph grimoire (text FX) | `Source/.../SSTextFx.*` + `recipes/text-fx.md` | C++ per-letter TextRender actor + a 2D (UMG) & 3D family map |
 | Flipbook folio (baked VFX sheets) | `Source/.../SSFlipbookVfx.*` + `recipes/flipbook-vfx.md` | C++ runtime-baked SubUV sheet + the three flipbook routes (Paper2D / Niagara / material) |
+| Depth atlas (the illusion of depth in 2D) | `recipes/depth-atlas.md` | material recipe: LinearGradient / RadialGradientExponential / CameraDepthFade / Fresnel per depth cue, with the atlas's numbers, in UMG and 3D |
 
 The full 104-button bestiary lives on
 [the web page](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)

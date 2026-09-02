@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The depth atlas · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the atlas grid (same skeleton as the bestiary, codex, grimoire, lexicon, and folio) */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:190px; display:block; background:#131020; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:manipulation}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .meta a.rhyme{color:var(--good); cursor:pointer}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/16-depth-without-a-third-dimension.md">chapter 16</a></p>
+<h1>The depth atlas — 104 illusions of depth on a flat plane, A to Z four times (+104 rhymes)</h1>
+<p class="lesson">Every gallery before this one asked <em>how does it move?</em> This one asks <b>how does it look round, far, lit, or solid — on a surface that has no third axis?</b> The answer is always a gradient of <em>something</em>: of colour (a sky), of contrast (a mountain range dissolving into the air), of brightness across a form (a ball, a cylinder), of three flat shades meeting at an edge (a cube from squares), of size-brightness-speed together (smoke and sparkles near and far), of slope (a wave, a twisting ribbon), of blur (focus), of darkness on the ground (a shadow). None of it needs a camera, a mesh, or a light — which is the point: a 2D game or a web page gets the depth without paying for the dimension. Eight families, one mechanism each. <b>Skim until you recognise the picture you were imagining, then open its code and turn its numbers.</b> Press <b>▶ Run all</b>, or wake one card at a time; click a running card to move its light, its camera, or its weather.</p>
+<p class="lesson"><b>Every picture also hides a rhyme.</b> A rhyme is the same picture with two or three dials turned — a palette, a count, a speed — and nothing else. Click <b>⇄ its rhyme</b> on any card to swap them in place (104 more pictures folded into the same cards, and where the genres live: sci-fi fog, candy sunrises, synthwave grids, glitch auroras), then <i>open code</i> to read the pair side by side: the rhyme's opening comment names exactly which dials moved. Once a recipe is understood, its neighbours are nearly free.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="atlas"><!-- cards are built by depth.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick a picture above</span></h2>
+<p class="lesson">Every picture is one function, <code>make(u)</code>, returning <code>{ frame(dt, t), press(x, y) }</code>. Its dials sit at the top in a <code>D = { … }</code> object — palettes as hex strings, counts, speeds — so the first thing to edit is always in the first three lines. The kit <code>u</code> is three gradient calls and a handful of forms: <code>lin(x0, y0, x1, y1, stops)</code> and <code>rad(x, y, r, stops, ox, oy)</code> build linear and radial gradients (the <code>ox, oy</code> offset moves the radial's centre — that offset is what turns a disc into a lit ball), <code>sky(stops)</code> fills the canvas top to bottom, <code>fog(colour, depth, air)</code> is atmospheric perspective in one call, and <code>sphere</code>, <code>cyl</code>, <code>cube</code>, <code>iso</code>, <code>shadow</code>, <code>soft</code> are gradients already folded into shapes. Colour helpers <code>mix</code>, <code>shade</code>, <code>rgba</code>, <code>hsl</code> keep palettes editable as plain hex. Change a number, press <b>▶ Run</b> — the picture repaints from your code. Click the preview to move its light, camera, or weather.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the cards; every picture is drawn relative to its canvas, so the same code fills any size. Click the preview to move the light, the camera, or the weather.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> in <b>Orb</b>, set the light offset to 0 and the ball flattens into a disc — the offset <em>is</em> the roundness; push it past the edge and the ball reads as backlit. In <b>Alps</b>, change <code>u.fog</code>'s depth multiplier to 0 and every mountain turns the same colour: the range collapses into a paper cut-out (that flatness is what atmospheric perspective was hiding). In <b>Block</b>, swap the top and right shades and the cube becomes an inside corner — the same three squares, now a room. In <b>Plume</b>, make the near puffs <em>paler</em> instead of darker and the smoke turns inside-out. In <b>Contact</b>, freeze the shadow while the ball rises and the ball stops rising — it just gets bigger. The universal anatomy: <em>depth is a gradient of some property between "here" and "there".</em> Choose the property, choose the two ends, and the eye supplies the space between.</div>
+<p class="hint"><b>In Godot:</b> <b>all 104 (+104 rhymes) are ported</b> — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/depth.gd"><code>depth.gd</code></a> pages through the eight families in <code>scenes/depth/</code>; right-click any card to see its rhyme. Godot's <code>CanvasItem</code> has no gradient-fill call, so the port's <code>kit.gd</code> shows the two honest spellings: a linear gradient is <code>draw_polygon</code> with one colour <em>per vertex</em> (the GPU interpolates for free), and a radial gradient is a fan of <code>draw_primitive</code> triangles with a bright centre colour and a dark rim colour — the same offset-centre trick as the web. For nodes rather than <code>_draw</code>, <code>GradientTexture2D</code> (fill: linear / radial, with <code>fill_from</code>/<code>fill_to</code>) on a <code>Sprite2D</code> or <code>TextureRect</code> is the zero-code route (grab the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a> and press its menu's J). Godot also gets a 3D sibling this gallery can't draw on canvas: <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/depth_wire_3d.gd"><code>depth_wire_3d.gd</code></a> (menu key K) — a turning wireframe whose lines fade with distance from the camera, via per-vertex colours and a five-line spatial shader; it's the recipe for putting gradients on any line-mesh gallery. <b>In Unity</b> a gradient is a <code>Gradient</code> asset evaluated into a <code>Texture2D</code> (or a Shader Graph <em>Gradient</em>/<em>Lerp</em> over UV), a sphere is a sprite with a radial-gradient texture, a cube is three sprites in three tints — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unity/Scripts/DepthAtlas2D.cs"><code>DepthAtlas2D.cs</code></a> paints six ambassadors (sky, fogged ridges, lit ball, cube, depth-sorted smoke, contact shadow) from code. <b>In Unreal</b> it's the material editor's <em>LinearGradient</em> and <em>RadialGradientExponential</em> nodes in 3D and the same nodes on a UMG Image in 2D — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/unreal/recipes/depth-atlas.md">the recipe</a> covers both spellings. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/16-depth-without-a-third-dimension.md">Chapter 16</a> is the full encyclopaedia entry: the eight cues, why each one works, what each costs, and how the same picture is spelled in all four engines.</p>
+</div>
+<script src="depth.js"></script>
+</body>
+</html>

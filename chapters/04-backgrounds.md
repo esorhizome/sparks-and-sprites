@@ -13,6 +13,8 @@ A well-chosen two-colour vertical gradient is a legitimate *finished* background
 - **Unreal:** a post-process tint, or an unlit gradient material on a backdrop plane.
 - **Web:** `background: linear-gradient(…)` — arguably the best gradient tool on any platform.
 
+▶ *When the gradient IS the picture* — a sunrise on a clock, a dusk with stars arriving, a mountain range dissolving into the air, cloud bands, a receding sea — that is [chapter 16](16-depth-without-a-third-dimension.md) and [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html) (its *Skies* and *Distance* families are this section grown up: 25 editable backdrops, each with a rhyme).
+
 ## 2 · Parallax scrolling
 
 Far layers move slower than near layers as the camera pans; the brain reads depth instantly.

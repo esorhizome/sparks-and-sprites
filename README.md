@@ -47,6 +47,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 | 13 | [Text that moves](chapters/13-text-that-moves.md) | Programmatic text animation: typewriters, glows, scrambles, waves — the fourteen families |
 | 14 | [Procedural animation & the maths of movement](chapters/14-procedural-animation.md) | Springs, steering, IK, verlet, gait — every movement recipe and its maths, in plain words |
 | 15 | [Transparent flipbooks](chapters/15-transparent-flipbooks.md) | VFX as pre-baked frames: bake once, copy a rectangle — across all four platforms |
+| 16 | [Depth without a third dimension](chapters/16-depth-without-a-third-dimension.md) | Gradients, shading, atmospheric perspective, shadows, focus — the cheap illusion of 3D in 2D, and gradients on 3D wireframes |
 
 ## The cheatsheets
 
@@ -62,6 +63,7 @@ One-page quick references for the days you just need the answer:
 - [Procedural animation](cheatsheets/procedural-animation.md) — the A–Z of movement maths, the four load-bearing snippets, enemy brains cheapest-first
 - [Flipbooks](cheatsheets/flipbooks.md) — the four index lines, the A–Z×4 of baked VFX (teaching laps + genre laps), engine spellings for sheet → play
 - [VFX around the flipbook (Godot)](cheatsheets/godot-flipbook-vfx.md) — the long form: four clocks + signals, dressing one playing loop with shaders, tweens, particles, and triggers
+- [Depth](cheatsheets/depth.md) — the three gradient calls, the eight depth cues one line each, the A–Z×4 of the depth atlas, wanted-picture → card
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
 - [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes

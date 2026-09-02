@@ -25,6 +25,8 @@ Every effect is one of two mechanisms: **spawn small things with simple rules** 
 
 **Baked VFX** (transparent flipbook sheets — bake once, copy a rectangle) has its own chapter [15](../chapters/15-transparent-flipbooks.md) and cheatsheet [flipbooks](flipbooks.md) — demo: [the flipbook folio](https://esorhizome.github.io/sparks-and-sprites/flipbook.html) (104 sheets, A–Z four times, editable)
 
+**Depth in 2D** (shaded balls and cubes, smoke/flame/sparkle sorted near → far, cast and contact shadows, blur as focus) has its own chapter [16](../chapters/16-depth-without-a-third-dimension.md) and cheatsheet [depth](depth.md) — demo: [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html) (104 pictures A–Z ×4, +104 rhymes, editable)
+
 **UI feedback** (glowing buttons, cursor trails, responsive cursors) has its own chapter: [12](../chapters/12-cursors-and-living-buttons.md) — demos: [living buttons](https://esorhizome.github.io/sparks-and-sprites/glow-buttons.html) · [responsive cursor](https://esorhizome.github.io/sparks-and-sprites/cursor-sparkle.html)
 
 **Cross-engine authoring:** [Effekseer](https://effekseer.github.io/en/) — free MIT VFX editor with Godot/Unity/Unreal runtimes.

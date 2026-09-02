@@ -13,3 +13,5 @@ Five patterns. Full chapter: [04](../chapters/04-backgrounds.md).
 **Rules of thumb:** far layers 0.1–0.3 × camera, near layers 0.7–0.95 × · gradient + parallax + a pinch of noise ≈ 90% of admired backgrounds · free CC0 HDRI skies: [Poly Haven](https://polyhaven.com/).
 
 **Live demos:** [parallax](https://esorhizome.github.io/sparks-and-sprites/parallax.html) · [scroll-uv](https://esorhizome.github.io/sparks-and-sprites/scroll-uv.html) · [starfield](https://esorhizome.github.io/sparks-and-sprites/starfield.html)
+
+**Gradients that are the whole backdrop** — sunrises, dusks, fogged mountain ranges, cloud bands, receding seas — have their own chapter [16](../chapters/16-depth-without-a-third-dimension.md) and cheatsheet [depth](depth.md); demo: [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html) (104 pictures A–Z ×4, each with a rhyme).
