@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The stagecraft almanac · Sparks &amp; Sprites</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible&family=Spline+Sans+Mono:ital,wght@0,300..700;1,300..700&display=swap">
+<link rel="stylesheet" href="demo.css">
+<style>
+/* page-specific: the almanac grid (same skeleton as the bestiary, codex, grimoire, lexicon, folio, and atlas) */
+.family{margin:2.2rem 0 .6rem; font-size:1.05rem; color:var(--accent); letter-spacing:.06em; text-transform:uppercase}
+.family small{color:var(--soft); text-transform:none; letter-spacing:0; font-size:.8rem; margin-left:.6em}
+.bcards{display:grid; gap:.9rem; grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.bcard{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:.6rem}
+.bcard canvas{width:100%; height:170px; display:block; background:#131020; border:1px solid var(--line); border-radius:6px; cursor:pointer; touch-action:pan-y}
+#cv{touch-action:pan-y}
+.toolbar .tempo{font-size:.8rem; color:var(--soft); margin-left:.6rem}
+.toolbar button.small{padding:.25em .6em; font-size:.8rem}
+.bcard .meta{display:flex; justify-content:space-between; align-items:baseline; gap:.5rem; margin-top:.45rem}
+.bcard .meta b{font-size:.92rem}
+.bcard .meta a{font-size:.78rem; white-space:nowrap}
+.bcard .meta a.rhyme{color:var(--good); cursor:pointer}
+.bcard .bhint{font-size:.78rem; color:var(--soft); margin:.15rem 0 0; line-height:1.4}
+.toolbar{display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin:1rem 0; position:sticky; top:0; background:var(--paper); padding:.5rem 0; z-index:5}
+#status{font-size:.85rem; color:var(--soft)}
+#editor{margin-top:3rem; scroll-margin-top:4rem}
+#editor h2{font-size:1.2rem; margin-bottom:.3rem}
+#edname{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+<p class="crumb"><a href="index.html">← all demos</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/cheatsheets/stagecraft.md">the stagecraft cheatsheet</a></p>
+<h1>The stagecraft almanac — 104 scene &amp; screen effects, A to Z four times (+104 rhymes)</h1>
+<p class="lesson">Every gallery before this one dressed a <em>thing</em>: a button, a cube, a phrase, a moving mote, a baked sheet, a lit ball. This one dresses the <b>scene</b> — one small stage (a sky, a hill line, a ground, a lamp, a crate, a tree, and a code-drawn hero sprite with a run cycle) and 104 things that happen <em>to</em> it. <b>Eight families:</b> the <em>screen</em> bent after the fact (wipes, CRT curves, dither, palettes that cycle, RGB splits, distortion, radial blur, god rays, grades, grain, tape damage); the sprite's own <em>skin</em> (frozen and petrified, poisoned, jelly, swaying, X-rayed, reflected, sheared into a shadow, pixel-perfect, nine-sliced, toon-lined, under water, holographic); <em>light</em> and what it cannot reach (visibility polygons, fog of war, torches, night, lightning, stealth meters, shafts, dusk windows, blob shadows, bloom, room lights, zones); <em>weapons, impacts &amp; decals</em>; <em>water, weather &amp; nature</em>; the <em>particle machinery</em> under every effect; the <em>HUD</em> as an effect; and the <em>sound</em> half, drawn. Each card is a <b>living loop</b> plus a <b>press reaction</b> (click a running card to fire, poke, aim, or scrub it — a small badge says <b>click</b> or <b>drag</b> until you have). Press <b>▶ Run all</b>, or wake one card at a time. Two cards flash the whole frame (lightning, muzzle fire) and are <b>opt-in</b>: they show a notice until you click them. The <b>tempo</b> buttons run everything at ×2 or ×4 for skimming.</p>
+<p class="lesson"><b>Every effect also hides a rhyme.</b> Click <b>⇄ its rhyme</b> on any card to swap it for the same effect with two or three dials turned — a palette, a mode, a count — and nothing else (104 more effects folded into the same cards); then <i>open code</i> to read the pair: every card keeps its numbers in a <code>D = { … }</code> block at the top, and the rhyme's source is that block with the moved dials named. <b>Where this page comes from:</b> the screen and skin families are the shader lessons of <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/03-combining-vfx-with-sprites.md">chapter 03</a> spelled out per pixel in canvas (a shader is a tiny program answering "what colour is this pixel?" — here that program is a plain loop over an <code>ImageData</code> you can read); the light family grows out of <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/16-depth-without-a-third-dimension.md">chapter 16</a>'s candles and lanterns; impacts, weather and particles out of <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">chapter 06</a>'s sparks and waterdrops; the HUD out of <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a> and <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/13-text-that-moves.md">13</a>; and the sound family out of <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/07-sound-effects.md">chapter 07</a>'s three blips — it makes no sound until you click a card, and every one of its cards is worth watching with the sound off.</p>
+
+<div class="toolbar">
+  <button id="runall" class="primary">▶ Run all</button>
+  <button id="stopall">⏹ Stop all</button>
+  <span class="tempo">tempo</span>
+  <button id="tempo1" class="small primary" title="real time">×1</button>
+  <button id="tempo2" class="small" title="time-lapse: two substeps per frame">×2</button>
+  <button id="tempo4" class="small" title="time-lapse: four substeps per frame — for skimming">×4</button>
+  <a href="#editor" style="font-size:.85rem">↓ jump to the code editor</a>
+  <span id="status"></span>
+</div>
+
+<div id="almanac"><!-- cards are built by stagecraft.js --></div>
+
+<div id="editor">
+<h2>The editor — <span id="edname">pick an effect above</span></h2>
+<p class="lesson">Every effect is one function, <code>make(u)</code>, returning <code>{ frame(dt, t), press(x, y) }</code> — and <code>drag: true</code> when its press is a continuous control. Its dials sit at the top in a <code>D = { … }</code> object, so the first thing to edit is always in the first three lines. The kit <code>u</code>: <code>ctx, W, H, GY</code>, a palette (<code>HERO, SUN, FIRE, SPARK, HOT, GOOD, MAGIC, WATER, BONE</code>), the scene (<code>stage({night})</code>, <code>ground()</code>, <code>hero(x, y, {pose, face, frame, tint})</code>, <code>heroSprite()</code> for the sprite's pixels, <code>tree / lamp / crate / wall / house</code>), the drawing pocket tools (<code>dot, ring, line, rect, poly, arrow, ellipse, glow, label, text</code>), the shader half spelled in canvas (<code>layer(name)</code> for an offscreen canvas, <code>pix(scale, fn)</code> for a whole-frame pixel pass, <code>pixelsOf(cv)</code>, <code>cutLight()</code> for holes in darkness, <code>visPoly()</code> for the visibility polygon), the numbers (<code>rand, rng(seed), noise, noise2, lerp, clamp, ease, smooth</code>), colour helpers (<code>mix, shade, rgba, hsl</code>), and the sound half (<code>tone(), noiseBurst(), beep(), spectrum(), voices()</code> — silent where the browser has no audio). Everything else — every threshold, radius, and palette — lives in plain sight in <code>D</code>.</p>
+<div class="demo-grid">
+  <div>
+    <textarea id="code" spellcheck="false"></textarea>
+    <div class="row">
+      <button id="run" class="primary">▶ Run</button>
+      <button id="stop">⏹ Stop</button>
+      <button id="reset">↺ Reset code</button>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+  <div>
+    <canvas id="cv"></canvas>
+    <p class="hint">The preview is bigger than the cards, and every effect is written relative to <code>W</code>, <code>H</code>, and <code>GY</code> — the same code scales up without edits. Click (or drag, on the drag cards) the preview to trigger the press reaction.</p>
+  </div>
+</div>
+</div>
+
+<div class="tweaks"><b>Try tweaking:</b> every effect keeps its magic numbers in <code>D</code>. In Crt, set <code>curve</code> to 0 and the barrel goes flat; in Ordered, set <code>levels</code> to 2 for pure one-bit; in Visibility, add a wall segment and watch the polygon grow a notch; in Healthbar, set the ghost's delay to 0 and the lesson disappears — the white bar <em>is</em> the information; in Lookahead, shrink the window until the scheduled metronome starts to stumble like the frame-timed one. The universal anatomy of this page: <em>draw the scene, then decide which pixels, which layer, which event, or which voice gets changed — and by how much, on what clock.</em></div>
+<p class="hint"><b>In Godot:</b> <b>all 104 (+104 rhymes) are ported</b> — eight family files in <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot/scenes/stage"><code>scenes/stage/</code></a>, paged by family in <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/stagecraft.gd"><code>stagecraft.gd</code></a> (grab the <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot">Godot project</a> and press its menu's L; right-click any card for its rhyme, double-click to enlarge, 1/2/4 for tempo). The screen family is the one place the spelling honestly changes: what this page does with a pixel loop, Godot does with a <code>canvas_item</code> shader reading <code>screen_texture</code> — thirteen small <code>.gdshader</code> files in <a href="https://github.com/esorhizome/sparks-and-sprites/tree/main/demos/godot/shaders/stage"><code>shaders/stage/</code></a>, each one the same arithmetic as its card. <b>In Unity and Unreal</b> the same effects land on URP Renderer Features / full-screen materials, sprite shaders, 2D lights with shadow casters, decal projectors, Niagara sub-emitters, UI Toolkit / UMG, and the audio mixers — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/cheatsheets/stagecraft.md">the stagecraft cheatsheet</a> has every engine's spelling per family, and the chapters it links carry the long form.</p>
+</div>
+<script src="stagecraft.js"></script>
+</body>
+</html>

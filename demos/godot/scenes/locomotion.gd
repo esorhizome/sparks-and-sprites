@@ -1,5 +1,5 @@
 extends Node2D
-## THE LOCOMOTION LEXICON — 104 movement styles (+104 rhymes), A to Z four
+## THE LOCOMOTION LEXICON — 208 movement styles (+208 rhymes), A to Z eight
 ## times, in GDScript. The full port of the web page (docs/locomotion.html):
 ## the maths of procedural animation, one card per letter — sines and polar
 ## coordinates, springs and damping ratios, headings and vehicles, steering
@@ -8,7 +8,9 @@ extends Node2D
 ## machinery; laps three and four are GENRE laps (sci-fi, adventure, action,
 ## fantasy, arcade, cozy, minimalist, glitchy, goofy).
 ##
-## Nine families, one page of eight cards at a time (←/→ turns pages). Click
+## Seventeen families (the eight added in 2026-09: input & intent, collision
+## & contact, platformer verbs, wheels/wings/ballast, squads & maps,
+## joints/cloth/grains, rewinds/rooms/beats, game verbs), one page of eight cards at a time (←/→ turns pages). Click
 ## a card to poke it — most cards aim at where you click; DRAG the cards that
 ## say so. RIGHT-CLICK a card to see its RHYME. DOUBLE-CLICK to enlarge.
 ## 1 / 2 / 4 set the tempo (a time-lapse for skimming — extra substeps, so
@@ -34,6 +36,14 @@ const FAMILIES := [
 	preload("res://scenes/motion/chains.gd"),
 	preload("res://scenes/motion/bodies.gd"),
 	preload("res://scenes/motion/time.gd"),
+	preload("res://scenes/motion/input.gd"),
+	preload("res://scenes/motion/contact.gd"),
+	preload("res://scenes/motion/verbs.gd"),
+	preload("res://scenes/motion/wheels.gd"),
+	preload("res://scenes/motion/squads.gd"),
+	preload("res://scenes/motion/joints.gd"),
+	preload("res://scenes/motion/frames.gd"),
+	preload("res://scenes/motion/games.gd"),
 ]
 const Kit := preload("res://scenes/motion/kit.gd")
 

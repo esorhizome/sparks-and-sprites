@@ -49,6 +49,9 @@ systems are configured property by property. No prefabs, no imported assets.
 | `CubeVfx3D.cs` | cube-vfx | the same anatomy in real 3D: bursts, a halo light, a waterhose |
 | `FlipbookVfx.cs` | flipbook | bake a transparent sprite sheet in code → `Sprite.Create` slices → swap by index (keys 1–3) |
 | `DepthAtlas2D.cs` | depth | six depth cues painted into a `Texture2D` from `Gradient`-style maths: sky clock, fogged ridges, lit orb, three-shade block, depth-sorted plume, contact shadow (keys 1–6, click = light / lift) |
+| `ContactAndIntent2D.cs` | locomotion | a code-built test room, physics by hand (no Rigidbody2D): coyote time, jump buffer, variable jump height, a radially rescaled dead zone, AABB least-penetration push-out, a one-way shelf, swept moves against a thin wall — timers read out on screen (Space / Shift / click) |
+| `Stagecraft2D.cs` | stagecraft | six scene-level passes done on the CPU into a `Texture2D`, each comment naming the URP spelling: Bayer 4×4 dither, palette quantise, chromatic split, a visibility-polygon light, a ghost-chunk health bar, an object-pooled burst (keys 1–6, click acts) |
+| `WorldWorkshop.cs` | worlds | seeded generators grown step by step into a `Texture2D` — `Random.InitState(seed)` first, always: Poisson-disc scatter, cellular caves, BSP rooms, a recursive-backtracker maze, 4-bit autotile indices drawn as glyphs, `JsonUtility` save/load with a version field and a migration (keys 1–6, R = next seed) |
 
 `ElementalButtons.cs` ports the bestiary's **anatomy** and a handful of
 ambassador elements; the full 104 live on

@@ -54,6 +54,8 @@ The two species above — the static loop and the thank-you — are a recipe, an
 
 ▶ *See it:* [the elemental button bestiary](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html) — press *Run all*, or wake buttons one at a time. All 104 are also ported to GDScript in the repo's Godot project ([`demos/godot/scenes/elements/`](../demos/godot/scenes/elements/), one file per element family, paged by family in the `elemental_buttons` scene) — same anatomy, different accent.
 
+**The HUD as an effect.** The same three species run the numbers in the corner, and the **[stagecraft almanac](https://esorhizome.github.io/sparks-and-sprites/stagecraft.html)**'s *UI & HUD feedback* family is thirteen of them: **Healthbar** snaps the red bar and lets a white *ghost* drain behind it over half a second — the damage you just took, made visible (set the delay to 0 and the information disappears); **Radial** is a cooldown counting down as a conic fill with a pop when ready; **Offscreen** clamps a far target to the screen's edge and points an arrow at it; **Toast** slides notifications in, stacks them, and slides them out on timers; **Bossbar** fills on the intro, shakes on hit, and breaks off a segment per phase. Every one is a tween (a value animated over time) or a lag deliberately left in — the thank-you, applied to information. One page: the [stagecraft cheatsheet](../cheatsheets/stagecraft.md).
+
 ## Cursor trails (motion-reactive)
 
 A cursor trail is a particle emitter whose position is the pointer. That's the whole secret — the entire [fragmented trails](https://esorhizome.github.io/sparks-and-sprites/trails-fragments.html) recipe from [chapter 06](06-vfx-cookbook.md) with `emitter = pointer`:

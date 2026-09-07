@@ -1,5 +1,5 @@
 /* Sparks & Sprites — the locomotion lexicon.
-   One little blue mote and 104 ways for it to move — an A-to-Z, four times
+   One little blue mote and 208 ways for it to move — an A-to-Z, eight times
    over, of the maths behind procedural animation: the fourth gallery after
    the elemental button bestiary, the cube codex, and the glyph grimoire. If
    the grimoire was what a phrase can DO, the lexicon is what a body can
@@ -12,7 +12,10 @@
    minimalist, glitchy, goofy — a picture-book to skim until you recognise
    the motion you were imagining. Every card also hides a RHYME: the same
    motion with two or three dials turned, and nothing else — so the page
-   holds 208 movement styles.
+   holds 416 movement styles. Laps five to eight (2026-09) add what the
+   first four left out: input and intent, collision and contact, the
+   platformer's verbs, vehicles and flight, squads and maps, cloth and
+   grains, rewinds and beats, and the game verbs themselves.
 
    Every demo is one function make(u) that returns { frame(dt, t), press(x, y) }
    — plus drag: true when press is continuous (the runtime then repeats the
@@ -46,6 +49,9 @@
      rand(a,b), rng(seed) — random, and seeded random (mulberry32: the
                      same seed gives the same numbers on every machine)
      noise(x)      — smooth 1-D value noise in −1..1 (Perlin's little cousin)
+     beep(freq, dur?, type?) — a short synthesized tone (the beat, a key of a
+                     xylophone); silent where the browser has no audio, and
+                     only ever called after a press, so nothing sings unasked
      TAU
 
    Nothing animates until the visitor presses Run (or clicks a card awake),
@@ -238,6 +244,23 @@ function apiFor(canvas) {
     ctx.beginPath(); ctx.arc(s * 0.38, -s * 0.3, s * 0.22, 0, TAU); ctx.fill();
     ctx.restore();
   }
+  function beep(freq, dur, type) {                     // one WebAudio voice, made on first use
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !(freq > 0)) return;
+    try {
+      if (!apiFor.ac) apiFor.ac = new AC();
+      var ac = apiFor.ac;
+      if (ac.state === "suspended") ac.resume();
+      var o = ac.createOscillator(), g = ac.createGain(), t0 = ac.currentTime;
+      o.type = type || "triangle";
+      o.frequency.setValueAtTime(freq, t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.008);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (dur || 0.12));
+      o.connect(g).connect(ac.destination);
+      o.start(t0); o.stop(t0 + (dur || 0.12) + 0.02);
+    } catch (e) { /* audio is a courtesy, never a requirement */ }
+  }
   function label(txt, x, y, c, align) {
     ctx.fillStyle = c || "rgba(232,229,244,0.55)";
     ctx.font = "10px system-ui, sans-serif";
@@ -248,7 +271,7 @@ function apiFor(canvas) {
   return { ctx: ctx, W: W, H: H, GY: GY, TAU: TAU,
            INK: INK, DIM: DIM, MOVER: MOVER, TARGET: TARGET, BONE: BONE, GOOD: GOOD, HOT: HOT, MAGIC: MAGIC,
            rand: rand, rng: rng, noise: noise, len: len, clamp: clamp, lerp: lerp, ease: ease,
-           smooth: smooth, wrapAngle: wrapAngle,
+           smooth: smooth, wrapAngle: wrapAngle, beep: beep,
            stage: stage, ground: ground, dot: dot, ring: ring, line: line, rect: rect, poly: poly,
            arrow: arrow, mote: mote, label: label };
 }
@@ -262,7 +285,15 @@ var FAMILY_ORDER = [
   ["paths", "Paths, grids & schedules", "a route remembered — A*, Béziers, splines, lanes, hops, timetables"],
   ["chains", "Chains & joints", "a list of joints — follow-chains, two-bone IK, FABRIK, quaternions, and the creatures built from them"],
   ["bodies", "Bodies & ground", "position and last position — verlet, impulses, rays, normals, ropes, and the walk that uses it all"],
-  ["time", "Time & cameras", "the clock and the window move too — timescale, hitstop, substeps, lag, quantised frames, a following camera"]
+  ["time", "Time & cameras", "the clock and the window move too — timescale, hitstop, substeps, lag, quantised frames, a following camera"],
+  ["input", "Input & intent", "what the player MEANT — grace timers, buffers, dead zones, curves, gestures, flings: the code between the hand and the body"],
+  ["contact", "Collision & contact", "what touches what — boxes and circles, sweeps, tiles one axis at a time, one-way ledges, slopes, sensors, triggers, hitboxes"],
+  ["verbs", "Platformer verbs", "the ledge, the ladder, the wall — mantle, climb, wall-run, slide, roll, glide, jetpack, swim, flip gravity, zipline, minecart"],
+  ["wheels", "Wheels, wings & ballast", "vehicles and flight — drift, suspension, hover, lean, boost, a pseudo-3D road, warp stars, six degrees of freedom, mounts, trains"],
+  ["squads", "Squads & maps", "formations, escorts, bodyguards, hiding, context steering, flow fields, Dijkstra and influence maps, behaviour trees, utility, schedules"],
+  ["joints", "Joints, cloth & grains", "the third IK, quadrupeds, jiggle, cloth, a rope bridge, torque, hinges, links that break, throws, artillery, falling sand, tile water"],
+  ["frames", "Rewinds, rooms & beats", "ring buffers, fixed steps, energy turns, the beat, pause, cooldowns, group framing, room cameras, kicks, zooms, rails, orbits, wrap"],
+  ["games", "Game verbs", "fishing, farming, cooking, sokoban, a pet, emotes, an instrument, painting, photo mode, match-3, tetrominoes, rhythm, the cartoon wind-up"]
 ];
 
 /* ============================== CLOCKS & CIRCLES ==============================
@@ -7364,6 +7395,9192 @@ def("R", "Rubberband", "time", "a client guesses, a server disagrees, every pack
 });
 rhymeOf("Rubberband", "Rollback", "packets a second apart against a stronger unseen current — the snap is a leap, the soft modes never quite catch up", { packet: 1.0, current: 0.24, strengths: [1, 0.3, 0.1] });
 
+/* ============================== INPUT & INTENT ==============================
+   What the player MEANT. Between the hand and the body sits a small,
+   forgiving interpreter: a grace timer that keeps a jump legal after the
+   ledge is gone, a buffer that holds a press until it becomes legal, a cut
+   that lets a short tap be a short hop. Sticks are noisy, so there are dead
+   zones and rescaling; diagonals cheat, so there is normalising; one button
+   becomes three by timing windows, or a charge by holding. Flings read a
+   history of pointer positions, swipes bucket a delta into directions, a
+   motion parser matches a ring buffer against ↓↘→, and a virtual stick and
+   a mouse-look turn a finger and a mouse into an intention. */
+
+def("C", "Coyote", "input", "a jump is legal for 100 ms after the feet leave the ledge — green if inside the window, red X if not — press to jump now", function (u) {
+  var D = { coyote: 0.1,        // seconds of grace after the ground is lost
+            g: 2.2,             // gravity, ×H per second²
+            jumpH: 0.28,        // apex height, ×H (Jump's √(2gh))
+            speed: 0.35,        // run speed, ×W per second
+            ledge: 0.45,        // the ledge ends here, ×W
+            far: 0.72,          // the far platform starts here, ×W
+            autoAt: [0.05, 0.28],   // the idle loop presses this long after leaving: one inside, one outside
+            label: "grace = coyote − (t − tLeft) > 0 ?" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, MOVER, GOOD, HOT, TARGET, DIM } = u;
+  // the mote runs off the ledge on its own. the frame the feet lose the
+  // ground, a GRACE TIMER (coyote time — the cartoon coyote who does not fall
+  // until he looks down) starts counting. a jump pressed while grace > 0 is
+  // honoured exactly as if the ground were still there — Jump's v₀ = √(2gh)
+  // — and a jump pressed later is refused. the amber band past the edge is
+  // the same window measured in distance: speed × coyote. Ninja's buffer is
+  // the mirror trick: this forgives a LATE press, that one an EARLY one.
+  const R = 8;
+  let x = -R, y = GY - R, vy = 0, air = false, tLeft = 0, jumped = false, k = 0, autoDone = false, lastT = 0;
+  let flash = 0, fx = 0, fy = 0, ok = false, honoured = 0, refused = 0;
+  const trail = [];
+  function tryJump(t) {
+    const G = H * D.g;
+    const grace = air ? D.coyote - (t - tLeft) : D.coyote;
+    if (!jumped && grace > 0) {
+      vy = -Math.sqrt(2 * G * H * D.jumpH); jumped = true; air = true; ok = true; honoured++;
+    } else { ok = false; refused++; }
+    flash = 0.6; fx = x; fy = y;
+  }
+  return {
+    press() { autoDone = true; tryJump(lastT); },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      const G = H * D.g, edge = W * D.ledge, far = W * D.far;
+      x += W * D.speed * dt;
+      if (!air && x >= edge && x <= far) { air = true; tLeft = t; jumped = false; autoDone = false; }   // the feet leave
+      if (air) {
+        vy += G * dt; y += vy * dt;
+        if (y >= GY - R && vy >= 0 && (x < edge || x > far)) { y = GY - R; vy = 0; air = false; jumped = false; }
+        if (!autoDone && !jumped && t - tLeft >= D.autoAt[k % D.autoAt.length]) { autoDone = true; k++; tryJump(t); }
+      } else y = GY - R;
+      if (x > W + R * 2 || y > H + 20) { x = -R; y = GY - R; vy = 0; air = false; jumped = false; trail.length = 0; }
+      trail.push([x, y]); if (trail.length > 36) trail.shift();
+      // the two platforms, and the window drawn as a distance
+      rect(0, GY, edge, H - GY, "rgba(201,196,228,0.12)");
+      rect(far, GY, W - far, H - GY, "rgba(201,196,228,0.12)");
+      line(0, GY, edge, GY, "rgba(201,196,228,0.7)", 1.5); line(far, GY, W, GY, "rgba(201,196,228,0.7)", 1.5);
+      line(edge, GY, edge, H, "rgba(201,196,228,0.3)"); line(far, GY, far, H, "rgba(201,196,228,0.3)");
+      rect(edge, GY - 3, W * D.speed * D.coyote, 3, "rgba(245,193,105,0.55)");
+      label("speed × coyote", edge + 2, GY + 12, "rgba(245,193,105,0.7)");
+      for (let i = 0; i < trail.length; i++) dot(trail[i][0], trail[i][1], 1.3, "rgba(138,217,245," + (i / trail.length * 0.35) + ")");
+      // the grace bar over the mote
+      const grace = air && !jumped ? clamp(D.coyote - (t - tLeft), 0, D.coyote) : (air ? 0 : D.coyote);
+      const bw = 30;
+      rect(x - bw / 2, y - 20, bw, 4, "rgba(232,229,244,0.15)");
+      rect(x - bw / 2, y - 20, bw * grace / D.coyote, 4, grace > 0 ? GOOD : HOT);
+      if (air && !jumped) label((grace * 1000).toFixed(0) + " ms", x + bw / 2 + 3, y - 16, grace > 0 ? GOOD : HOT);
+      mote(x, y, air ? Math.atan2(vy, W * D.speed) : 0);
+      flash = Math.max(0, flash - dt);
+      if (flash > 0) {
+        const a = flash * 1.6;
+        if (ok) ring(fx, fy, 10 + (0.6 - flash) * 50, "rgba(155,226,138," + a + ")", 2);
+        else { line(fx - 9, fy - 24, fx + 9, fy - 6, "rgba(245,138,138," + a + ")", 2.5); line(fx + 9, fy - 24, fx - 9, fy - 6, "rgba(245,138,138," + a + ")", 2.5); }
+        label(ok ? "honoured" : "refused", fx, fy - 30, ok ? GOOD : HOT, "center");
+      }
+      label("honoured " + honoured + " · refused " + refused, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Coyote", "Cliffhanger", "a whole half-second of grace and floatier gravity — the forgiving cartoon platformer where the air is nearly a floor", { coyote: 0.5, g: 1.4 });
+
+def("J", "Jumpbuffer", "input", "a press up to 150 ms BEFORE landing is stored and fired on touchdown; earlier presses expire (Coyote's mirror) — press early", function (u) {
+  var D = { buffer: 0.15,       // seconds a press is remembered
+            g: 2.4,             // gravity, ×H per second²
+            drop: 0.55,         // the drop height, ×H above the ground
+            jumpH: 0.22,        // the buffered jump's apex, ×H
+            autoLead: [0.08, 0.42],   // the idle loop presses this long before landing: inside, then too early
+            rest: 0.7,          // seconds standing before the next drop
+            label: "fire on land if t − tPress ≤ buffer" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, MOVER, GOOD, HOT, TARGET, DIM } = u;
+  // the JUMP BUFFER: a press that arrives a little before it is legal is
+  // not thrown away, it is stored with its time; on touchdown the code asks
+  // "was there a press in the last buffer seconds?" and fires it. the
+  // amber pip beside the mote is the stored press with its own shrinking
+  // life; when the life runs out before the floor arrives, the press
+  // expires (grey) and the landing is just a landing. the amber band above
+  // the floor is the buffer measured in distance: |vy| × buffer, so it
+  // grows as the fall speeds up. Coyote forgives a late press; this, an early one.
+  const R = 8;
+  let y = GY - R - H * D.drop, vy = 0, phase = "fall", timer = 0, tPress = -9, k = 0, autoDone = false, lastT = 0;
+  let fired = 0, expired = 0, flash = 0, fy = 0, wasOk = false;
+  return {
+    press() { if (phase === "fall") { tPress = lastT; autoDone = true; } },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      const G = H * D.g, x = W / 2, v0 = Math.sqrt(2 * G * H * D.jumpH);
+      timer += dt;
+      if (phase === "fall") {
+        vy += G * dt; y += vy * dt;
+        const h = GY - R - y, disc = vy * vy + 2 * G * Math.max(0, h);
+        const tLand = (Math.sqrt(disc) - vy) / G;      // time until the feet touch
+        if (!autoDone && tLand <= D.autoLead[k % D.autoLead.length]) { autoDone = true; k++; tPress = t; }
+        if (y >= GY - R) {
+          y = GY - R;
+          if (t - tPress <= D.buffer) { vy = -v0; phase = "jump"; fired++; wasOk = true; flash = 0.6; }
+          else { vy = 0; phase = "stand"; timer = 0; wasOk = false; flash = 0.6; }
+          fy = y; tPress = -9;
+        }
+      } else if (phase === "jump") {
+        vy += G * dt; y += vy * dt;
+        if (y >= GY - R) { y = GY - R; vy = 0; phase = "stand"; timer = 0; }
+      } else if (timer > D.rest) { phase = "fall"; y = GY - R - H * D.drop; vy = 0; autoDone = false; }
+      // the buffer as a distance above the floor
+      if (phase === "fall" && vy > 0) {
+        const band = clamp(vy * D.buffer, 0, GY);
+        rect(x - W * 0.2, GY - band, W * 0.4, band, "rgba(245,193,105,0.13)");
+        line(x - W * 0.2, GY - band, x + W * 0.2, GY - band, "rgba(245,193,105,0.6)");
+        label("|vy| × buffer", x + W * 0.2 + 3, GY - band + 3, "rgba(245,193,105,0.7)");
+      }
+      ring(x, GY - R - H * D.drop, 4, DIM);            // where drops begin
+      // the stored press: an amber pip with a shrinking life
+      const life = D.buffer - (t - tPress);
+      if (life > 0 && phase === "fall") {
+        dot(x + 22, y, 5, TARGET);
+        rect(x + 30, y - 2, 26, 4, "rgba(232,229,244,0.15)");
+        rect(x + 30, y - 2, 26 * life / D.buffer, 4, TARGET);
+        label("stored", x + 30, y - 6, "rgba(245,193,105,0.8)");
+      } else if (tPress > 0 && phase === "fall") {     // it waited too long
+        dot(x + 22, y, 4, "rgba(232,229,244,0.3)");
+        label("expired", x + 30, y + 3, DIM);
+        if (t - tPress > D.buffer + 0.01) { expired++; tPress = -9; }
+      }
+      mote(x, y, phase === "jump" ? -0.5 : (phase === "fall" ? 0.5 : 0));
+      flash = Math.max(0, flash - dt);
+      if (flash > 0) {
+        const a = flash * 1.6;
+        if (wasOk) { ring(x, fy, 10 + (0.6 - flash) * 50, "rgba(155,226,138," + a + ")", 2); label("fired on touchdown", x, fy - 26, GOOD, "center"); }
+        else label("landed, nothing stored", x, fy - 26, DIM, "center");
+      }
+      label("fired " + fired + " · expired " + expired, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Jumpbuffer", "Jittery", "a 40 ms buffer under fast gravity — the strict arcade version where early means wrong", { buffer: 0.04, g: 4.5 });
+
+def("V", "Variable", "input", "VARIABLE JUMP HEIGHT: hold = keep rising, release = vy × cut and heavier gravity; three ghosts hold 0.05/0.15/0.35 s — drag: hold to rise", function (u) {
+  var D = { g: 2.4,             // gravity, ×H per second²
+            v0: 1.0,            // launch speed, ×H per second
+            cut: 0.5,           // on release, vy is multiplied by this (if still rising)
+            fallG: 1.0,         // gravity multiplier after release / past the apex
+            holdMax: 0.35,      // the longest a hold counts, seconds
+            holds: [0.05, 0.15, 0.35],   // the three ghosts' hold times
+            every: 2.2,         // seconds between the ghosts' jumps
+            gap: 0.12,          // no press for this long = released
+            label: "release: vy ×= cut · g ×= fallG" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, rand, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // one launch speed, many heights: the jump starts at full v₀ (Jump's
+  // parabola) and while the button is HELD nothing interferes; the moment
+  // it is released, the upward velocity is CUT (vy × cut) and gravity may
+  // grow (× fallG), so the apex arrives early. the three ghosts hold for
+  // 0.05, 0.15 and 0.35 s and draw their apex lines — the same button, three
+  // heights. the blue mote is yours: keep pressing to keep rising.
+  const R = 8, N = D.holds.length;
+  const gy = [], gv = [], apex = [], cut = [];
+  for (let i = 0; i < N; i++) { gy.push(GY - R); gv.push(0); apex.push(GY - R); cut.push(true); }
+  let cycle = -0.6, ly = GY - R, lv = 0, held = false, t0 = 0, lapex = GY - R, lastPress = -9, autoT = 0, autoHold = 0.2, manualJump = false, lastT = 0;
+  return {
+    drag: true,
+    press() {
+      lastPress = lastT; autoT = -3;
+      if (ly >= GY - R - 0.01 && lv === 0) { lv = -H * D.v0; held = true; t0 = lastT; lapex = ly; manualJump = true; }
+    },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      const G = H * D.g;
+      cycle += dt;
+      if (cycle > D.every) { cycle = 0; for (let i = 0; i < N; i++) { gv[i] = -H * D.v0; apex[i] = GY - R; cut[i] = false; } }
+      for (let i = 0; i < N; i++) {                    // the ghosts: hold for holds[i], then cut once
+        if (gy[i] < GY - R || gv[i] < 0) {
+          const holding = cycle < Math.min(D.holds[i], D.holdMax);
+          if (!holding && !cut[i]) { if (gv[i] < 0) gv[i] *= D.cut; cut[i] = true; }   // the cut, exactly once
+          gv[i] += G * (holding ? 1 : D.fallG) * dt; gy[i] += gv[i] * dt;
+          if (gy[i] > GY - R) { gy[i] = GY - R; gv[i] = 0; }
+          if (gy[i] < apex[i]) apex[i] = gy[i];
+        }
+      }
+      // the live mote: yours while you press, the autopilot's otherwise
+      autoT += dt;
+      if (autoT > 2.6 && ly >= GY - R - 0.01 && lv === 0) { autoT = 0; autoHold = rand(0.03, D.holdMax); lv = -H * D.v0; held = true; t0 = t; lapex = ly; manualJump = false; }
+      const holdT = t - t0;
+      const stillHeld = manualJump ? (t - lastPress <= D.gap) : (holdT < autoHold);
+      if (held && (!stillHeld || holdT > D.holdMax)) { if (lv < 0) lv *= D.cut; held = false; }
+      if (ly < GY - R || lv < 0) {
+        lv += G * (held ? 1 : D.fallG) * dt; ly += lv * dt;
+        if (ly > GY - R) { ly = GY - R; lv = 0; }
+        if (ly < lapex) lapex = ly;
+      }
+      // draw: lanes, apex lines, bodies
+      for (let i = 0; i < N; i++) {
+        const x = W * (0.14 + i * 0.2);
+        line(x - 22, apex[i] - R, x + 22, apex[i] - R, "rgba(201,160,245,0.7)");
+        label(D.holds[i] + " s", x, apex[i] - R - 4, "rgba(201,160,245,0.9)", "center");
+        label("h " + Math.round(GY - R - apex[i]), x, GY + 14, DIM, "center");
+        const holding = gy[i] < GY - R && !cut[i];
+        ctx.globalAlpha = 0.55; mote(x, gy[i], holding ? -0.5 : 0.3, MAGIC); ctx.globalAlpha = 1;
+        if (holding) label("held", x, gy[i] + 22, "rgba(201,160,245,0.9)", "center");
+      }
+      const lx = W * (0.14 + N * 0.2);
+      line(lx - 22, lapex - R, lx + 22, lapex - R, "rgba(138,217,245,0.8)");
+      label("h " + Math.round(GY - R - lapex), lx, GY + 14, MOVER, "center");
+      mote(lx, ly, held ? -0.5 : (lv ? 0.3 : 0));
+      if (held) {
+        rect(lx - 10, ly - 22, 20, 4, "rgba(232,229,244,0.15)");
+        rect(lx - 10, ly - 22, 20 * clamp(holdT / D.holdMax, 0, 1), 4, GOOD);
+        label("held " + holdT.toFixed(2), lx, ly - 26, GOOD, "center");
+      }
+      label("you", lx, 14, MOVER, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Variable", "Vault", "a hard cut to 0.3 and gravity ×2.5 the moment you let go — the snappy Celeste-style jump that stops on a dime", { cut: 0.3, fallG: 2.5 });
+
+def("D", "Deadzone", "input", "a noisy stick three ways: raw, a hard dead zone (a jump at the edge), radial rescale (len − dz)/(1 − dz) with optional snap — drag: be the stick", function (u) {
+  var D = { dz: 0.18,           // the dead zone radius, of the stick's 0..1
+            jitter: 0.07,       // white noise added to the stick every frame (Jitter)
+            wander: 0.5,        // how fast the idle stick roams (noise rate)
+            snap: 0,            // 0 = analogue, 4 or 8 = snap the rescaled stick to that many directions
+            speed: 0.4,         // the motes' top speed, ×W per second
+            hold: 0.4,          // seconds after a press before the idle stick takes over
+            label: "out = dir · (len − dz) / (1 − dz)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, arrow, mote, label, clamp, len, rand, noise, MOVER, GOOD, HOT, TARGET, MAGIC, DIM } = u;
+  // a real stick never rests at zero — it jitters (Jitter's white noise on
+  // top of a slow roam). RAW drives the mote with the wobble. a HARD dead
+  // zone kills anything shorter than dz, but at the edge the output jumps
+  // straight from 0 to dz: a visible step in the bar. RADIAL RESCALING maps
+  // dz..1 back onto 0..1 — (len − dz)/(1 − dz) along the same direction — so
+  // the first felt push is the smallest, and an optional SNAP to 4 or 8
+  // directions turns the stick into a d-pad. each mote is driven by its own
+  // treatment: watch which one can stand still.
+  const m = [{ x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }];
+  const names = ["raw", "hard dz", "radial"], cols = [HOT, TARGET, GOOD];
+  let sx = 0, sy = 0, lastPress = -9, px = 0, py = 0, lastT = 0;
+  const out = [[0, 0], [0, 0], [0, 0]];
+  for (let i = 0; i < 3; i++) { m[i].x = W * (0.5 / 3 + i / 3); m[i].y = H * 0.72; }
+  return {
+    drag: true,
+    press(x, y) { px = x; py = y; lastPress = lastT; },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      const r = Math.min(W, H) * 0.11, cy = H * 0.3;
+      if (t - lastPress <= D.hold) { sx = clamp((px - W / 2) / (W * 0.3), -1, 1); sy = clamp((py - cy) / (W * 0.3), -1, 1); }
+      else { sx = noise(t * D.wander) * 0.9; sy = noise(t * D.wander + 50) * 0.9; }
+      sx += rand(-1, 1) * D.jitter; sy += rand(-1, 1) * D.jitter;   // the wobble every stick has
+      let L = len(sx, sy); if (L > 1) { sx /= L; sy /= L; L = 1; }
+      out[0][0] = sx; out[0][1] = sy;
+      if (L < D.dz) { out[1][0] = 0; out[1][1] = 0; } else { out[1][0] = sx; out[1][1] = sy; }
+      if (L < D.dz || L < 1e-6) { out[2][0] = 0; out[2][1] = 0; }
+      else {
+        const k = (L - D.dz) / Math.max(1e-6, 1 - D.dz);
+        let ux = sx / L, uy = sy / L;
+        if (D.snap > 0) { const a = Math.round(Math.atan2(uy, ux) / TAU * D.snap) / D.snap * TAU; ux = Math.cos(a); uy = Math.sin(a); }
+        out[2][0] = ux * k; out[2][1] = uy * k;
+      }
+      for (let i = 0; i < 3; i++) {
+        const cx = W * (0.5 / 3 + i / 3);
+        ring(cx, cy, r, "rgba(201,196,228,0.35)");
+        if (i > 0) ring(cx, cy, r * D.dz, "rgba(245,138,138,0.5)");
+        if (i === 2 && D.snap > 0) for (let s = 0; s < D.snap; s++) line(cx, cy, cx + Math.cos(s / D.snap * TAU) * r, cy + Math.sin(s / D.snap * TAU) * r, "rgba(155,226,138,0.2)");
+        dot(cx + sx * r, cy + sy * r, 2.5, "rgba(232,229,244,0.45)");   // the raw stick
+        arrow(cx, cy, cx + out[i][0] * r, cy + out[i][1] * r, cols[i]);
+        dot(cx + out[i][0] * r, cy + out[i][1] * r, 3, cols[i]);
+        label(names[i], cx, cy - r - 6, cols[i], "center");
+        const ol = len(out[i][0], out[i][1]);            // the magnitude bar: watch the step
+        rect(cx - r, cy + r + 6, r * 2, 3, "rgba(232,229,244,0.12)");
+        rect(cx - r, cy + r + 6, r * 2 * ol, 3, cols[i]);
+        if (i > 0) line(cx - r + r * 2 * D.dz, cy + r + 4, cx - r + r * 2 * D.dz, cy + r + 11, HOT);
+        const b = m[i];                                  // the mote driven by this treatment
+        b.x += out[i][0] * W * D.speed * dt; b.y += out[i][1] * W * D.speed * dt;
+        const x0 = W * i / 3 + 12, x1 = W * (i + 1) / 3 - 12;
+        b.x = clamp(b.x, x0, x1); b.y = clamp(b.y, H * 0.56, H * 0.88);
+        line(x0, H * 0.56, x0, H * 0.88, DIM); line(x1, H * 0.56, x1, H * 0.88, DIM);
+        mote(b.x, b.y, ol > 0.01 ? Math.atan2(out[i][1], out[i][0]) : 0, i === 2 ? MOVER : "rgba(138,217,245,0.6)", 7);
+      }
+      label("len = " + L.toFixed(2), W / 2, 12, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Deadzone", "Dial", "dz 0.35 and a four-way snap — an analogue stick pretending to be a d-pad", { dz: 0.35, snap: 4 });
+
+def("N", "Normalize", "input", "two motes lap a course on 8-way input: one adds x and y (√2 faster on diagonals), one NORMALISES; the lap timer shows the cheat — press to set the direction", function (u) {
+  var D = { speed: 0.3,         // top speed, ×W per second
+            fourWay: false,     // true = snap the input to 4 directions (no diagonals at all)
+            override: 1.4,      // seconds a press's direction is obeyed before the lap resumes
+            reach: 6,           // px from a waypoint that counts as arriving
+            label: "v = (x, y) / √(x² + y²) · speed" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, poly, arrow, mote, label, len, clamp, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // an 8-way input is two axes of −1, 0 or +1. add them and the diagonal
+  // (1, 1) has length √2: the character runs 41% faster toward the corners —
+  // the oldest top-down bug there is. NORMALISING divides the vector by its
+  // own length, so every direction moves at the same speed. the course
+  // alternates straight legs and diagonal legs; the purple mote adds, the
+  // blue one normalises, and the lap clocks tell you who cheated. (Grid's
+  // lanes never had this problem: four directions, no diagonals.)
+  const s = Math.min(W * 0.14, H * 0.17), cx = W / 2, cy = H * 0.5;
+  const P = [[-2, -1], [-1, -2], [1, -2], [2, -1], [2, 1], [1, 2], [-1, 2], [-2, 1]].map(p => [cx + p[0] * s, cy + p[1] * s]);
+  const A = { x: P[0][0], y: P[0][1], w: 1, lap: 0, last: 0, vx: 0, vy: 0, laps: 0 };   // adds
+  const B = { x: P[0][0], y: P[0][1], w: 1, lap: 0, last: 0, vx: 0, vy: 0, laps: 0 };   // normalises
+  let ox = 0, oy = 0, overT = 0, lastT = 0;
+  function snapDir(dx, dy, out) {                      // the stick → (−1|0|1, −1|0|1)
+    const n = D.fourWay ? 4 : 8, a = Math.round(Math.atan2(dy, dx) / TAU * n) / n * TAU;
+    out[0] = Math.round(Math.cos(a)); out[1] = Math.round(Math.sin(a));
+  }
+  const dir = [0, 0];
+  function step(m, norm, dt, t) {
+    let ix, iy;
+    if (overT > 0) { ix = ox; iy = oy; }
+    else { snapDir(P[m.w][0] - m.x, P[m.w][1] - m.y, dir); ix = dir[0]; iy = dir[1]; }
+    const L = len(ix, iy) || 1, k = norm ? 1 / L : 1;    // ← the whole card: divide by the length, or don't
+    m.vx = ix * k * W * D.speed; m.vy = iy * k * W * D.speed;
+    const d = len(P[m.w][0] - m.x, P[m.w][1] - m.y), stepLen = len(m.vx, m.vy) * dt;
+    if (overT <= 0 && d <= Math.max(D.reach, stepLen)) {
+      m.x = P[m.w][0]; m.y = P[m.w][1]; m.w = (m.w + 1) % P.length;
+      if (m.w === 1) { if (m.laps > 0) m.last = t - m.lap; m.lap = t; m.laps++; }
+    } else { m.x = clamp(m.x + m.vx * dt, 8, W - 8); m.y = clamp(m.y + m.vy * dt, 8, H - 8); }
+  }
+  return {
+    press(px, py) { snapDir(px - cx, py - cy, dir); ox = dir[0]; oy = dir[1]; overT = D.override; },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      overT -= dt;
+      step(A, false, dt, t); step(B, true, dt, t);
+      poly(P, "rgba(201,196,228,0.3)", true);
+      for (let i = 0; i < P.length; i++) dot(P[i][0], P[i][1], 2, i === 0 ? TARGET : DIM);
+      for (let i = 0; i < 4; i++) {                    // mark which legs are diagonal
+        const a = P[i * 2 + 1], b = P[(i * 2 + 2) % 8];
+        label("√2?", (a[0] + b[0]) / 2, (a[1] + b[1]) / 2 - 4, "rgba(201,160,245,0.45)", "center");
+      }
+      const isDiag = A.vx !== 0 && A.vy !== 0;
+      arrow(A.x, A.y, A.x + A.vx * 0.3, A.y + A.vy * 0.3, MAGIC);
+      arrow(B.x, B.y, B.x + B.vx * 0.3, B.y + B.vy * 0.3, MOVER);
+      mote(A.x, A.y, Math.atan2(A.vy, A.vx), MAGIC, 7);
+      mote(B.x, B.y, Math.atan2(B.vy, B.vx), MOVER, 7);
+      if (isDiag) label("|v| = " + (len(A.vx, A.vy) / (W * D.speed)).toFixed(2) + " ×", A.x, A.y - 12, MAGIC, "center");
+      label("adds x + y · lap " + (A.last ? A.last.toFixed(2) + " s" : "…"), 6, 14, MAGIC);
+      label("normalised · lap " + (B.last ? B.last.toFixed(2) + " s" : "…"), 6, 26, MOVER);
+      if (overT > 0) { arrow(cx, cy, cx + ox * 16, cy + oy * 16, TARGET); label("your direction", cx, cy + 20, TARGET, "center"); }
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Normalize", "Nimble", "four directions only and half again the speed — the classic top-down where no diagonal can cheat", { fourWay: true, speed: 0.45 });
+
+def("A", "Accelerate", "input", "speed approaches the wanted speed by accel or brake on the ground and by a smaller airAccel in the air; the strip graphs it (Inertia) — press left/right, above to jump", function (u) {
+  var D = { max: 0.45,          // top speed, ×W per second
+            accel: 1.6,         // ground acceleration, ×W per second²
+            brake: 4.0,         // ground deceleration (slowing or reversing), ×W per second²
+            airAccel: 0.5,      // acceleration while airborne, ×W per second²
+            g: 2.2,             // gravity, ×H per second²
+            jumpH: 0.26,        // apex, ×H
+            flipEvery: 2.4,     // seconds before the autopilot reverses its wish
+            label: "v → want · max, by accel | brake | airAccel" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, mote, label, clamp, rand, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // a velocity approaching a WANTED velocity at a fixed rate (move_toward),
+  // but the rate has three names. ACCEL when speeding up in the direction
+  // of travel, BRAKE when slowing or turning round — brake is usually the
+  // bigger, so stopping feels crisp and starting feels weighty (Inertia's
+  // skid, made into a dial) — and AIRACCEL, small, so a jump commits. the
+  // strip is v against time: its slope IS the rate in use, and the purple
+  // stretches are the air, where the slope goes nearly flat.
+  const R = 8, N = 140;
+  const hist = new Float32Array(N), airH = new Uint8Array(N);
+  let x = W * 0.3, y = GY - R, v = 0, vy = 0, want = 1, air = false, flipT = 0, jumpT = 1.2, hi = 0, rate = "accel", lastT = 0;
+  function jump() { if (!air) { vy = -Math.sqrt(2 * H * D.g * H * D.jumpH); air = true; } }
+  return {
+    press(px, py) { flipT = -2; want = px < x ? -1 : 1; if (py < y - 16) jump(); },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      flipT += dt; jumpT -= dt;
+      if (flipT > D.flipEvery) { flipT = 0; want = -want; }
+      if (jumpT < 0) { jumpT = rand(1.4, 3.2); jump(); }
+      const target = want * D.max * W;
+      let r;
+      if (air) { r = D.airAccel; rate = "airAccel"; }
+      else if (v * target < 0 || Math.abs(v) > Math.abs(target)) { r = D.brake; rate = "brake"; }
+      else { r = D.accel; rate = "accel"; }
+      const stepv = r * W * dt;                        // move_toward(v, target, rate · dt)
+      if (Math.abs(target - v) <= stepv) v = target; else v += Math.sign(target - v) * stepv;
+      x += v * dt;
+      if (x < -R) x += W + R * 2; if (x > W + R) x -= W + R * 2;
+      if (air) { vy += H * D.g * dt; y += vy * dt; if (y >= GY - R) { y = GY - R; vy = 0; air = false; } }
+      hist[hi] = v / (D.max * W); airH[hi] = air ? 1 : 0; hi = (hi + 1) % N;
+      // the strip: v against time
+      const sy0 = H * 0.09, sh = H * 0.24, mid = sy0 + sh / 2;
+      rect(0, sy0, W, sh, "rgba(0,0,0,0.18)");
+      line(0, mid, W, mid, DIM); line(0, sy0 + 2, W, sy0 + 2, "rgba(245,193,105,0.35)"); line(0, sy0 + sh - 2, W, sy0 + sh - 2, "rgba(245,193,105,0.35)");
+      label("+max", 3, sy0 + 10, "rgba(245,193,105,0.6)"); label("−max", 3, sy0 + sh - 3, "rgba(245,193,105,0.6)");
+      for (let i = 0; i < N; i++) {
+        const j = (hi + i) % N, gx = i / (N - 1) * W, gy = mid - hist[j] * (sh / 2 - 2);
+        dot(gx, gy, 1.4, airH[j] ? MAGIC : GOOD);
+      }
+      label("ground", W - 4, sy0 + 10, GOOD, "right"); label("air", W - 4, sy0 + 20, MAGIC, "right");
+      // the lanes, the wish and the velocity
+      line(0, GY - H * 0.34, W, GY - H * 0.34, "rgba(201,160,245,0.15)");
+      label("air lane", 4, GY - H * 0.34 - 3, "rgba(201,160,245,0.5)");
+      arrow(x, y - 22, x + want * 22, y - 22, TARGET);
+      arrow(x, y, x + v * 0.35, y, GOOD);
+      mote(x, y, v < 0 ? Math.PI : 0);
+      const rv = rate === "accel" ? D.accel : (rate === "brake" ? D.brake : D.airAccel);
+      label(rate + " " + rv, x, y - 30, rate === "brake" ? HOT : (rate === "accel" ? GOOD : MAGIC), "center");
+      label("v = " + (v / (D.max * W)).toFixed(2) + " max", W / 2, GY + 16, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Accelerate", "Asphalt", "brake far above accel and almost no air control — the heavy runner whose jumps are promises", { accel: 0.8, brake: 6, airAccel: 0.05 });
+
+def("M", "Multitap", "input", "one button, three verbs by TIMING WINDOWS: tap < tapMax = hop, hold > holdMin = charge, two taps within dblGap = dash — tap, or drag to hold", function (u) {
+  var D = { tapMax: 0.18,       // a press shorter than this is a tap
+            holdMin: 0.3,       // a press longer than this is a hold
+            dblGap: 0.25,       // two taps this close = a double-tap
+            hop: 0.1,           // the tap's hop apex, ×H
+            chargeH: 0.3,       // extra apex a full charge adds, ×H
+            chargeT: 0.6,       // seconds of holding for a full charge
+            dash: 1.5,          // the dash burst, ×W per second (Dash)
+            k: 6,               // the dash decay per second
+            g: 2.4,             // gravity, ×H per second²
+            span: 3.0,          // seconds of timeline shown
+            label: "tap < tapMax · hold > holdMin · gap < dblGap" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // the button only knows DOWN and UP; the meaning is in the durations. a
+  // press that ends before tapMax is a TAP; one still down after holdMin is
+  // a HOLD (the charge grows while it lasts); a tap that follows another tap
+  // inside dblGap is a DOUBLE-TAP, spent as Dash's burst. the timeline at
+  // the bottom draws every press as a bar with its windows as bands: green
+  // = tap window, amber = hold begins, purple = the double-tap gap still
+  // open. the autopilot demonstrates all three; you can too.
+  const R = 8;
+  const script = [[1, 0.08], [0, 1.0], [1, 0.75], [0, 1.2], [1, 0.08], [0, 0.1], [1, 0.08], [0, 1.6]];   // [down?, seconds]
+  const events = [];                                   // { d: downAt, u: upAt | -1, kind }
+  let x = W * 0.35, y = GY - R, vx = 0, vy = 0, face = 1, wasDown = false, downAt = 0, lastTapUp = -9, lastPress = -9, lastT = 0;
+  let si = 0, sT = 0, verb = "", verbT = 0, charge = 0;
+  return {
+    drag: true,
+    press() { lastPress = lastT; },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      const manual = t - lastPress <= 0.06;
+      if (!manual && t - lastPress > 2) { sT += dt; if (sT > script[si][1]) { sT = 0; si = (si + 1) % script.length; } }
+      const down = manual || (t - lastPress > 2 && script[si][0] === 1);
+      if (down && !wasDown) { downAt = t; events.push({ d: t, u: -1, kind: "" }); if (events.length > 10) events.shift(); }
+      const dur = down ? t - downAt : 0;
+      if (down && dur >= D.holdMin) charge = clamp((dur - D.holdMin) / D.chargeT, 0, 1);
+      if (!down && wasDown) {                          // the UP edge: classify by duration
+        const held = t - downAt, ev = events[events.length - 1];
+        if (ev) ev.u = t;
+        if (held >= D.holdMin) {
+          vy = -Math.sqrt(2 * H * D.g * H * (D.hop + charge * D.chargeH)); verb = "hold → charge " + Math.round(charge * 100) + "%"; if (ev) ev.kind = "hold";
+        } else if (held < D.tapMax) {
+          if (t - lastTapUp <= D.dblGap) { vx = face * D.dash * W; verb = "double-tap → dash"; lastTapUp = -9; if (ev) ev.kind = "dbl"; }
+          else { vy = Math.min(vy, -Math.sqrt(2 * H * D.g * H * D.hop)); verb = "tap → hop"; lastTapUp = t; if (ev) ev.kind = "tap"; }
+        } else { verb = "neither (between the windows)"; if (ev) ev.kind = "none"; }
+        verbT = 0.9; charge = 0;
+      }
+      wasDown = down;
+      // the body: Dash's decay sideways, a parabola up
+      vx *= Math.exp(-D.k * dt);
+      x += vx * dt; if (x < -R) x += W + R * 2; if (x > W + R) x -= W + R * 2;
+      if (Math.abs(vx) < 2 && Math.abs(vx) > 0) { vx = 0; face = -face; }
+      vy += H * D.g * dt; y += vy * dt; if (y > GY - R) { y = GY - R; vy = 0; }
+      if (down && dur >= D.holdMin) { ring(x, y, 12 + charge * 14, TARGET, 2); label("charging", x, y - 30, TARGET, "center"); }
+      else if (down) { ring(x, y, 12, "rgba(232,229,244,0.5)", 1.5); label(dur.toFixed(2) + " s", x, y - 26, DIM, "center"); }
+      mote(x, y, face > 0 ? 0 : Math.PI);
+      verbT -= dt;
+      if (verbT > 0) label(verb, W / 2, H * 0.12, verb.indexOf("dash") >= 0 ? MAGIC : (verb.indexOf("charge") >= 0 ? TARGET : (verb.indexOf("neither") >= 0 ? HOT : GOOD)), "center");
+      // the timeline: last span seconds, now at the right edge
+      const ty = GY + 8, th = 14, X = tt => W - (t - tt) / D.span * W;
+      rect(0, ty, W, th, "rgba(0,0,0,0.2)");
+      for (const ev of events) {
+        const d = ev.d, up = ev.u < 0 ? t : ev.u;
+        if (X(up) < 0) continue;
+        rect(Math.max(0, X(d)), ty + 1, Math.max(0, X(d + D.tapMax) - Math.max(0, X(d))), th - 2, "rgba(155,226,138,0.18)");
+        if (up - d >= D.holdMin) rect(Math.max(0, X(d + D.holdMin)), ty + 1, X(up) - Math.max(0, X(d + D.holdMin)), th - 2, "rgba(245,193,105,0.22)");
+        if (ev.kind === "tap") rect(Math.max(0, X(up)), ty + 1, Math.max(0, X(up + D.dblGap) - Math.max(0, X(up))), th - 2, "rgba(201,160,245,0.22)");
+        const col = ev.kind === "hold" ? TARGET : (ev.kind === "dbl" ? MAGIC : (ev.kind === "none" ? HOT : (ev.kind === "tap" ? GOOD : "rgba(232,229,244,0.8)")));
+        rect(Math.max(0, X(d)), ty + 4, Math.max(1.5, X(up) - Math.max(0, X(d))), th - 8, col);
+      }
+      line(W - 1, ty - 2, W - 1, ty + th + 2, "rgba(232,229,244,0.5)");
+      label("tap", 4, ty + th + 11, GOOD); label("hold", 30, ty + th + 11, TARGET); label("double", 60, ty + th + 11, MAGIC);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Multitap", "Marathon", "a hold begins at half a second and the double-tap gap stretches to 0.4 s — the forgiving version for tired thumbs", { holdMin: 0.5, dblGap: 0.4 });
+
+def("C", "Charge", "input", "hold to fill; a sweet spot pays a bonus, past max it BACKFIRES; release launches ∝ power (Jump's arc) — drag: hold to charge, let go to fire", function (u) {
+  var D = { fill: 1.2,          // seconds of holding to full power
+            max: 1.7,           // seconds of holding before it backfires
+            sweet: [0.78, 0.95],   // the sweet spot, as a fraction of full power
+            bonus: 1.3,         // range multiplier inside the sweet spot
+            range: 0.7,         // the launch distance at full power, ×W
+            lift: 0.9,          // the launch's upward speed, ×H per second
+            g: 2.4,             // gravity, ×H per second²
+            gap: 0.15,          // no press for this long = released
+            label: "power = min(held / fill, 1) · d ∝ power" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, rand, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // a CHARGE is a held button turned into a number: power = held / fill,
+  // capped at 1. the bar beside the mote is that number; the green band is
+  // a SWEET SPOT that pays a bonus for letting go at the right moment; and
+  // past max the charge OVERCHARGES — it backfires and the mote stumbles
+  // instead of flying. the launch is Jump's parabola with the horizontal
+  // speed chosen so the distance is exactly power × range. the autopilot
+  // charges to a random level, sometimes too far.
+  const R = 8, x0 = W * 0.14;
+  let x = x0, y = GY - R, vx = 0, vy = 0, phase = "idle", c = 0, manual = false, autoTarget = 0.8, idleT = 0.6, lastPress = -9, lastT = 0;
+  let landX = -1, dist = 0, wraps = 0, flash = 0, msg = "", stumble = 0;
+  const trail = [];
+  function release() {
+    const G = H * D.g;
+    if (c >= D.max) { phase = "stumble"; stumble = 0.8; msg = "overcharge — backfire"; flash = 0.8; c = 0; return; }
+    const power = Math.min(c / D.fill, 1), sweet = power >= D.sweet[0] && power <= D.sweet[1];
+    const T = 2 * H * D.lift / G;                      // Jump's flight time, up and down
+    dist = power * D.range * W * (sweet ? D.bonus : 1);
+    vx = dist / T; vy = -H * D.lift; phase = "fly"; msg = sweet ? "sweet spot ×" + D.bonus : "power " + Math.round(power * 100) + "%";
+    flash = 0.8; wraps = 0; trail.length = 0; c = 0;
+  }
+  return {
+    drag: true,
+    press() {
+      lastPress = lastT;
+      if (phase === "idle" || phase === "landed") { phase = "charge"; c = 0; manual = true; }
+    },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      const G = H * D.g;
+      if (phase === "idle") { idleT -= dt; if (idleT < 0) { phase = "charge"; c = 0; manual = false; autoTarget = rand(0.25, D.max * 1.12); } }
+      else if (phase === "charge") {
+        c += dt;                                       // each held frame adds dt
+        if (manual ? (t - lastPress > D.gap) : (c >= autoTarget)) release();
+        if (c >= D.max + 0.02 && phase === "charge") release();
+      } else if (phase === "fly") {
+        vy += G * dt; x += vx * dt; y += vy * dt;
+        if (x > W + R) { x -= W; wraps++; }
+        trail.push([x, y]); if (trail.length > 40) trail.shift();
+        if (y >= GY - R) { y = GY - R; vy = 0; vx = 0; phase = "landed"; landX = x; idleT = 1.0; }
+      } else if (phase === "landed") { idleT -= dt; if (idleT < 0) { phase = "idle"; x = x0; idleT = 0.5; } }
+      else if (phase === "stumble") { stumble -= dt; x = x0 - Math.sin((0.8 - stumble) * 8) * 6; if (stumble < 0) { phase = "idle"; x = x0; idleT = 0.6; } }
+      // the fill bar: max at the top, fill marked, sweet band, overcharge zone
+      const bx = x0 - 26, bh = H * 0.42, by = GY - R - bh - 6, u1 = v => by + bh - clamp(v / D.max, 0, 1) * bh;
+      rect(bx, by, 8, bh, "rgba(232,229,244,0.1)");
+      rect(bx, by, 8, u1(D.fill) - by, "rgba(245,138,138,0.2)");   // the overcharge zone: full → max
+      rect(bx, u1(D.sweet[1] * D.fill), 8, u1(D.sweet[0] * D.fill) - u1(D.sweet[1] * D.fill), "rgba(155,226,138,0.45)");
+      const level = phase === "charge" ? c : 0;
+      rect(bx, u1(level), 8, by + bh - u1(level), level > D.fill ? HOT : (level / D.fill >= D.sweet[0] && level / D.fill <= D.sweet[1] ? GOOD : TARGET));
+      line(bx - 3, u1(D.fill), bx + 11, u1(D.fill), TARGET); label("full", bx + 13, u1(D.fill) + 3, TARGET);
+      label("max", bx + 13, by + 4, HOT); label("sweet", bx + 13, u1(D.sweet[1] * D.fill) + 8, GOOD);
+      if (phase === "charge") label((c).toFixed(2) + " s", bx + 4, by - 4, DIM, "center");
+      for (let i = 0; i < trail.length; i++) dot(trail[i][0], trail[i][1], 1.3, "rgba(138,217,245," + (i / trail.length * 0.4) + ")");
+      if (landX >= 0 && phase === "landed") { ring(landX, GY - 3, 5, TARGET, 1.5); label("d = " + Math.round(dist) + " px" + (wraps ? " (+" + wraps + " screen)" : ""), landX, GY + 16, TARGET, "center"); }
+      dot(x0, GY - 2, 2, DIM);
+      const ang = phase === "fly" ? Math.atan2(vy, vx) : (phase === "stumble" ? Math.sin(stumble * 20) * 0.8 : 0);
+      const s = phase === "charge" ? 1 + Math.min(c / D.max, 1) * 0.25 : 1;
+      ctx.save(); ctx.translate(x, y); ctx.scale(1 / s, s); mote(0, 0, ang, phase === "stumble" ? HOT : MOVER); ctx.restore();
+      flash = Math.max(0, flash - dt);
+      if (flash > 0) label(msg, W / 2, H * 0.12, msg.indexOf("backfire") >= 0 ? HOT : (msg.indexOf("sweet") >= 0 ? GOOD : TARGET), "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Charge", "Cannonball", "a slow fill, a range past the edge of the screen and a brutal overcharge — the siege gun", { fill: 2.5, range: 1.2, max: 2.9 });
+
+def("F", "Fling", "input", "drag-and-throw: the release velocity is read from the LAST N POINTER POSITIONS and their times (Queue's history), then gravity — drag: fling it", function (u) {
+  var D = { n: 6,               // pointer samples averaged at release
+            g: 2.0,             // gravity, ×H per second²
+            e: 0.6,             // restitution on the floor and walls
+            drag: 0.1,          // air drag per second
+            maxV: 3.0,          // speed cap, ×W per second
+            release: 0.1,       // no press for this long = let go
+            autoEvery: 2.6,     // seconds idle before the ghost finger flings it
+            label: "v = (pₙ − p₁) / (tₙ − t₁), the last n" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, arrow, mote, label, clamp, len, rand, MOVER, MAGIC, GOOD, HOT, TARGET, DIM } = u;
+  // while dragged the mote is simply glued to the pointer, but every sample
+  // (x, y, t) goes into a small HISTORY BUFFER (Queue's idea, kept for the
+  // finger). at release the velocity is the displacement across the last n
+  // samples divided by their time span — an average, so one jittery frame
+  // cannot spoil a throw. then it is Bounce: gravity, restitution, a little
+  // air drag. the grey dots are the buffer; the red arrow is the velocity it
+  // read. the purple ring is the ghost finger practising when you are idle.
+  const R = 8, CAP = 16;
+  const hx = new Float32Array(CAP), hy = new Float32Array(CAP), ht = new Float32Array(CAP);
+  let count = 0, head = 0;
+  let x = W * 0.5, y = GY - R, vx = 0, vy = 0, dragging = false, lastPress = -9, idle = 0, lastT = 0;
+  let auto = -1, ax0 = 0, ay0 = 0, adx = 0, ady = 0, arrT = 0, rx = 0, ry = 0, rvx = 0, rvy = 0;
+  function sample(px, py, t) {
+    if (!dragging) { dragging = true; count = 0; head = 0; vx = 0; vy = 0; }
+    hx[head] = px; hy[head] = py; ht[head] = t; head = (head + 1) % CAP; if (count < CAP) count++;
+    x = clamp(px, R, W - R); y = clamp(py, R, GY - R);
+  }
+  function letGo() {
+    dragging = false;
+    const n = Math.min(D.n, count);
+    if (n >= 2) {
+      const iN = (head - 1 + CAP) % CAP, i1 = (head - n + CAP) % CAP, span = ht[iN] - ht[i1];
+      if (span > 1e-3) { vx = (hx[iN] - hx[i1]) / span; vy = (hy[iN] - hy[i1]) / span; }
+    }
+    const sp = len(vx, vy), cap = W * D.maxV;
+    if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
+    rx = x; ry = y; rvx = vx; rvy = vy; arrT = 0.7;
+  }
+  return {
+    drag: true,
+    press(px, py) { if (auto >= 0) auto = -1; sample(px, py, lastT); lastPress = lastT; idle = 0; },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      idle += dt;
+      if (auto >= 0) {                                 // the ghost finger: a short curved swipe
+        auto += dt;
+        const k = auto / 0.4;
+        sample(ax0 + adx * k * k + Math.sin(k * 3) * 6, ay0 + ady * k * k, t);
+        if (auto > 0.4) { auto = -1; letGo(); }
+      } else if (dragging && t - lastPress > D.release) letGo();
+      else if (!dragging && idle > D.autoEvery) { idle = 0; auto = 0; ax0 = x; ay0 = y; adx = rand(-1, 1) * W * 0.3; ady = -rand(0.15, 0.4) * H; }
+      if (!dragging) {                                 // Bounce, with drag
+        const G = H * D.g, dr = Math.exp(-D.drag * dt);
+        vy += G * dt; vx *= dr; vy *= dr;
+        x += vx * dt; y += vy * dt;
+        if (y > GY - R) { y = GY - R; vy = -vy * D.e; vx *= 0.98; }
+        if (x < R) { x = R; vx = -vx * D.e; } if (x > W - R) { x = W - R; vx = -vx * D.e; }
+        if (y < R) { y = R; vy = -vy * D.e; }
+      }
+      const n = Math.min(D.n, count);
+      for (let i = 0; i < count; i++) {                // the buffer: newest brightest, the last n ringed
+        const j = (head - 1 - i + CAP) % CAP, a = (dragging || arrT > 0) ? 0.5 * (1 - i / CAP) : 0;
+        if (a > 0) { dot(hx[j], hy[j], 2, "rgba(232,229,244," + a + ")"); if (i < n) ring(hx[j], hy[j], 4, "rgba(245,138,138," + (a + 0.2) + ")"); }
+      }
+      arrT -= dt;
+      if (arrT > 0) { arrow(rx, ry, rx + rvx * 0.25, ry + rvy * 0.25, HOT); label("|v| = " + Math.round(len(rvx, rvy)) + " px/s", rx, ry - 14, HOT, "center"); }
+      if (auto >= 0) ring(x, y, 12, MAGIC, 1.5);
+      mote(x, y, dragging ? 0 : Math.atan2(vy, vx));
+      label(dragging ? "dragging: " + count + " samples" : "free", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Fling", "Feather", "a quarter of the gravity and heavy air drag — a paper plane that sails and settles", { g: 0.5, drag: 1.4 });
+
+def("S", "Swipe", "input", "a pointer delta bucketed into 8 DIRECTIONS, gated by minDist and maxTime; the rose lights the wedge and the mote hops a tile — drag: swipe", function (u) {
+  var D = { dirs: 8,            // 4 or 8 compass wedges
+            minDist: 0.12,      // the stroke must travel at least this, ×W
+            maxTime: 0.5,       // ...and finish within this many seconds
+            slide: false,       // true = the mote slides until it hits the wall (Threes)
+            tile: 0.11,         // tile size, ×W
+            release: 0.12,      // no press for this long = the finger lifted
+            autoEvery: 1.7,     // seconds idle before the ghost finger swipes
+            label: "dir = round(atan2(Δy, Δx) / (2π/dirs))" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, poly, arrow, mote, label, clamp, len, rand, ease, MOVER, MAGIC, GOOD, HOT, TARGET, BONE, DIM } = u;
+  // a SWIPE is a delta with two gates. from the first touch to the lift the
+  // stroke's displacement Δ must be long enough (minDist — the grey ring
+  // around the start) and quick enough (maxTime); only then is its angle
+  // BUCKETED into one of dirs wedges — atan2 divided by the wedge width,
+  // rounded. the rose lights the wedge it heard; the mote hops one tile
+  // that way (or slides to the wall). the purple ring is a ghost finger
+  // drawing swipes when you are idle — some too short, some too slow.
+  const r = Math.min(W, H) * 0.16, rx = W * 0.2, ry = H * 0.44, ts = W * D.tile;
+  const cols = Math.max(2, Math.floor(W * 0.56 / ts)), rows = Math.max(2, Math.floor(H * 0.62 / ts));
+  const gx0 = W * 0.4, gy0 = H * 0.1;
+  let sx0 = 0, sy0 = 0, st0 = 0, cx = 0, cy = 0, stroke = false, lastPress = -9, lastT = 0, idle = 0;
+  let lit = -1, litT = 0, bad = "", badT = 0, ci = 1, ri = 1, fi = ci, fr = ri, ti = ci, tr = ri, hopT = 1, hopLen = 0.18;
+  let auto = -1, aDir = 0, aLen = 0, aDur = 0, ax = 0, ay = 0;
+  function begin(px, py, t) { stroke = true; sx0 = cx = px; sy0 = cy = py; st0 = t; }
+  function move(px, py) { cx = px; cy = py; }
+  function end(tEnd) {
+    stroke = false;
+    const dx = cx - sx0, dy = cy - sy0, d = len(dx, dy), el = tEnd - st0;
+    if (d < W * D.minDist) { bad = "too short: " + Math.round(d) + " < " + Math.round(W * D.minDist); badT = 0.7; return; }
+    if (el > D.maxTime) { bad = "too slow: " + el.toFixed(2) + " s > " + D.maxTime; badT = 0.7; return; }
+    const w = TAU / D.dirs, k = ((Math.round(Math.atan2(dy, dx) / w) % D.dirs) + D.dirs) % D.dirs;
+    lit = k; litT = 0.7;
+    const a = k * w, ux = Math.round(Math.cos(a)), uy = Math.round(Math.sin(a));
+    if (hopT < 1) { ci = ti; ri = tr; }
+    fi = ci; fr = ri;
+    if (D.slide) { while (ci + ux >= 0 && ci + ux < cols && ri + uy >= 0 && ri + uy < rows) { ci += ux; ri += uy; } }
+    else { ci = clamp(ci + ux, 0, cols - 1); ri = clamp(ri + uy, 0, rows - 1); }
+    ti = ci; tr = ri; hopT = 0; hopLen = 0.12 + 0.06 * Math.max(Math.abs(ti - fi), Math.abs(tr - fr));
+  }
+  return {
+    drag: true,
+    press(px, py) {
+      auto = -1; idle = 0;
+      if (!stroke || lastT - lastPress > D.release) begin(px, py, lastT); else move(px, py);
+      lastPress = lastT;
+    },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      idle += dt;
+      if (auto >= 0) {                                 // the ghost finger
+        auto += dt;
+        const k = clamp(auto / aDur, 0, 1), a = aDir * TAU / D.dirs;
+        move(ax + Math.cos(a) * aLen * k, ay + Math.sin(a) * aLen * k);
+        if (auto >= aDur) { auto = -1; end(t); }
+      } else if (stroke && t - lastPress > D.release) end(lastPress);
+      else if (!stroke && idle > D.autoEvery) {
+        idle = 0; auto = 0; aDir = Math.floor(rand(0, D.dirs)); aLen = rand(0.06, 0.28) * W; aDur = rand(0.15, 0.75);
+        ax = rx + rand(-1, 1) * r * 0.4; ay = ry + rand(-1, 1) * r * 0.4; begin(ax, ay, t);
+      }
+      // the rose
+      litT -= dt; badT -= dt;
+      const w = TAU / D.dirs;
+      for (let k = 0; k < D.dirs; k++) {
+        const a0 = k * w - w / 2, a1 = k * w + w / 2;
+        ctx.beginPath(); ctx.moveTo(rx, ry); ctx.arc(rx, ry, r, a0, a1); ctx.closePath();
+        ctx.fillStyle = (k === lit && litT > 0) ? "rgba(155,226,138," + (0.25 + litT * 0.6) + ")" : "rgba(201,196,228,0.06)";
+        ctx.fill();
+        ctx.strokeStyle = "rgba(201,196,228,0.3)"; ctx.lineWidth = 1; ctx.stroke();
+        arrow(rx + Math.cos(k * w) * r * 0.55, ry + Math.sin(k * w) * r * 0.55, rx + Math.cos(k * w) * r * 0.85, ry + Math.sin(k * w) * r * 0.85, (k === lit && litT > 0) ? GOOD : DIM);
+      }
+      if (badT > 0) { ring(rx, ry, r + 3, HOT, 2); label(bad, rx, ry + r + 14, HOT, "center"); }
+      // the stroke: start ring = minDist, the delta arrow
+      if (stroke || litT > 0.4 || badT > 0.4) {
+        ring(sx0, sy0, W * D.minDist, "rgba(232,229,244,0.3)");
+        arrow(sx0, sy0, cx, cy, stroke ? BONE : (badT > 0 ? HOT : GOOD));
+        if (stroke) label(((t - st0)).toFixed(2) + " s", cx + 8, cy - 8, DIM);
+      }
+      if (auto >= 0) ring(cx, cy, 9, MAGIC, 1.5);
+      // the tile grid and the hop
+      for (let i = 0; i <= cols; i++) line(gx0 + i * ts, gy0, gx0 + i * ts, gy0 + rows * ts, "rgba(201,196,228,0.18)");
+      for (let j = 0; j <= rows; j++) line(gx0, gy0 + j * ts, gx0 + cols * ts, gy0 + j * ts, "rgba(201,196,228,0.18)");
+      hopT = Math.min(1, hopT + dt / hopLen);
+      const k = ease(hopT), mx = gx0 + (fi + (ti - fi) * k + 0.5) * ts, my = gy0 + (fr + (tr - fr) * k + 0.5) * ts - Math.sin(hopT * Math.PI) * (D.slide ? 0 : ts * 0.4);
+      if (hopT < 1) rect(gx0 + ti * ts + 2, gy0 + tr * ts + 2, ts - 4, ts - 4, "rgba(155,226,138,0.15)");
+      mote(mx, my, hopT < 1 ? Math.atan2(tr - fr, ti - fi) : 0, MOVER, Math.min(8, ts * 0.32));
+      label(D.dirs + " wedges of " + Math.round(360 / D.dirs) + "°", rx, ry - r - 6, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Swipe", "Slidepuzzle", "four wedges, a long minimum stroke, and the mote slides until it hits the wall — the Threes board", { dirs: 4, minDist: 0.25, slide: true });
+
+def("Q", "Quartercircle", "input", "a MOTION INPUT PARSER: the pointer's direction around the mote fills a ring buffer, matched against ↓↘→ within a window; a match fires — drag: trace a quarter circle, release to punch", function (u) {
+  var D = { pattern: [2, 1, 0],   // sectors of 45°, 0 = →, 1 = ↘, 2 = ↓, 3 = ↙, 4 = ←  (↓↘→ = the fireball)
+            window: 0.5,        // the whole pattern must fit in this many seconds
+            buf: 8,             // directions remembered
+            gap: 0.15,          // no press for this long = the release (the punch)
+            speed: 0.9,         // the projectile, ×W per second
+            autoEvery: 2.4,     // seconds between the ghost finger's attempts
+            label: "buffer ⊇ pattern in order, Δt ≤ window ?" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, mote, label, clamp, len, rand, MOVER, MAGIC, GOOD, HOT, TARGET, BONE, DIM } = u;
+  // fighting games read a MOTION INPUT as a small parser. every frame the
+  // stick's direction is a sector of 45°; each time it changes, it goes
+  // into a RING BUFFER with its time. on the punch the parser scans the
+  // buffer from the newest backward for the pattern's last, then middle,
+  // then first symbol — in order, and with the first and last no further
+  // apart than the window. a match fires the projectile; anything else is
+  // just a jab. the top row is the pattern, the row under it the buffer
+  // (entries older than the window fade); matched arrows light green.
+  const R = 9, mx = W * 0.35, my = GY - R;
+  const bd = new Int8Array(D.buf), bt = new Float32Array(D.buf);
+  let count = 0, head = 0, lastSec = -1, tracing = false, lastPress = -9, lastT = 0, idle = 0;
+  let auto = -1, aDur = 0.4, litT = 0, litOk = false, lit = new Int8Array(D.buf), hits = 0, jabs = 0, jabT = 0;
+  const shot = { on: false, x: 0, y: 0, dir: 1 };
+  const trail = [];
+  function push(px, py, t) {
+    const a = Math.atan2(py - my, px - mx), sec = ((Math.round(a / (TAU / 8)) % 8) + 8) % 8;
+    if (!tracing) { tracing = true; lastSec = -1; }
+    if (sec !== lastSec) { bd[head] = sec; bt[head] = t; head = (head + 1) % D.buf; if (count < D.buf) count++; lastSec = sec; }
+    trail.push([px, py]); if (trail.length > 24) trail.shift();
+  }
+  function punch(t) {
+    tracing = false;
+    const P = D.pattern; let pi = P.length - 1, tLast = -1, tFirst = -1;
+    for (let i = 0; i < D.buf; i++) lit[i] = 0;
+    for (let i = 0; i < count && pi >= 0; i++) {       // newest → oldest, pattern end → start
+      const j = (head - 1 - i + D.buf) % D.buf;
+      if (bd[j] === P[pi]) { lit[j] = 1; if (tLast < 0) tLast = bt[j]; tFirst = bt[j]; pi--; }
+    }
+    litOk = pi < 0 && tLast - tFirst <= D.window && t - tLast <= D.window;
+    litT = 0.9;
+    if (litOk) { hits++; shot.on = true; shot.x = mx; shot.y = my; shot.dir = Math.cos(P[P.length - 1] * TAU / 8) < -0.1 ? -1 : 1; }
+    else { jabs++; jabT = 0.3; }
+    count = 0; head = 0;
+  }
+  return {
+    drag: true,
+    press(px, py) { if (auto >= 0) auto = -1; push(px, py, lastT); lastPress = lastT; idle = 0; },
+    frame(dt, t) {
+      lastT = t;
+      stage(); ground();
+      idle += dt;
+      const P = D.pattern, a0 = P[0] * TAU / 8, a1 = P[P.length - 1] * TAU / 8;
+      if (auto >= 0) {                                 // the ghost finger traces the pattern
+        auto += dt;
+        const k = clamp(auto / aDur, 0, 1), a = a0 + (a1 - a0) * k, rr = R * 3.2;
+        push(mx + Math.cos(a) * rr, my + Math.sin(a) * rr, t);
+        if (auto >= aDur) { auto = -1; punch(t); }
+      } else if (tracing && t - lastPress > D.gap) punch(t);
+      else if (!tracing && idle > D.autoEvery) { idle = 0; auto = 0; aDur = rand(0.2, D.window * 1.7); trail.length = 0; }
+      // the sector wheel around the mote
+      for (let s = 0; s < 8; s++) line(mx + Math.cos(s * TAU / 8 + TAU / 16) * R * 1.6, my + Math.sin(s * TAU / 8 + TAU / 16) * R * 1.6, mx + Math.cos(s * TAU / 8 + TAU / 16) * R * 4, my + Math.sin(s * TAU / 8 + TAU / 16) * R * 4, "rgba(201,196,228,0.14)");
+      if (tracing && lastSec >= 0) { const a = lastSec * TAU / 8; ctx.beginPath(); ctx.moveTo(mx, my); ctx.arc(mx, my, R * 4, a - TAU / 16, a + TAU / 16); ctx.closePath(); ctx.fillStyle = "rgba(245,193,105,0.18)"; ctx.fill(); }
+      for (let i = 0; i < trail.length; i++) dot(trail[i][0], trail[i][1], 1.5, "rgba(232,229,244," + (i / trail.length * 0.5) + ")");
+      if (auto >= 0 && trail.length) ring(trail[trail.length - 1][0], trail[trail.length - 1][1], 8, MAGIC, 1.5);
+      // the pattern row and the buffer row
+      const cw = Math.min(22, W / (D.buf + 2)), py0 = H * 0.12, by0 = H * 0.27, px0 = W / 2 - P.length * cw / 2, bx0 = W / 2 - D.buf * cw / 2;
+      const glyph = (x, y, sec, c) => arrow(x - Math.cos(sec * TAU / 8) * 6, y - Math.sin(sec * TAU / 8) * 6, x + Math.cos(sec * TAU / 8) * 6, y + Math.sin(sec * TAU / 8) * 6, c);
+      label("pattern", px0 - 6, py0 + 3, DIM, "right");
+      for (let i = 0; i < P.length; i++) glyph(px0 + i * cw + cw / 2, py0, P[i], TARGET);
+      label("buffer", bx0 - 6, by0 + 3, DIM, "right");
+      litT -= dt;
+      for (let i = 0; i < D.buf; i++) {
+        const x = bx0 + i * cw + cw / 2;
+        rect(x - cw / 2 + 1, by0 - 9, cw - 2, 18, "rgba(201,196,228,0.07)");
+        if (litT > 0) { if (lit[i]) { rect(x - cw / 2 + 1, by0 - 9, cw - 2, 18, "rgba(155,226,138,0.3)"); } }
+        else if (i < count) {
+          const j = (head - count + i + D.buf) % D.buf, age = t - bt[j];
+          glyph(x, by0, bd[j], age <= D.window ? BONE : "rgba(201,196,228,0.25)");
+        }
+      }
+      if (litT > 0) label(litOk ? "match — fire!" : "no match — jab", W / 2, by0 + 22, litOk ? GOOD : HOT, "center");
+      else label("window " + D.window + " s", W / 2, by0 + 22, DIM, "center");
+      // the mote, the jab, the projectile
+      jabT -= dt;
+      if (jabT > 0) line(mx + R, my, mx + R + 14, my, "rgba(232,229,244,0.7)", 3);
+      if (shot.on) {
+        shot.x += shot.dir * W * D.speed * dt;
+        dot(shot.x, shot.y, 7, HOT); ring(shot.x, shot.y, 10 + Math.sin(t * 30) * 2, "rgba(245,138,138,0.5)", 1.5);
+        if (shot.x < -20 || shot.x > W + 20) shot.on = false;
+      }
+      mote(mx, my, shot.dir < 0 && (shot.on || litT > 0) ? Math.PI : 0, MOVER, R);
+      label("hits " + hits + " · jabs " + jabs, W - 6, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Quartercircle", "Qcb", "the mirrored ↓↙← motion in a tighter window — the quarter-circle back, fired the other way", { pattern: [2, 3, 4], window: 0.3 });
+
+def("V", "Virtualstick", "input", "a VIRTUAL JOYSTICK appears where the finger lands: vector = thumb − origin, clamped to a radius; the mote drives by it — drag: the stick", function (u) {
+  var D = { radius: 0.12,       // the stick's radius, ×W
+            max: 0.45,          // the mote's top speed, ×W per second (at full deflection)
+            steer: 5,           // how fast velocity follows the stick, per second
+            floating: false,    // true = the origin follows the thumb when it leaves the ring
+            gap: 0.25,          // no press for this long = the finger lifted
+            autoEvery: 2.4,     // seconds idle before the ghost thumb demonstrates
+            label: "v = clamp(thumb − origin, r) / r · max" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, clamp, len, rand, smooth, MOVER, MAGIC, GOOD, HOT, TARGET, BONE, DIM } = u;
+  // a touch screen has no stick, so the code invents one where the finger
+  // first lands: that point is the ORIGIN, the finger is the THUMB, and the
+  // stick vector is thumb − origin, CLAMPED to a radius and divided by it —
+  // a −1..1 stick from two points. the mote's velocity steers toward that
+  // vector times a top speed (Arrive's manners: it eases, it never snaps).
+  // a FLOATING stick lets the origin be dragged along when the thumb leaves
+  // the ring, so the hand never has to come back to a spot it cannot see.
+  let ox = 0, oy = 0, tx = 0, ty = 0, on = false, ghost = false, lastPress = -9, lastT = 0, idle = 0, auto = -1;
+  let x = W * 0.5, y = H * 0.5, vx = 0, vy = 0, rawx = 0, rawy = 0;
+  function land(px, py) { ox = tx = px; oy = ty = py; on = true; }
+  function thumb(px, py) {
+    const r = W * D.radius;
+    tx = px; ty = py; rawx = px; rawy = py;
+    const dx = tx - ox, dy = ty - oy, L = len(dx, dy);
+    if (L > r) {
+      if (D.floating) { ox += dx / L * (L - r); oy += dy / L * (L - r); }   // the ring is towed along
+      else { tx = ox + dx / L * r; ty = oy + dy / L * r; }                   // the thumb is clamped
+    }
+  }
+  return {
+    drag: true,
+    press(px, py) {
+      if (auto >= 0) { auto = -1; on = false; } ghost = false; idle = 0;
+      if (!on || lastT - lastPress > D.gap) land(px, py); else thumb(px, py);
+      lastPress = lastT;
+    },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      idle += dt;
+      const r = W * D.radius;
+      if (auto >= 0) {                                 // the ghost thumb: lands, circles, lifts
+        auto += dt;
+        const k = auto * 3.2;
+        thumb(ox + Math.cos(k) * r * 1.25, oy + Math.sin(k * 0.5) * r * 0.9);
+        if (auto > 2.2) { auto = -1; on = false; ghost = false; }
+      } else if (on && !ghost && t - lastPress > D.gap) on = false;
+      else if (!on && idle > D.autoEvery) { idle = 0; auto = 0; ghost = true; land(rand(W * 0.2, W * 0.8), rand(H * 0.25, H * 0.8)); }
+      let sx = 0, sy = 0;
+      if (on) { sx = (tx - ox) / r; sy = (ty - oy) / r; }          // the −1..1 stick
+      const k = smooth(D.steer, dt);
+      vx += (sx * W * D.max - vx) * k; vy += (sy * W * D.max - vy) * k;
+      x = clamp(x + vx * dt, 10, W - 10); y = clamp(y + vy * dt, 10, H - 10);
+      if (on) {
+        const c = ghost ? MAGIC : TARGET;
+        ring(ox, oy, r, ghost ? "rgba(201,160,245,0.6)" : "rgba(245,193,105,0.6)", 1.5);
+        ring(ox, oy, r * 0.35, DIM);
+        if (!D.floating && (rawx !== tx || rawy !== ty)) { dot(rawx, rawy, 3, "rgba(232,229,244,0.25)"); line(rawx, rawy, tx, ty, DIM); label("clamped", rawx + 6, rawy + 3, DIM); }
+        arrow(ox, oy, tx, ty, GOOD);
+        dot(tx, ty, 7, c);
+        label(ghost ? "ghost thumb" : "thumb", tx + 9, ty - 6, c);
+        label("origin", ox, oy + r + 12, DIM, "center");
+        if (D.floating) label("floating", ox, oy - r - 5, "rgba(201,160,245,0.8)", "center");
+      }
+      arrow(x, y, x + vx * 0.3, y + vy * 0.3, GOOD);
+      mote(x, y, len(vx, vy) > 2 ? Math.atan2(vy, vx) : 0);
+      label("stick (" + sx.toFixed(2) + ", " + sy.toFixed(2) + ") · |v| " + Math.round(len(vx, vy)), W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Virtualstick", "Vespa", "a floating stick whose ring is towed along by the thumb, and a faster scooter of a mote", { floating: true, max: 0.7 });
+
+def("M", "Mouselook", "input", "MOUSE-LOOK: yaw and pitch from the pointer's DELTA through a sensitivity curve, pitch clamped; a first-person horizon of posts (Camera) — drag: look", function (u) {
+  var D = { sens: 0.006,        // radians per pixel of pointer movement (at accel 1)
+            accel: 1.0,         // the curve: out = |Δ|^accel — 1 is linear, >1 accelerates fast flicks
+            pitchMax: 60,       // degrees up or down the pitch may reach
+            smoothRate: 25,     // how fast the view catches up with the input (big = raw)
+            fov: 90,            // degrees of world across the screen
+            gap: 0.25,          // no press for this long = a new grab (no delta across it)
+            label: "yaw += sign(Δx)·|Δx|^accel · sens · pitch ∈ ±max" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, arrow, label, clamp, rng, smooth, wrapAngle, MOVER, MAGIC, GOOD, HOT, TARGET, BONE, INK, DIM } = u;
+  // a mouse reports no position that matters, only MOVEMENT. each pointer
+  // delta becomes a turn: yaw from Δx, pitch from Δy, through a sensitivity
+  // and a CURVE — |Δ|^accel keeps small moves precise and lets big flicks
+  // travel. pitch is CLAMPED so you can never look past straight up. the
+  // scene is the cheapest first person there is: a horizon that slides with
+  // pitch, and posts placed at world angles, drawn at (angle − yaw) / fov
+  // across the screen — Camera's follow, turned into a window you steer.
+  const seed = rng(3), posts = [];
+  for (let i = 0; i < 12; i++) posts.push({ a: i / 12 * TAU, h: 0.12 + seed() * 0.22, w: 3 + seed() * 5 });
+  let yaw = 0, pitch = 0, yawS = 0, pitchS = 0, lx = 0, ly = 0, lastPress = -9, lastT = 0, ddx = 0, ddy = 0, dT = 0;
+  return {
+    drag: true,
+    press(px, py) {
+      if (lastT - lastPress <= D.gap) {
+        const dx = px - lx, dy = py - ly;
+        ddx = dx; ddy = dy; dT = 0.3;
+        yaw += Math.sign(dx) * Math.pow(Math.abs(dx), D.accel) * D.sens;
+        pitch -= Math.sign(dy) * Math.pow(Math.abs(dy), D.accel) * D.sens;
+        pitch = clamp(pitch, -D.pitchMax * TAU / 360, D.pitchMax * TAU / 360);
+      }
+      lx = px; ly = py; lastPress = lastT;
+    },
+    frame(dt, t) {
+      lastT = t;
+      stage();
+      if (t - lastPress > 2) {                         // the idle sweep
+        yaw += dt * 0.3 * Math.sin(t * 0.35);
+        pitch += (Math.sin(t * 0.5) * 0.25 * D.pitchMax * TAU / 360 - pitch) * Math.min(1, dt);
+      }
+      const k = smooth(D.smoothRate, dt);
+      yawS += wrapAngle(yaw - yawS) * k; pitchS += (pitch - pitchS) * k;
+      const pm = D.pitchMax * TAU / 360, fov = D.fov * TAU / 360;
+      const hy = H * 0.5 + pitchS / Math.max(0.01, pm) * H * 0.32;   // pitch up = horizon down
+      rect(0, 0, W, hy, "rgba(138,217,245,0.05)");
+      rect(0, hy, W, H - hy, "rgba(201,196,228,0.07)");
+      line(0, hy, W, hy, "rgba(201,196,228,0.55)", 1.5);
+      for (let i = 0; i < posts.length; i++) {         // world angle → screen x
+        const p = posts[i], d = wrapAngle(p.a - yawS);
+        if (Math.abs(d) > fov / 2 + 0.2) continue;
+        const sx = W / 2 + d / fov * W, ph = p.h * H;
+        rect(sx - p.w / 2, hy - ph, p.w, ph, BONE);
+        dot(sx, hy, 2, DIM);
+        if (i % 3 === 0) label(["N", "E", "S", "W"][i / 3], sx, hy - ph - 4, TARGET, "center");
+      }
+      ring(W / 2, H / 2, 7, INK, 1.2);                 // the reticle
+      line(W / 2 - 14, H / 2, W / 2 - 9, H / 2, INK); line(W / 2 + 9, H / 2, W / 2 + 14, H / 2, INK);
+      line(W / 2, H / 2 - 14, W / 2, H / 2 - 9, INK); line(W / 2, H / 2 + 9, W / 2, H / 2 + 14, INK);
+      dT -= dt;
+      if (dT > 0) { arrow(W / 2, H / 2, W / 2 + ddx * 1.5, H / 2 + ddy * 1.5, HOT); label("Δ (" + Math.round(ddx) + ", " + Math.round(ddy) + ")", W / 2 + ddx * 1.5 + 6, H / 2 + ddy * 1.5, HOT); }
+      // the pitch clamp gauge and the curve
+      const gx = W - 14, gy0 = H * 0.2, gh = H * 0.5;
+      rect(gx - 2, gy0, 4, gh, "rgba(232,229,244,0.1)");
+      line(gx - 6, gy0, gx + 6, gy0, HOT); line(gx - 6, gy0 + gh, gx + 6, gy0 + gh, HOT);
+      dot(gx, gy0 + gh / 2 - pitchS / Math.max(0.01, pm) * gh / 2, 4, TARGET);
+      label("±" + D.pitchMax + "°", gx - 8, gy0 - 4, HOT, "right");
+      const cx0 = 8, cy0 = H * 0.9, cs = Math.min(W, H) * 0.14;
+      line(cx0, cy0, cx0 + cs, cy0, DIM); line(cx0, cy0, cx0, cy0 - cs, DIM);
+      ctx.strokeStyle = GOOD; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let i = 0; i <= 12; i++) { const q = i / 12, o = Math.pow(q, D.accel); if (i) ctx.lineTo(cx0 + q * cs, cy0 - o * cs); else ctx.moveTo(cx0, cy0); }
+      ctx.stroke();
+      label("|Δ|^" + D.accel, cx0 + cs + 4, cy0 - cs + 8, GOOD);
+      const deg = a => Math.round(a * 360 / TAU);
+      label("yaw " + ((deg(yawS) % 360 + 360) % 360) + "° · pitch " + deg(pitchS) + "°", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Mouselook", "Mecha", "a third of the sensitivity, a hard 25° pitch clamp and heavy smoothing — a forty-ton head turning", { sens: 0.002, pitchMax: 25, smoothRate: 5 });
+/* ============================== COLLISION & CONTACT ==============================
+   What touches what. A game world is a pile of shapes that must not pass
+   through each other, and every rule here is a TEST followed by a PUSH:
+   boxes overlap only when four edge tests all pass; circles touch when the
+   centres are closer than the radii add up to; a fast bullet is swept, not
+   stepped, so a thin wall still catches it; a tilemap is walked one axis at
+   a time; a one-way ledge asks where the feet were LAST frame; a slope hands
+   the velocity its tangent; whiskers of short rays light the onFloor lamp;
+   a spatial hash decides who is even worth testing; triggers only watch;
+   a hitbox exists for six frames; billiard balls trade momentum along the
+   normal; and rotated crates confess a gap on a separating axis. */
+
+def("A", "Aabb", "contact", "two axis-aligned boxes overlap only if all four edge tests pass; the push is along the axis of least penetration — press to place the crate", function (u) {
+  var D = { crates: 1,          // how many crates stand in the way
+            speed: 0.45,        // the Lissajous clock, radians per second
+            bw: 0.15, bh: 0.11, // the mote's box, ×W and ×H
+            cw: 0.17, ch: 0.15, // a crate, ×W and ×H
+            label: "aL<bR ∧ aR>bL ∧ aT<bB ∧ aB>bT · push = min(px, py)" };
+  const { ctx, W, H, stage, rect, line, arrow, mote, label, rng, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // an AABB (axis-aligned bounding box) is four numbers: left, right, top,
+  // bottom. two of them OVERLAP only when all four edge tests pass — A's
+  // left is before B's right, A's right is past B's left, and the same up
+  // and down. one failing test is a gap, and a gap anywhere means no touch.
+  // to RESOLVE, measure how deep the boxes sit on each axis and push out
+  // along the shallower one — LEAST PENETRATION — so a box clipping the
+  // corner of a floor slides up onto it instead of sideways off it.
+  const seed = rng(11);
+  const crates = [];
+  for (let i = 0; i < D.crates; i++) crates.push({ x: W * (0.28 + seed() * 0.44), y: H * (0.22 + seed() * 0.5) });
+  let placeI = 0;
+  const tests = [false, false, false, false];
+  const names = ["aL < bR", "aR > bL", "aT < bB", "aB > bT"];
+  return {
+    press(x, y) { const c = crates[placeI % crates.length]; c.x = x; c.y = y; placeI++; },
+    frame(dt, t) {
+      stage();
+      const aw = W * D.bw, ah = H * D.bh, cw = W * D.cw, ch = H * D.ch;
+      const rawX = W / 2 + Math.sin(t * D.speed) * W * 0.34;
+      const rawY = H * 0.5 + Math.sin(t * D.speed * 1.31 + 1.2) * H * 0.3;
+      let ax = rawX, ay = rawY, focus = null, best = -1e9, hit = false, px = 0, py = 0;
+      for (const c of crates) {                        // the crate we are closest to touching
+        const d = Math.min(Math.min(ax + aw / 2 - (c.x - cw / 2), c.x + cw / 2 - (ax - aw / 2)),
+                           Math.min(ay + ah / 2 - (c.y - ch / 2), c.y + ch / 2 - (ay - ah / 2)));
+        if (d > best) { best = d; focus = c; }
+      }
+      for (const c of crates) {                        // the four tests, then the push
+        const aL = ax - aw / 2, aR = ax + aw / 2, aT = ay - ah / 2, aB = ay + ah / 2;
+        const bL = c.x - cw / 2, bR = c.x + cw / 2, bT = c.y - ch / 2, bB = c.y + ch / 2;
+        const t0 = aL < bR, t1 = aR > bL, t2 = aT < bB, t3 = aB > bT;
+        if (c === focus) { tests[0] = t0; tests[1] = t1; tests[2] = t2; tests[3] = t3; }
+        if (!(t0 && t1 && t2 && t3)) continue;
+        const pxx = Math.min(aR - bL, bR - aL), pyy = Math.min(aB - bT, bB - aT);   // depth on each axis
+        if (c === focus) { px = pxx; py = pyy; hit = true; }
+        if (pxx < pyy) ax += (aR - bL < bR - aL) ? -pxx : pxx;   // least penetration wins
+        else ay += (aB - bT < bB - aT) ? -pyy : pyy;
+      }
+      for (const c of crates) {
+        rect(c.x - cw / 2, c.y - ch / 2, cw, ch, c === focus ? "rgba(245,193,105,0.35)" : "rgba(245,193,105,0.18)");
+        ctx.strokeStyle = TARGET; ctx.lineWidth = 1.5; ctx.strokeRect(c.x - cw / 2, c.y - ch / 2, cw, ch);
+        line(c.x - cw / 2, c.y - ch / 2, c.x + cw / 2, c.y + ch / 2, "rgba(245,193,105,0.4)");
+        line(c.x + cw / 2, c.y - ch / 2, c.x - cw / 2, c.y + ch / 2, "rgba(245,193,105,0.4)");
+      }
+      if (hit) {                                       // the raw box, and the push that fixed it
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = DIM; ctx.lineWidth = 1; ctx.strokeRect(rawX - aw / 2, rawY - ah / 2, aw, ah);
+        ctx.setLineDash([]);
+        rect(ax - aw / 2, ay - ah / 2, aw, ah, "rgba(245,138,138,0.22)");
+        arrow(rawX, rawY, ax, ay, HOT);
+        label("push " + (px < py ? "x " + px.toFixed(0) : "y " + py.toFixed(0)) + " px", (rawX + ax) / 2, Math.min(rawY, ay) - ah / 2 - 6, HOT, "center");
+      } else rect(ax - aw / 2, ay - ah / 2, aw, ah, "rgba(138,217,245,0.12)");
+      const L = ax - aw / 2, R = ax + aw / 2, T = ay - ah / 2, B = ay + ah / 2;
+      line(L, T, L, B, tests[0] ? GOOD : HOT, 2);      // each side wears its own test
+      line(R, T, R, B, tests[1] ? GOOD : HOT, 2);
+      line(L, T, R, T, tests[2] ? GOOD : HOT, 2);
+      line(L, B, R, B, tests[3] ? GOOD : HOT, 2);
+      mote(ax, ay, 0);
+      for (let i = 0; i < 4; i++) label(names[i] + (tests[i] ? "  ✓" : "  ✗"), 8, 14 + i * 12, tests[i] ? GOOD : HOT);
+      label(hit ? "overlap: px " + px.toFixed(0) + " · py " + py.toFixed(0) : "no overlap", W - 8, 14, hit ? HOT : DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Aabb", "Arcade", "three crates and a box twice as quick — the same four tests, run against every crate in turn", { crates: 3, speed: 0.9 });
+
+def("O", "Overlap", "contact", "circle vs circle is d < r₁ + r₂; circle vs rectangle clamps the centre to the nearest point on the box — press to move the rectangle", function (u) {
+  var D = { r1: 0.075, r2: 0.05,    // the two circles, ×H
+            rw: 0.3, rh: 0.18,      // the rectangle, ×W and ×H
+            orbit: 0.3,             // the circles' orbit radius, ×W
+            speed: 0.8,             // their orbit rate, radians per second
+            label: "d < r₁ + r₂ · p = clamp(c, min, max) · |c − p| < r" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, clamp, len, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // the two cheapest tests in the book. CIRCLE vs CIRCLE: measure the gap
+  // between centres, and if it is less than the radii added together they
+  // overlap — push each away by half the difference. CIRCLE vs RECTANGLE:
+  // clamp the circle's centre into the box; that clamped point is the
+  // NEAREST POINT of the box, and the circle touches if it is closer than
+  // the radius. the push is along the line from that point to the centre.
+  let rx = W * 0.5, ry = H * 0.5;
+  const c = [{ x: 0, y: 0, ox: 0, oy: 0, r: 0 }, { x: 0, y: 0, ox: 0, oy: 0, r: 0 }];
+  return {
+    press(x, y) { rx = x; ry = y; },
+    frame(dt, t) {
+      stage();
+      c[0].r = H * D.r1; c[1].r = H * D.r2;
+      c[0].ox = c[0].x = W / 2 + Math.cos(t * D.speed) * W * D.orbit;
+      c[0].oy = c[0].y = H * 0.5 + Math.sin(t * D.speed) * H * D.orbit * 0.9;
+      c[1].ox = c[1].x = W / 2 + Math.cos(-t * D.speed * 1.37 + 2) * W * D.orbit * 0.75;
+      c[1].oy = c[1].y = H * 0.5 + Math.sin(-t * D.speed * 1.37 + 2) * H * D.orbit * 1.1;
+      const rw = W * D.rw, rh = H * D.rh, L = rx - rw / 2, R = rx + rw / 2, T = ry - rh / 2, B = ry + rh / 2;
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 1.5; ctx.strokeRect(L, T, rw, rh);
+      // circle vs rectangle, each circle
+      let hits = 0;
+      for (let i = 0; i < 2; i++) {
+        const k = c[i];
+        let px = clamp(k.x, L, R), py = clamp(k.y, T, B);
+        let dx = k.x - px, dy = k.y - py, d = len(dx, dy);
+        let inRect = false;
+        if (d < 0.001) {                               // centre inside the box: leave by the nearest face
+          inRect = true;
+          const dl = k.x - L, dr = R - k.x, dtp = k.y - T, db = B - k.y, m = Math.min(dl, dr, dtp, db);
+          if (m === dl) { dx = -1; dy = 0; px = L; } else if (m === dr) { dx = 1; dy = 0; px = R; }
+          else if (m === dtp) { dx = 0; dy = -1; py = T; } else { dx = 0; dy = 1; py = B; }
+          d = 0;
+        } else { dx /= d; dy /= d; }
+        const touch = d < k.r;
+        line(px, py, k.ox, k.oy, touch ? HOT : DIM, 1);
+        dot(px, py, 3, touch ? HOT : TARGET);          // the nearest point
+        label("d " + d.toFixed(0) + (touch ? " < r" : " ≥ r"), (px + k.ox) / 2 + 6, (py + k.oy) / 2 - 4, touch ? HOT : DIM);
+        if (touch) { hits++; k.x += dx * (k.r - d); k.y += dy * (k.r - d); }
+        if (inRect) label("inside", px, py - 6, HOT, "center");
+      }
+      // circle vs circle
+      const a = c[0], b = c[1];
+      let dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy);
+      const sum = a.r + b.r, cc = d < sum;
+      if (d < 0.001) { dx = 1; dy = 0; d = 0.001; }
+      line(a.x, a.y, b.x, b.y, cc ? HOT : DIM, 1);
+      label("d " + d.toFixed(0) + (cc ? " < " : " ≥ ") + "r₁+r₂ " + sum.toFixed(0), (a.x + b.x) / 2, (a.y + b.y) / 2 - 6, cc ? HOT : DIM, "center");
+      if (cc) {
+        hits++;
+        const push = (sum - d) / 2, nx = dx / d, ny = dy / d;
+        a.x -= nx * push; a.y -= ny * push; b.x += nx * push; b.y += ny * push;
+      }
+      for (let i = 0; i < 2; i++) {                    // raw ring, pushed body, push arrow
+        const k = c[i], moved = len(k.x - k.ox, k.y - k.oy) > 0.5;
+        if (moved) { ring(k.ox, k.oy, k.r, DIM, 1); arrow(k.ox, k.oy, k.x, k.y, HOT); }
+        dot(k.x, k.y, k.r, moved ? "rgba(245,138,138,0.35)" : (i ? "rgba(245,193,105,0.25)" : "rgba(138,217,245,0.25)"));
+        ring(k.x, k.y, k.r, i ? TARGET : MOVER, 1.5);
+      }
+      mote(a.x, a.y, Math.atan2(a.oy - H / 2, a.ox - W / 2) + Math.PI / 2);
+      label(hits ? hits + " overlap" + (hits > 1 ? "s" : "") + " pushed out" : "no overlap", W - 8, 14, hits ? HOT : DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Overlap", "Oversize", "one huge circle and a tiny box — the nearest-point clamp still finds the one spot that matters", { r1: 0.19, rw: 0.1, rh: 0.08 });
+
+def("T", "Tunnel", "contact", "a fast box stepped naively skips a thin wall; a swept AABB finds the time of impact t in 0..1 and stops there (Xmarks' ray, with a box) — press to fire toward your click", function (u) {
+  var D = { speed: 3.0,         // the bullet, screens per second
+            stepDt: 0.06,       // the game's frame length, seconds — one step per frame
+            slow: 0.7,          // seconds we take to show each step
+            hold: 1.6,          // seconds to hold the frozen hit before firing again
+            wall: 0.02,         // wall thickness, ×W
+            bullet: 0.06,       // the bullet box, ×W
+            label: "hit ⇔ max(tx₁, ty₁) ≤ min(tx₂, ty₂), inside 0..1" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, poly, arrow, label, len, clamp, rand, MOVER, TARGET, GOOD, HOT, MAGIC, DIM } = u;
+  // TUNNELLING: a body that moves further in one frame than a wall is thick
+  // can be on one side this frame and the other side next frame, and a
+  // simple overlap test never sees the wall. the SWEPT test asks instead:
+  // along this frame's displacement d, WHEN does the box enter the wall?
+  // per axis, (wallEdge − boxEdge)/d gives an entry and an exit time; the
+  // box is inside the wall only while BOTH axes agree — from the later
+  // entry to the earlier exit. if that window sits inside 0..1, the box
+  // stops at the entry time, however fast it was going.
+  const S = { tx1: 0, tx2: 0, ty1: 0, ty2: 0, entry: 0, exit: 0, hit: false };
+  const hull = [], pts = [];
+  let bx = 0, by = 0, dx = 0, dy = 0, nx = 0, ny = 0, k = 0, stopped = false, holdT = 0, ghostOn = true, tunnelled = false, aim = 0;
+  function fmt(v) { return v > 99 ? "+∞" : v < -99 ? "−∞" : v.toFixed(2); }
+  function sweep(cx, cy, hw, hh, X0, X1, Y0, Y1) {     // the wall grown by the box's half size = a ray test
+    X0 -= hw; X1 += hw; Y0 -= hh; Y1 += hh;
+    if (Math.abs(dx) < 1e-6) { if (cx < X0 || cx > X1) { S.tx1 = 1e9; S.tx2 = -1e9; } else { S.tx1 = -1e9; S.tx2 = 1e9; } }
+    else { S.tx1 = (X0 - cx) / dx; S.tx2 = (X1 - cx) / dx; if (S.tx1 > S.tx2) { const s = S.tx1; S.tx1 = S.tx2; S.tx2 = s; } }
+    if (Math.abs(dy) < 1e-6) { if (cy < Y0 || cy > Y1) { S.ty1 = 1e9; S.ty2 = -1e9; } else { S.ty1 = -1e9; S.ty2 = 1e9; } }
+    else { S.ty1 = (Y0 - cy) / dy; S.ty2 = (Y1 - cy) / dy; if (S.ty1 > S.ty2) { const s = S.ty1; S.ty1 = S.ty2; S.ty2 = s; } }
+    S.entry = Math.max(S.tx1, S.ty1); S.exit = Math.min(S.tx2, S.ty2);
+    S.hit = S.entry <= S.exit && S.entry >= 0 && S.entry <= 1;
+  }
+  function fire(tx, ty) {
+    bx = nx = W * 0.1; by = ny = H * 0.5;
+    const ex = tx - bx, ey = ty - by, d = len(ex, ey) || 1;
+    const step = W * D.speed * D.stepDt;
+    dx = ex / d * step; dy = ey / d * step;
+    k = 0; stopped = false; holdT = 0; ghostOn = true; tunnelled = false; aim = Math.atan2(ey, ex);
+  }
+  function convexHull(src, out) {                      // eight points at most: a tiny monotone chain
+    src.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    out.length = 0;
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    for (const p of src) { while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop(); out.push(p); }
+    const lo = out.length + 1;
+    for (let i = src.length - 2; i >= 0; i--) { const p = src[i]; while (out.length >= lo && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop(); out.push(p); }
+    out.pop();
+  }
+  function boxPts(cx, cy, hw, hh) { pts.push([cx - hw, cy - hh], [cx + hw, cy - hh], [cx + hw, cy + hh], [cx - hw, cy + hh]); }
+  fire(W * 0.9, H * rand(0.3, 0.7));
+  return {
+    press(x, y) { fire(x, y); },
+    frame(dt, t) {
+      stage(); ground();
+      const hw = W * D.bullet / 2, hh = hw * 0.6;
+      const wx0 = W * 0.62, wx1 = wx0 + W * D.wall, wy0 = H * 0.12, wy1 = GY;
+      sweep(bx, by, hw, hh, wx0, wx1, wy0, wy1);       // this step's test, from the box's start
+      if (!stopped) {
+        k += dt / D.slow;
+        if (k >= 1) {                                  // commit the step
+          k = 0;
+          if (S.hit) { bx += dx * S.entry; by += dy * S.entry; stopped = true; }
+          else { bx += dx; by += dy; }
+          if (ghostOn) { nx += dx; ny += dy; if (nx > wx1 + hw && !tunnelled) tunnelled = true; }
+          sweep(bx, by, hw, hh, wx0, wx1, wy0, wy1);
+          if (bx < -hw * 2 || bx > W + hw * 2 || by < -hh * 2 || by > H + hh * 2) fire(W * rand(0.75, 0.95), H * rand(0.2, 0.75));
+        }
+      } else {
+        holdT += dt;
+        k = Math.min(1, k + dt / D.slow);
+        if (ghostOn && k >= 1) { k = 0; nx += dx; ny += dy; if (nx > wx1 + hw) tunnelled = true; if (nx > W + hw * 3 || ny < -hh * 3 || ny > H + hh * 3) ghostOn = false; }
+        if (holdT > D.hold + 1) fire(W * rand(0.75, 0.95), H * rand(0.2, 0.75));
+      }
+      // the wall
+      rect(wx0, wy0, wx1 - wx0, wy1 - wy0, "rgba(201,196,228,0.55)");
+      label("wall " + (wx1 - wx0).toFixed(0) + " px", (wx0 + wx1) / 2, wy0 - 5, DIM, "center");
+      // the swept slab from the start of this step to its end
+      const ex = bx + dx, ey = by + dy;
+      pts.length = 0; boxPts(bx, by, hw, hh); boxPts(ex, ey, hw, hh);
+      convexHull(pts, hull);
+      poly(hull, "rgba(138,217,245,0.1)");
+      poly(hull, "rgba(138,217,245,0.35)", 1);
+      ctx.strokeStyle = DIM; ctx.lineWidth = 1; ctx.strokeRect(bx - hw, by - hh, hw * 2, hh * 2);
+      ctx.setLineDash([2, 3]); ctx.strokeRect(ex - hw, ey - hh, hw * 2, hh * 2); ctx.setLineDash([]);
+      line(bx, by, ex, ey, DIM, 1);
+      // entry / exit ticks along the step, per axis
+      const tick = (tv, c, off) => { if (tv < 0 || tv > 1) return; const px = bx + dx * tv, py = by + dy * tv; dot(px + off, py - off, 2.2, c); };
+      tick(S.tx1, TARGET, 4); tick(S.tx2, TARGET, 4); tick(S.ty1, GOOD, -4); tick(S.ty2, GOOD, -4);
+      if (S.hit) {                                     // the box at the time of impact
+        const hx = bx + dx * S.entry, hy = by + dy * S.entry;
+        ctx.strokeStyle = GOOD; ctx.lineWidth = 1.5; ctx.strokeRect(hx - hw, hy - hh, hw * 2, hh * 2);
+        label("t = " + S.entry.toFixed(2), hx, hy - hh - 6, GOOD, "center");
+      }
+      // the naive ghost, and the swept box, both moving along the step
+      const gk = k;
+      const gx = nx + dx * gk, gy = ny + dy * gk;
+      if (ghostOn) {
+        ctx.setLineDash([3, 2]); ctx.strokeStyle = MAGIC; ctx.lineWidth = 1.2; ctx.strokeRect(gx - hw, gy - hh, hw * 2, hh * 2); ctx.setLineDash([]);
+        if (tunnelled) label("naive: tunnelled through", clamp(gx, 70, W - 70), gy - hh - 6, HOT, "center");
+      }
+      const sk = stopped ? 0 : (S.hit ? Math.min(k, S.entry) : k);
+      const sx = bx + dx * sk, sy = by + dy * sk;
+      rect(sx - hw, sy - hh, hw * 2, hh * 2, stopped ? "rgba(155,226,138,0.5)" : "rgba(138,217,245,0.6)");
+      ctx.strokeStyle = stopped ? GOOD : MOVER; ctx.lineWidth = 1.5; ctx.strokeRect(sx - hw, sy - hh, hw * 2, hh * 2);
+      arrow(sx, sy, sx + Math.cos(aim) * hw * 1.6, sy + Math.sin(aim) * hw * 1.6, stopped ? GOOD : MOVER);
+      dot(W * 0.1, H * 0.5, 3, DIM);                   // the launcher
+      if (stopped) label("swept: stopped at entry", clamp(sx, 70, W - 70), sy + hh + 12, GOOD, "center");
+      label("step " + len(dx, dy).toFixed(0) + " px / frame", 8, 14, MOVER);
+      label("tx " + fmt(S.tx1) + " → " + fmt(S.tx2), 8, 26, TARGET);
+      label("ty " + fmt(S.ty1) + " → " + fmt(S.ty2), 8, 38, GOOD);
+      label("entry " + fmt(S.entry) + " · exit " + fmt(S.exit) + (S.hit ? " · hit" : " · miss"), 8, 50, S.hit ? HOT : DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Tunnel", "Turbo", "a bullet nearly twice as fast against a wall a third as thick — the naive step never lands, the sweep still does", { speed: 5.5, wall: 0.008 });
+
+def("X", "Xaxis", "contact", "tilemap collision: move on x, sample the body's corner tiles, push out; THEN do y (Grid's cells) — press to send the mote", function (u) {
+  var D = { body: 0.75,         // the body's side, in tiles
+            speed: 0.55,        // its speed, ×W per second
+            map: ["##########",
+                  "#........#",
+                  "#..##....#",
+                  "#.....#..#",
+                  "#.#...#..#",
+                  "#.#......#",
+                  "##########"],
+            label: "x += vx·dt → sample corners → push · then y" };
+  const { ctx, W, H, stage, dot, rect, line, arrow, mote, label, rand, len, clamp, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // the tilemap trick every 2D platformer shares: never move diagonally in
+  // one go. move on X alone, read the tiles under the body's four CORNERS,
+  // and if any is a wall push the body flush with that wall's face; then do
+  // exactly the same on Y. because each axis is resolved by itself the body
+  // SLIDES along walls for free, and a corner never wedges. the amber
+  // squares are the corners read during the x pass, the green ones during
+  // the y pass; a tile flashes red when it pushed.
+  const ROWS = D.map.length, COLS = D.map[0].length;
+  const ts = Math.min(W / COLS, (H - 22) / ROWS);
+  const gx0 = (W - COLS * ts) / 2, gy0 = (H - 22 - ROWS * ts) / 2 + 2;
+  const bw = ts * D.body;
+  function solid(cx, cy) { if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; return D.map[cy][cx] === "#"; }
+  let px = gx0 + ts + (ts - bw) / 2, py = gy0 + ts + (ts - bw) / 2;
+  let tx = px, ty = py, autoT = 0, stuckT = 0, hitX = 0, hitY = 0;
+  const xs = [[0, 0], [0, 0], [0, 0], [0, 0]], ys = [[0, 0], [0, 0], [0, 0], [0, 0]];
+  const hx = [0, 0], hy = [0, 0];
+  function corners(into) {
+    const cx0 = Math.floor((px + 0.5 - gx0) / ts), cx1 = Math.floor((px + bw - 0.5 - gx0) / ts);
+    const cy0 = Math.floor((py + 0.5 - gy0) / ts), cy1 = Math.floor((py + bw - 0.5 - gy0) / ts);
+    into[0][0] = cx0; into[0][1] = cy0; into[1][0] = cx1; into[1][1] = cy0;
+    into[2][0] = cx0; into[2][1] = cy1; into[3][0] = cx1; into[3][1] = cy1;
+  }
+  function newTarget() {
+    for (let tries = 0; tries < 20; tries++) {
+      const cx = Math.floor(rand(1, COLS - 1)), cy = Math.floor(rand(1, ROWS - 1));
+      if (!solid(cx, cy)) { tx = gx0 + cx * ts + (ts - bw) / 2; ty = gy0 + cy * ts + (ts - bw) / 2; return; }
+    }
+  }
+  newTarget();
+  return {
+    press(x, y) { tx = clamp(x - bw / 2, gx0, gx0 + COLS * ts - bw); ty = clamp(y - bw / 2, gy0, gy0 + ROWS * ts - bw); autoT = -4; },
+    frame(dt, t) {
+      stage();
+      autoT += dt;
+      if (autoT > 3.5 || stuckT > 0.8) { autoT = 0; stuckT = 0; newTarget(); }
+      const ex = tx - px, ey = ty - py, d = len(ex, ey);
+      const sp = W * D.speed;
+      let vx = 0, vy = 0;
+      if (d > 1.5) { const s = Math.min(sp, d / dt) / d; vx = ex * s; vy = ey * s; }
+      const ox = px, oy = py;
+      px += vx * dt;                                   // ---- the x pass
+      corners(xs);
+      hitX = Math.max(0, hitX - dt * 3);
+      for (let i = 0; i < 4; i++) {
+        if (!solid(xs[i][0], xs[i][1])) continue;
+        if (vx > 0) px = Math.min(px, gx0 + xs[i][0] * ts - bw - 0.01);
+        else if (vx < 0) px = Math.max(px, gx0 + (xs[i][0] + 1) * ts + 0.01);
+        hitX = 1; hx[0] = xs[i][0]; hx[1] = xs[i][1];
+      }
+      py += vy * dt;                                   // ---- then the y pass
+      corners(ys);
+      hitY = Math.max(0, hitY - dt * 3);
+      for (let i = 0; i < 4; i++) {
+        if (!solid(ys[i][0], ys[i][1])) continue;
+        if (vy > 0) py = Math.min(py, gy0 + ys[i][1] * ts - bw - 0.01);
+        else if (vy < 0) py = Math.max(py, gy0 + (ys[i][1] + 1) * ts + 0.01);
+        hitY = 1; hy[0] = ys[i][0]; hy[1] = ys[i][1];
+      }
+      if (d > 1.5 && len(px - ox, py - oy) < sp * dt * 0.3) stuckT += dt; else stuckT = 0;
+      // the map
+      for (let cy = 0; cy < ROWS; cy++) for (let cx = 0; cx < COLS; cx++) {
+        const x = gx0 + cx * ts, y = gy0 + cy * ts;
+        if (solid(cx, cy)) { rect(x, y, ts, ts, "rgba(201,196,228,0.22)"); ctx.strokeStyle = "rgba(201,196,228,0.35)"; ctx.lineWidth = 1; ctx.strokeRect(x + 0.5, y + 0.5, ts - 1, ts - 1); }
+      }
+      if (hitX > 0) rect(gx0 + hx[0] * ts, gy0 + hx[1] * ts, ts, ts, "rgba(245,138,138," + hitX * 0.6 + ")");
+      if (hitY > 0) rect(gx0 + hy[0] * ts, gy0 + hy[1] * ts, ts, ts, "rgba(245,138,138," + hitY * 0.6 + ")");
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {                    // the sampled corners: amber x, green y
+        ctx.strokeStyle = "rgba(245,193,105,0.8)";
+        ctx.strokeRect(gx0 + xs[i][0] * ts + 2, gy0 + xs[i][1] * ts + 2, ts - 4, ts - 4);
+        ctx.strokeStyle = "rgba(155,226,138,0.8)";
+        ctx.strokeRect(gx0 + ys[i][0] * ts + 4, gy0 + ys[i][1] * ts + 4, ts - 8, ts - 8);
+      }
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 1; ctx.strokeRect(tx, ty, bw, bw);   // where it is going
+      rect(px, py, bw, bw, "rgba(138,217,245,0.25)");
+      ctx.strokeStyle = MOVER; ctx.lineWidth = 1.5; ctx.strokeRect(px, py, bw, bw);
+      dot(px + 0.5, py + 0.5, 2, TARGET); dot(px + bw - 0.5, py + 0.5, 2, TARGET);
+      dot(px + 0.5, py + bw - 0.5, 2, GOOD); dot(px + bw - 0.5, py + bw - 0.5, 2, GOOD);
+      mote(px + bw / 2, py + bw / 2, Math.atan2(vy, vx || 0.001), MOVER, Math.min(8, bw * 0.3));
+      if (Math.abs(vx) > 1 || Math.abs(vy) > 1) arrow(px + bw / 2, py + bw / 2, px + bw / 2 + vx * 0.25, py + bw / 2 + vy * 0.25, DIM);
+      label("x pass", gx0 + 4, gy0 + ts * 0.7, hitX > 0.5 ? HOT : TARGET);
+      label("y pass", gx0 + COLS * ts - 4, gy0 + ts * 0.7, hitY > 0.5 ? HOT : GOOD, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Xaxis", "Xtratight", "a body almost a full tile wide threading one-tile corridors — the corner reads have no slack at all", { body: 0.95, map: ["##########", "#....#...#", "#.##.#.#.#", "#.#....#.#", "#.#.##.#.#", "#...#....#", "##########"] });
+
+def("O", "Oneway", "contact", "one-way platforms catch you only falling, and only if your feet were above the top last frame; down+jump ignores them for N frames (Platform) — press above to jump, below to drop", function (u) {
+  var D = { g: 2.4,             // gravity, ×H per second²
+            jumpH: 0.3,         // jump apex, ×H (Jump's √(2gh))
+            plats: 3,           // how many ledges are stacked
+            gap: 0.2,           // the vertical spacing, ×H
+            dropFrames: 8,      // frames the platforms are ignored after a drop
+            label: "land ⇔ vy > 0 ∧ feetLast ≤ top ∧ feet ≥ top ∧ drop = 0" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, rect, mote, label, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // a ONE-WAY platform is a floor with a memory. it is solid only when the
+  // body is moving DOWN, and only if the feet were AT OR ABOVE its top on
+  // the previous frame — so a jump from below passes straight through and
+  // is caught on the way back. dropping through is the same rule with an
+  // exception: for a handful of frames after down+jump the platforms are
+  // not consulted at all. the dashed line is where the feet were last frame;
+  // the lamps are the four tests against the ledge just below them.
+  const R = 8, G = H * D.g, L = W * 0.28, Rr = W * 0.72;
+  let y = GY - R, vy = 0, feetLast = GY, standing = -1, dropN = 0, autoT = 0.5, climbing = true;
+  let lampV = false, lampLast = false, lampFeet = false, lampDrop = true, tested = -1;
+  function topOf(i) { return GY - (i + 1) * D.gap * H; }
+  function jump() { if (standing === null) return; vy = -Math.sqrt(2 * G * H * D.jumpH); standing = null; }
+  function drop() { if (standing === null || standing < 0) return; dropN = D.dropFrames; standing = null; y += 1; vy = 0; }
+  return {
+    press(px, py) { if (py < y) jump(); else drop(); autoT = -3; },
+    frame(dt, t) {
+      stage(); ground();
+      const x = W / 2 + Math.sin(t * 0.7) * W * 0.1;
+      autoT += dt;
+      if (standing !== null && autoT > 1) {           // the autopilot: up the stack, then down
+        autoT = 0;
+        if (climbing) { if (standing === D.plats - 1) climbing = false; else jump(); }
+        else { if (standing >= 0) drop(); else { climbing = true; jump(); } }
+      }
+      if (dropN > 0) dropN--;
+      if (standing === null) {
+        vy += G * dt;
+        const feet0 = y + R;
+        y += vy * dt;
+        const feet = y + R;
+        if (feet >= GY) { y = GY - R; vy = 0; standing = -1; }
+        else for (let i = 0; i < D.plats; i++) {
+          const top = topOf(i);
+          if (vy > 0 && feet0 <= top && feet >= top && dropN === 0 && x > L && x < Rr) { y = top - R; vy = 0; standing = i; break; }
+        }
+      }
+      const feet = y + R;
+      tested = -1;                                     // the ledge just below last frame's feet
+      for (let i = D.plats - 1; i >= 0; i--) if (topOf(i) >= feetLast - 0.5) { tested = i; break; }
+      const top = tested >= 0 ? topOf(tested) : GY;
+      lampV = vy > 0; lampLast = feetLast <= top + 0.5; lampFeet = feet >= top - 0.5; lampDrop = dropN === 0;
+      for (let i = 0; i < D.plats; i++) {
+        const py = topOf(i), on = i === tested;
+        rect(L, py, Rr - L, 4, on ? "rgba(245,193,105,0.35)" : "rgba(201,196,228,0.2)");
+        line(L, py, Rr, py, on ? TARGET : "rgba(201,196,228,0.7)", on ? 2 : 1.2);
+        for (let k = L + 6; k < Rr; k += 12) line(k, py + 4, k - 3, py + 8, DIM);   // hatched below only: solid from above
+      }
+      ctx.setLineDash([3, 3]); line(L - 10, feetLast, Rr + 10, feetLast, "rgba(138,217,245,0.6)", 1); ctx.setLineDash([]);
+      label("feet last", Rr - 4, feetLast - 4, "rgba(138,217,245,0.7)", "right");
+      line(x - R, feet, x + R, feet, MOVER, 1.5);
+      mote(x, y, vy < -1 ? -Math.PI / 2 : (vy > 1 ? Math.PI / 2 : 0));
+      if (dropN > 0) {
+        label("ignoring for " + dropN + " f", x, y + R + 14, HOT, "center");
+        rect(x - 16, y + R + 17, 32 * dropN / Math.max(1, D.dropFrames), 3, HOT);
+      }
+      const lamp = (on, txt, i) => { dot(10, 14 + i * 13, 4, on ? GOOD : HOT); label(txt, 18, 17 + i * 13, on ? GOOD : DIM); };
+      lamp(lampV, "vy > 0", 0); lamp(lampLast, "feetLast ≤ top", 1); lamp(lampFeet, "feet ≥ top", 2); lamp(lampDrop, "drop = 0", 3);
+      label(standing === null ? "airborne" : (standing < 0 ? "on the floor" : "on ledge " + (standing + 1)), W - 8, 14, standing === null ? DIM : GOOD, "right");
+      feetLast = feet;
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Oneway", "Openair", "six thin ledges in a tall shaft under low gravity — the same last-frame test, hopped up and dropped down", { plats: 6, gap: 0.12, g: 1.4 });
+
+def("O", "Oblique", "contact", "slopes: velocity is projected onto the ground's tangent; steeper than the limit and you slide (Normals, Avalanche) — press to set where it walks", function (u) {
+  var D = { maxAngle: 45,       // degrees: walkable up to here, sliding past it
+            speed: 0.3,         // walking speed along the tangent, ×W per second
+            slideG: 1.8,        // gravity along a too-steep slope, ×H per second²
+            friction: 2.5,      // how fast a slide dies on walkable ground, per second
+            hills: [[0, 0], [0.1, 0.02], [0.24, 0.2], [0.36, 0.22], [0.46, 0.06], [0.55, 0.08], [0.62, 0.4], [0.7, 0.42], [0.82, 0.16], [0.92, 0.17], [1, 0.02]],
+            label: "v = (v·t̂)·t̂ · θ = acos(n·up) · slide ⇔ θ > max" };
+  const { ctx, W, H, GY, stage, dot, ring, line, poly, arrow, mote, label, clamp, len, smooth, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a SLOPE is a floor whose normal is not straight up. the body's speed is
+  // kept along the surface's TANGENT (the normal turned 90°), so walking up
+  // a hill is the same code as walking on the flat, only tilted; the angle
+  // between the normal and up is the slope angle θ. past a MAX ANGLE the
+  // ground refuses to be a floor: input is ignored and gravity's component
+  // along the tangent, g·sin θ, drags the body downhill — the slide. the
+  // dashed cone at the foot is the allowed range of normals.
+  const R = 8, seg = { y: 0, tx: 1, ty: 0, nx: 0, ny: -1, th: 0 };
+  const pts = [];
+  for (const h of D.hills) pts.push([h[0] * W, GY - h[1] * H]);
+  const fill = pts.slice(); fill.push([W, H], [0, H]);
+  function terrain(x) {
+    let i = 0;
+    while (i < pts.length - 2 && pts[i + 1][0] < x) i++;
+    const a = pts[i], b = pts[i + 1];
+    const dx = b[0] - a[0], dy = b[1] - a[1], d = len(dx, dy) || 1;
+    const k = clamp((x - a[0]) / (dx || 1), 0, 1);
+    seg.y = a[1] + dy * k; seg.tx = dx / d; seg.ty = dy / d;
+    seg.nx = seg.ty; seg.ny = -seg.tx;                 // the tangent turned to point up
+    if (seg.ny > 0) { seg.nx = -seg.nx; seg.ny = -seg.ny; }
+    seg.th = Math.acos(clamp(-seg.ny, -1, 1)) * 180 / Math.PI;
+    return seg;
+  }
+  let x = W * 0.05, sp = 0, tx = W * 0.4, autoT = 0;
+  return {
+    press(px) { tx = clamp(px, W * 0.03, W * 0.97); autoT = -5; },
+    frame(dt, t) {
+      stage();
+      autoT += dt;
+      if (autoT > 4) { autoT = 0; tx = rand(W * 0.05, W * 0.95); }
+      const s = terrain(x), walkable = s.th <= D.maxAngle;
+      if (walkable) {
+        const want = clamp((tx - x) * 3, -W * D.speed, W * D.speed);
+        sp *= Math.exp(-D.friction * dt);
+        sp += (want - sp) * smooth(6, dt);
+      } else {
+        const downhill = s.ty > 0 ? 1 : -1;           // screen y grows downward
+        sp += downhill * D.slideG * H * Math.sin(s.th * Math.PI / 180) * dt;
+      }
+      sp = clamp(sp, -W * 1.5, W * 1.5);
+      x += sp * s.tx * dt;                             // velocity lives on the tangent
+      if (x < W * 0.03) { x = W * 0.03; sp = 0; }
+      if (x > W * 0.97) { x = W * 0.97; sp = 0; }
+      terrain(x);
+      poly(fill, "rgba(201,196,228,0.14)");
+      poly(pts.concat([[W, H + 2], [0, H + 2]]), "rgba(201,196,228,0.7)", 1.5);
+      const fy = s.y, bx = x + s.nx * R, by = fy + s.ny * R;
+      ring(tx, terrain(tx).y - 3, 4, TARGET, 1.5); terrain(x);
+      const lim = D.maxAngle * Math.PI / 180, cl = 30;   // the allowed cone
+      ctx.setLineDash([2, 3]);
+      line(x, fy, x + Math.sin(lim) * cl, fy - Math.cos(lim) * cl, DIM, 1);
+      line(x, fy, x - Math.sin(lim) * cl, fy - Math.cos(lim) * cl, DIM, 1);
+      ctx.setLineDash([]);
+      arrow(x, fy, x + s.nx * 26, fy + s.ny * 26, walkable ? GOOD : HOT);
+      if (Math.abs(sp) > 4) arrow(bx, by, bx + s.tx * sp * 0.25, by + s.ty * sp * 0.25, walkable ? MOVER : HOT);
+      const facing = sp >= 0 ? Math.atan2(s.ty, s.tx) : Math.atan2(-s.ty, -s.tx);
+      mote(bx, by, facing);
+      label("θ " + s.th.toFixed(0) + "° " + (walkable ? "≤" : ">") + " " + D.maxAngle + "°" + (walkable ? "" : "  slide"), clamp(x, 50, W - 50), fy - cl - 8, walkable ? GOOD : HOT, "center");
+      label("g·sin θ = " + (D.slideG * Math.sin(s.th * Math.PI / 180)).toFixed(2) + " H/s²", W - 8, 14, walkable ? DIM : HOT, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Oblique", "Overhang", "a 25° limit on ice — nearly every hill is too steep, and a slide takes forever to die", { maxAngle: 25, friction: 0.4, slideG: 1.2 });
+
+def("K", "Kerb", "contact", "step-up: a foot ray blocked while the knee ray is clear means lift the body over the step; too tall and it is refused — drag to scale the risers", function (u) {
+  var D = { riser: 1,           // the stair scale a drag scrubs (0.5 .. 1.6)
+            base: 0.016,        // the first riser's height, ×H; the i-th is i times that
+            knee: 0.075,        // knee height, ×H: the tallest step that can be climbed
+            steps: 5,           // how many risers
+            tread: 0.1,         // each tread's depth, ×W
+            speed: 0.28,        // walking speed, ×W per second
+            probe: 6,           // how far ahead the two rays look, px past the body
+            label: "foot ray hits ∧ knee ray clear ⇒ y = top · else blocked" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, arrow, mote, label, clamp, lerp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // stairs would stop a box dead: the riser is a wall. STEP-UP is two short
+  // rays cast forward — one at the feet, one at KNEE HEIGHT. if the foot
+  // ray hits something and the knee ray sails over it, the obstacle is a
+  // step, not a wall: lift the body to the top and walk on. if both rays
+  // hit, it is a wall — refused. the knee height is the whole design dial:
+  // it is why a hero climbs kerbs but not crates.
+  const R = 8;
+  let riser = D.riser, x = W * 0.08, dir = 1, y = GY, blockT = 0, lift = 0, liftY = 0, refused = -1;
+  function stepX(i) { return W * 0.3 + i * D.tread * W; }
+  function stepH(i) { return D.base * H * riser * (i + 1); }
+  function surf(px) { let s = GY; for (let i = 0; i < D.steps; i++) if (px >= stepX(i)) s -= stepH(i); return s; }
+  return {
+    drag: true,
+    press(px) { const r = lerp(0.5, 1.6, clamp(px / W, 0, 1)); if (Math.abs(r - riser) > 0.01) { riser = r; x = W * 0.08; dir = 1; y = GY; blockT = 0; refused = -1; } },
+    frame(dt, t) {
+      stage(); ground();
+      const kneeY = y - D.knee * H, footY = y - 2, ahead = x + dir * (R + D.probe), sAhead = surf(ahead);
+      const footHit = dir > 0 && sAhead < footY, kneeHit = dir > 0 && sAhead < kneeY;
+      lift = Math.max(0, lift - dt * 4);
+      if (blockT > 0) {
+        blockT -= dt;
+        if (blockT <= 0) { dir = -1; refused = -1; }
+      } else if (footHit && kneeHit) {                 // a wall: refused
+        blockT = 1.2;
+        for (let i = 0; i < D.steps; i++) if (Math.abs(stepX(i) - ahead) < R + D.probe + 1) refused = i;
+      } else if (footHit) {                            // a step: lift
+        liftY = y; y = sAhead; x += D.probe + 1; lift = 1;
+      } else {
+        x += dir * W * D.speed * dt;
+        const support = Math.min(surf(x - R), surf(x), surf(x + R));
+        if (support > y) y = Math.min(support, y + H * 1.5 * dt); else y = support;   // fall to the ground, settle
+        if (dir > 0 && x > W * 0.94) dir = -1;
+        if (dir < 0 && x < W * 0.08) dir = 1;
+      }
+      for (let i = 0; i < D.steps; i++) {              // the stairs
+        const sx = stepX(i), top = surf(sx + 1);
+        rect(sx, top, W - sx, GY - top, "rgba(201,196,228,0.12)");
+        line(sx, top, sx, top + stepH(i), i === refused ? HOT : BONE, i === refused ? 2.5 : 1.5);
+        line(sx, top, i + 1 < D.steps ? stepX(i + 1) : W, top, BONE, 1.5);
+        label((stepH(i) / H).toFixed(3), sx + 3, top + stepH(i) - 2, i === refused ? HOT : DIM);
+      }
+      line(0, GY - D.knee * H, W * 0.3, GY - D.knee * H, "rgba(155,226,138,0.35)", 1);
+      label("knee " + D.knee.toFixed(3) + " H", 4, GY - D.knee * H - 3, GOOD);
+      // the two probes
+      const fx0 = x + dir * R;
+      line(fx0, footY, ahead, footY, footHit ? HOT : GOOD, 2);
+      dot(ahead, footY, 2.5, footHit ? HOT : GOOD);
+      label("foot", fx0 + dir * 2, footY + 11, footHit ? HOT : GOOD, dir > 0 ? "left" : "right");
+      line(fx0, kneeY, ahead, kneeY, kneeHit ? HOT : GOOD, 2);
+      dot(ahead, kneeY, 2.5, kneeHit ? HOT : GOOD);
+      label("knee", fx0 + dir * 2, kneeY - 4, kneeHit ? HOT : GOOD, dir > 0 ? "left" : "right");
+      if (lift > 0) { arrow(x - 14, liftY, x - 14, y, "rgba(155,226,138," + lift + ")"); label("lift", x - 18, (liftY + y) / 2 + 3, GOOD, "right"); }
+      if (blockT > 0) label("too tall: " + (refused >= 0 ? (stepH(refused) / H).toFixed(3) : "") + " > knee", ahead, kneeY - 16, HOT, "center");
+      const bob = Math.abs(Math.sin(t * 12)) * 1.5 * (blockT > 0 ? 0 : 1);
+      mote(x, y - R - bob, dir > 0 ? 0 : Math.PI);
+      label("riser × " + riser.toFixed(2) + "  (drag)", W - 8, 14, TARGET, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Kerb", "Kneehigh", "a taller knee climbs taller steps — the same two rays, only the second one is cast higher", { knee: 0.11, base: 0.02 });
+
+def("W", "Whiskers", "contact", "a bundle of short rays — two down, left, right, up — with a tolerance lights the onFloor / onWall / onCeiling lamps (Xmarks, Ninja) — press to send it", function (u) {
+  var D = { len: 0.05,          // whisker length past the body, ×H
+            tol: 0.012,         // the extra grace added to every whisker, ×H
+            g: 2.2,             // gravity, ×H per second²
+            jumpH: 0.24,        // jump apex, ×H
+            run: 0.35,          // run speed, ×W per second
+            slideCap: 0.14,     // wall-slide fall cap, ×H per second
+            cling: 0.35,        // seconds on a wall before it kicks off
+            label: "onFloor ⇔ ray↓ hit ≤ len + tol · lamps = verbs" };
+  const { ctx, W, H, GY, stage, dot, ring, line, rect, mote, label, clamp, smooth, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a character controller rarely asks "am I overlapping?" — it asks "is
+  // there floor just under my feet?" WHISKERS are short rays cast from the
+  // body's edges: two down (so one foot on a ledge still counts), one each
+  // way, one up. a hit within the whisker's length plus a TOLERANCE sets a
+  // flag, and the flags are the grammar: onFloor lets you jump, onWall lets
+  // you slide and kick off, onCeiling ends a jump early. longer whiskers
+  // mean earlier detection — the lamps light before the body touches.
+  const R = 8, solids = [];
+  const roomL = W * 0.08, roomR = W * 0.92, ceil = H * 0.12;
+  solids.push([0, 0, W, ceil], [0, 0, roomL, H], [roomR, 0, W - roomR, H], [0, GY, W, H - GY]);
+  solids.push([W * 0.4, GY - H * 0.22, W * 0.2, H * 0.06]);
+  let x = W * 0.3, y = GY - R, vx = 0, vy = 0, tx = W * 0.7, ty = GY - R, autoT = 0, wallT = 0;
+  let onFloor = false, onWall = 0, onCeil = false;
+  const rays = [{ ox: 0, oy: 0, dx: 0, dy: 1, d: 0, hit: false }, { ox: 0, oy: 0, dx: 0, dy: 1, d: 0, hit: false },
+                { ox: 0, oy: 0, dx: -1, dy: 0, d: 0, hit: false }, { ox: 0, oy: 0, dx: 1, dy: 0, d: 0, hit: false },
+                { ox: 0, oy: 0, dx: 0, dy: -1, d: 0, hit: false }];
+  function cast(r) {                                   // an axis ray against axis-aligned solids
+    let best = 1e9;
+    for (const s of solids) {
+      if (r.dx === 0) {
+        if (r.ox < s[0] || r.ox > s[0] + s[2]) continue;
+        const d = r.dy > 0 ? s[1] - r.oy : r.oy - (s[1] + s[3]);
+        if (d >= -0.5 && d < best) best = d;
+      } else {
+        if (r.oy < s[1] || r.oy > s[1] + s[3]) continue;
+        const d = r.dx > 0 ? s[0] - r.ox : r.ox - (s[0] + s[2]);
+        if (d >= -0.5 && d < best) best = d;
+      }
+    }
+    r.d = Math.max(0, best);
+    r.hit = best <= (D.len + D.tol) * H;
+  }
+  function jump() { vy = -Math.sqrt(2 * H * D.g * H * D.jumpH); }
+  return {
+    press(px, py) { tx = clamp(px, roomL + R, roomR - R); ty = clamp(py, ceil + R, GY - R); autoT = -4; },
+    frame(dt, t) {
+      stage();
+      autoT += dt;
+      if (autoT > 3) { autoT = 0; tx = rand(roomL + R * 2, roomR - R * 2); ty = rand(ceil + R * 2, GY - R); }
+      const G = H * D.g, want = clamp((tx - x) * 3, -W * D.run, W * D.run), dir = want > 0 ? 1 : -1;
+      const pushingWall = onWall !== 0 && onWall === dir && Math.abs(tx - x) > 6;
+      vx += (want - vx) * smooth(onFloor ? 10 : 4, dt);
+      if (onFloor && ((ty < y - 24 && Math.abs(tx - x) < W * 0.35) || pushingWall)) jump();
+      vy += G * dt;
+      if (onWall && !onFloor && vy > 0) {              // the wall lamp is lit: slide, then kick
+        vy = Math.min(vy, H * D.slideCap);
+        wallT += dt;
+        if (wallT > D.cling) { jump(); vx = -onWall * W * D.run; wallT = 0; }
+      } else wallT = 0;
+      x += vx * dt;
+      for (const s of solids) {                        // resolve x against the room
+        if (x + R > s[0] && x - R < s[0] + s[2] && y + R > s[1] && y - R < s[1] + s[3]) { if (vx > 0) x = s[0] - R; else x = s[0] + s[2] + R; vx = 0; }
+      }
+      y += vy * dt;
+      for (const s of solids) {                        // then y
+        if (x + R > s[0] && x - R < s[0] + s[2] && y + R > s[1] && y - R < s[1] + s[3]) { if (vy > 0) y = s[1] - R; else y = s[1] + s[3] + R; vy = 0; }
+      }
+      rays[0].ox = x - R * 0.7; rays[0].oy = y + R; rays[1].ox = x + R * 0.7; rays[1].oy = y + R;
+      rays[2].ox = x - R; rays[2].oy = y; rays[3].ox = x + R; rays[3].oy = y; rays[4].ox = x; rays[4].oy = y - R;
+      for (const r of rays) cast(r);
+      onFloor = rays[0].hit || rays[1].hit;
+      onWall = rays[2].hit ? -1 : (rays[3].hit ? 1 : 0);
+      onCeil = rays[4].hit;
+      for (const s of solids) { rect(s[0], s[1], s[2], s[3], "rgba(201,196,228,0.14)"); }
+      line(roomL, ceil, roomR, ceil, BONE, 1.5); line(roomL, ceil, roomL, GY, BONE, 1.5); line(roomR, ceil, roomR, GY, BONE, 1.5); line(roomL, GY, roomR, GY, BONE, 1.5);
+      const p = solids[4]; ctx.strokeStyle = BONE; ctx.lineWidth = 1.5; ctx.strokeRect(p[0], p[1], p[2], p[3]);
+      ring(tx, ty, 4, TARGET, 1.5);
+      const L = D.len * H, T = D.tol * H;
+      for (const r of rays) {                          // the whiskers: solid to len, faint to len + tol
+        const c = r.hit ? HOT : GOOD;
+        line(r.ox, r.oy, r.ox + r.dx * L, r.oy + r.dy * L, c, 1.5);
+        line(r.ox + r.dx * L, r.oy + r.dy * L, r.ox + r.dx * (L + T), r.oy + r.dy * (L + T), r.hit ? "rgba(245,138,138,0.4)" : "rgba(155,226,138,0.35)", 1);
+        if (r.hit) dot(r.ox + r.dx * Math.min(r.d, L + T), r.oy + r.dy * Math.min(r.d, L + T), 2.5, HOT);
+      }
+      if (onWall && !onFloor && vy > 0) label("slide", x - onWall * 14, y + 3, HOT, onWall > 0 ? "right" : "left");
+      mote(x, y, vx < 0 ? Math.PI : 0);
+      const lamp = (on, txt, i) => { const lx = W * (0.2 + i * 0.27); dot(lx, ceil / 2, 4, on ? GOOD : "rgba(232,229,244,0.15)"); label(txt, lx + 8, ceil / 2 + 3, on ? GOOD : DIM); };
+      lamp(onFloor, "onFloor", 0); lamp(onWall !== 0, "onWall", 1); lamp(onCeil, "onCeiling", 2);
+      label("len " + L.toFixed(0) + " + tol " + T.toFixed(0) + " px", 8, H - 22, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Whiskers", "Wide", "whiskers three times as long with a floaty tolerance — the floor lamp lights well before the feet arrive", { len: 0.14, tol: 0.04, jumpH: 0.3 });
+
+def("Q", "Quadtree", "contact", "broad phase: a spatial hash puts every body in a grid cell, and only neighbours in the same or adjacent cells are tested (Swarm's crowd) — press to add a body", function (u) {
+  var D = { n: 40,              // bodies at the start
+            cell: 0.1,          // cell size, ×W
+            r: 4,               // body radius, px
+            speed: 0.22,        // their speed, ×W per second
+            label: "cell = ⌊x/s⌋ + ⌊y/s⌋·cols · test the 3×3 only" };
+  const { ctx, W, H, stage, dot, line, rect, label, rng, rand, len, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // testing every pair is n(n−1)/2 tests — 40 bodies is 780, 400 bodies is
+  // 79,800. the BROAD PHASE cuts that by asking "who could possibly touch?"
+  // first. a SPATIAL HASH drops each body into a grid cell by integer
+  // division of its position; a body can only touch bodies in its own cell
+  // or the eight around it, so those are the only pairs the exact test ever
+  // sees. the grey lines are the pairs actually tested this frame; the
+  // count at the top is the saving. a quadtree is the same idea with cells
+  // that split where it is crowded.
+  const seed = rng(5), cs = W * D.cell;
+  const cols = Math.max(1, Math.ceil(W / cs)), rows = Math.max(1, Math.ceil(H / cs));
+  const buckets = [];
+  for (let i = 0; i < cols * rows; i++) buckets.push([]);
+  const bodies = [];
+  function add(x, y) {
+    if (bodies.length >= 200) return;
+    const a = rand(0, 6.283);
+    bodies.push({ x: x, y: y, vx: Math.cos(a) * W * D.speed, vy: Math.sin(a) * W * D.speed, hot: 0 });
+  }
+  for (let i = 0; i < D.n; i++) add(D.r + seed() * (W - 2 * D.r), D.r + seed() * (H - 24 - 2 * D.r));
+  const NB = [[0, 0], [1, 0], [-1, 1], [0, 1], [1, 1]];   // half the 3×3: every pair once
+  let tests = 0;
+  return {
+    press(x, y) { add(x, y); },
+    frame(dt, t) {
+      stage();
+      const r = D.r;
+      for (const b of bodies) {
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        if (b.x < r) { b.x = r; b.vx = Math.abs(b.vx); } else if (b.x > W - r) { b.x = W - r; b.vx = -Math.abs(b.vx); }
+        if (b.y < r) { b.y = r; b.vy = Math.abs(b.vy); } else if (b.y > H - r) { b.y = H - r; b.vy = -Math.abs(b.vy); }
+        b.hot = Math.max(0, b.hot - dt * 4);
+        b.cx = Math.min(cols - 1, Math.max(0, Math.floor(b.x / cs)));
+        b.cy = Math.min(rows - 1, Math.max(0, Math.floor(b.y / cs)));
+      }
+      for (const k of buckets) k.length = 0;
+      for (const b of bodies) buckets[b.cx + b.cy * cols].push(b);
+      // the grid, and the focus body's neighbourhood
+      ctx.strokeStyle = "rgba(201,196,228,0.18)"; ctx.lineWidth = 1; ctx.beginPath();
+      for (let i = 1; i < cols; i++) { ctx.moveTo(i * cs, 0); ctx.lineTo(i * cs, H); }
+      for (let j = 1; j < rows; j++) { ctx.moveTo(0, j * cs); ctx.lineTo(W, j * cs); }
+      ctx.stroke();
+      const f = bodies[0];
+      if (f) for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+        const cx = f.cx + i, cy = f.cy + j;
+        if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) continue;
+        rect(cx * cs, cy * cs, cs, cs, i === 0 && j === 0 ? "rgba(245,193,105,0.22)" : "rgba(245,193,105,0.09)");
+      }
+      tests = 0;
+      ctx.strokeStyle = "rgba(232,229,244," + Math.min(0.25, 9 / Math.max(1, bodies.length)).toFixed(3) + ")"; ctx.lineWidth = 1; ctx.beginPath();
+      for (let cy = 0; cy < rows; cy++) for (let cx = 0; cx < cols; cx++) {
+        const A = buckets[cx + cy * cols];
+        if (!A.length) continue;
+        for (const o of NB) {
+          const nx = cx + o[0], ny = cy + o[1];
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const B = buckets[nx + ny * cols], same = o[0] === 0 && o[1] === 0;
+          for (let i = 0; i < A.length; i++) for (let j = same ? i + 1 : 0; j < B.length; j++) {
+            const a = A[i], b = B[j];
+            tests++;
+            ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+            const dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy);
+            if (d < 2 * r && d > 0.001) {              // the narrow phase: the exact circle test
+              const nx2 = dx / d, ny2 = dy / d, push = (2 * r - d) / 2;
+              a.x -= nx2 * push; a.y -= ny2 * push; b.x += nx2 * push; b.y += ny2 * push;
+              const va = a.vx * nx2 + a.vy * ny2, vb = b.vx * nx2 + b.vy * ny2;
+              if (va - vb > 0) { a.vx += (vb - va) * nx2; a.vy += (vb - va) * ny2; b.vx += (va - vb) * nx2; b.vy += (va - vb) * ny2; }
+              a.hot = b.hot = 1;
+            }
+          }
+        }
+      }
+      ctx.stroke();
+      for (let i = 0; i < bodies.length; i++) {
+        const b = bodies[i];
+        dot(b.x, b.y, r, b.hot > 0 ? HOT : (i === 0 ? TARGET : MOVER));
+      }
+      const n = bodies.length, all = n * (n - 1) / 2;
+      rect(0, H - 22, W, 22, "rgba(19,16,32,0.7)");
+      rect(0, 0, W, 20, "rgba(19,16,32,0.7)");
+      label("tests: " + tests + " of " + all + "  (" + (all ? (100 * tests / all).toFixed(0) : 0) + "%)", 8, 14, GOOD);
+      label(n + " bodies · " + cols + "×" + rows + " cells", W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Quadtree", "Quorum", "three times the bodies, smaller and in bigger cells — more pairs per cell, still a fraction of all-pairs", { n: 120, cell: 0.14, r: 3 });
+
+def("V", "Volume", "contact", "trigger volumes overlap without pushing back; a wasInside flag turns that into ENTER / STAY / EXIT events (Zones) — press to send the mote", function (u) {
+  var D = { speed: 0.22,        // the mote's speed, ×W per second
+            log: 6,             // lines of the event ticker
+            show: "rcs",        // which zones exist: r rect, c circle, s sector
+            rect: [0.06, 0.12, 0.26, 0.3],               // x, y, w, h — ×W, ×H
+            circle: [0.7, 0.66, 0.13],                   // cx, cy — ×W, ×H; r ×W
+            sector: [0.42, 0.9, 0.3, -2.6, -1.1],        // cx, cy, r, a0, a1 (radians)
+            label: "enter = in∧¬was · stay = in∧was · exit = ¬in∧was" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, rand, len, clamp, wrapAngle, MOVER, TARGET, GOOD, HOT, MAGIC, DIM } = u;
+  // a TRIGGER is a collider that never pushes: it only knows whether you are
+  // inside. the whole event system is one remembered bit per zone,
+  // wasInside — compare it with this frame's answer and you get ENTER (in,
+  // wasn't), STAY (in, was) and EXIT (not in, was). the inside test itself
+  // is the cheapest shape test you have: a rect, a circle, a sector (a
+  // circle plus an angle check). doors, checkpoints, ambushes and music
+  // changes are all this card.
+  const zones = [];
+  if (D.show.indexOf("r") >= 0) zones.push({ kind: "rect", name: "rect", was: false, stay: 0 });
+  if (D.show.indexOf("c") >= 0) zones.push({ kind: "circle", name: "circle", was: false, stay: 0 });
+  if (D.show.indexOf("s") >= 0) zones.push({ kind: "sector", name: "sector", was: false, stay: 0 });
+  const log = [];
+  let x = W * 0.5, y = H * 0.7, tx = W * 0.2, ty = H * 0.35, autoT = 0, now = 0;
+  function inside(z) {
+    if (z.kind === "rect") { const r = D.rect; return x > r[0] * W && x < (r[0] + r[2]) * W && y > r[1] * H && y < (r[1] + r[3]) * H; }
+    if (z.kind === "circle") { const c = D.circle; return len(x - c[0] * W, y - c[1] * H) < c[2] * W; }
+    const s = D.sector, dx = x - s[0] * W, dy = y - s[1] * H;
+    if (len(dx, dy) > s[2] * W) return false;
+    const mid = (s[3] + s[4]) / 2, half = Math.abs(s[4] - s[3]) / 2;
+    return Math.abs(wrapAngle(Math.atan2(dy, dx) - mid)) < half;
+  }
+  function post(txt, c) { log.push({ txt: txt, c: c, t: now }); if (log.length > D.log) log.shift(); }
+  return {
+    press(px, py) { tx = px; ty = py; autoT = -4; },
+    frame(dt, t) {
+      stage();
+      now += dt; autoT += dt;
+      if (autoT > 3) { autoT = 0; tx = rand(W * 0.06, W * 0.94); ty = rand(H * 0.1, H * 0.86); }
+      const ex = tx - x, ey = ty - y, d = len(ex, ey);
+      if (d > 2) { const s = Math.min(W * D.speed, d / dt) / d; x += ex * s * dt; y += ey * s * dt; }
+      for (const z of zones) {
+        const inn = inside(z);
+        if (inn && !z.was) { post("enter " + z.name, GOOD); z.stay = 0; }
+        else if (!inn && z.was) post("exit " + z.name + " · stayed " + z.stay.toFixed(1) + " s", HOT);
+        if (inn) z.stay += dt;
+        z.was = inn;
+        z.in = inn;
+      }
+      for (const z of zones) {                         // draw each zone, lit while inside
+        const fillC = z.in ? "rgba(155,226,138,0.22)" : "rgba(201,160,245,0.08)", edge = z.in ? GOOD : MAGIC;
+        ctx.fillStyle = fillC; ctx.strokeStyle = edge; ctx.lineWidth = 1.5;
+        let lx = 0, ly = 0;
+        if (z.kind === "rect") { const r = D.rect; ctx.beginPath(); ctx.rect(r[0] * W, r[1] * H, r[2] * W, r[3] * H); lx = r[0] * W + 4; ly = r[1] * H + 12; }
+        else if (z.kind === "circle") { const c = D.circle; ctx.beginPath(); ctx.arc(c[0] * W, c[1] * H, c[2] * W, 0, TAU); lx = c[0] * W - c[2] * W + 4; ly = c[1] * H - c[2] * W + 12; }
+        else { const s = D.sector; ctx.beginPath(); ctx.moveTo(s[0] * W, s[1] * H); ctx.arc(s[0] * W, s[1] * H, s[2] * W, s[3], s[4]); ctx.closePath(); lx = s[0] * W + 4; ly = s[1] * H - 6; }
+        ctx.fill(); ctx.stroke();
+        label(z.name + (z.in ? " · stay " + z.stay.toFixed(1) + " s" : ""), lx, ly, z.in ? GOOD : "rgba(201,160,245,0.7)");
+      }
+      ring(tx, ty, 4, TARGET, 1.5);
+      mote(x, y, Math.atan2(ey, ex || 0.001));
+      const lx = W - 8;                                // the ticker, newest at the bottom
+      for (let i = 0; i < log.length; i++) {
+        const e = log[i], age = now - e.t, a = clamp(1.2 - age * 0.12, 0.25, 1);
+        ctx.globalAlpha = a;
+        label(e.txt, lx, 14 + i * 12, e.c, "right");
+        ctx.globalAlpha = 1;
+      }
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Volume", "Vast", "one enormous circle and a slow mote — enter and exit are rare; the stay timer is the whole story", { show: "c", circle: [0.5, 0.5, 0.36], speed: 0.07 });
+
+def("I", "Iframes", "contact", "hitbox vs hurtbox: the swing's hitbox exists only on its active frames, and the hurtbox switches off during i-frames after a hit (Hitstop) — press to swing", function (u) {
+  var D = { swing: 24,          // frames in a whole swing, at 60 per second
+            active: [8, 13],    // the frames the hitbox exists (inclusive)
+            iframes: 40,        // invincibility frames after a hit
+            every: 2.0,         // the autopilot swings this often, seconds
+            reach: 0.2,         // the hitbox's reach, ×W
+            label: "hit ⇔ frame ∈ active ∧ hitbox ∩ hurtbox ∧ ¬invincible" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, rect, mote, label, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, DIM } = u;
+  // fighting games count in FRAMES. a swing is a little timeline: startup,
+  // a few ACTIVE frames when the HITBOX (red) actually exists, then
+  // recovery. the defender carries a HURTBOX (blue); a hit is a box overlap
+  // on an active frame — nothing else counts. after a hit the hurtbox is
+  // switched off for a run of I-FRAMES (the flicker), so one swing cannot
+  // land twice and a fallen fighter gets up unmolested. the strip at the
+  // top is the swing's timeline; the bar under the defender is the i-frame
+  // countdown.
+  const R = 8, ax = W * 0.3;
+  let swingF = 1e9, invF = 0, autoT = 1, hits = 0, whiffs = 0, hitThis = false, flash = 0, fx = 0, fy = 0, note = "", noteT = 0;
+  function swing() { if (swingF < D.swing) return; swingF = 0; hitThis = false; }
+  return {
+    press() { swing(); autoT = -1; },
+    frame(dt, t) {
+      stage(); ground();
+      autoT += dt;
+      if (autoT > D.every) { autoT = 0; swing(); }
+      swingF += dt * 60; invF = Math.max(0, invF - dt * 60); flash = Math.max(0, flash - dt * 3); noteT = Math.max(0, noteT - dt);
+      const f = Math.floor(swingF), swinging = swingF < D.swing;
+      const activeNow = swinging && f >= D.active[0] && f <= D.active[1];
+      const dx = W * 0.58 + Math.sin(t * 0.9) * W * 0.09, dy = GY - R;   // the defender drifts in and out of reach
+      const hb = [ax + R, GY - R * 2.6, W * D.reach, R * 2.6];             // hitbox: in front of the attacker
+      const ub = [dx - R * 1.2, dy - R * 1.3, R * 2.4, R * 2.6];           // hurtbox
+      const overlap = hb[0] < ub[0] + ub[2] && hb[0] + hb[2] > ub[0] && hb[1] < ub[1] + ub[3] && hb[1] + hb[3] > ub[1];
+      if (activeNow && !hitThis) {
+        if (overlap && invF <= 0) { hits++; invF = D.iframes; hitThis = true; flash = 1; fx = (Math.max(hb[0], ub[0]) + Math.min(hb[0] + hb[2], ub[0] + ub[2])) / 2; fy = dy - R; note = "hit"; noteT = 0.8; }
+        else if (overlap && invF > 0) { note = "blocked by i-frames"; noteT = 0.5; }
+        else if (f === D.active[1]) { whiffs++; note = "whiff"; noteT = 0.6; hitThis = true; }
+      }
+      // the frame strip
+      const sx0 = W * 0.1, sw = W * 0.8 / D.swing, sy0 = 10;
+      for (let i = 0; i < D.swing; i++) {
+        const act = i >= D.active[0] && i <= D.active[1];
+        rect(sx0 + i * sw + 0.5, sy0, sw - 1, 7, act ? "rgba(245,138,138,0.7)" : "rgba(201,196,228,0.2)");
+      }
+      if (swinging) { rect(sx0 + f * sw, sy0 - 2, sw, 11, "rgba(232,229,244,0.9)"); label("frame " + f + " / " + D.swing, sx0 + f * sw + sw / 2, sy0 + 21, activeNow ? HOT : DIM, "center"); }
+      else label("active frames " + D.active[0] + "–" + D.active[1], W / 2, sy0 + 21, DIM, "center");
+      // the attacker and the sword
+      const k = swinging ? swingF / D.swing : 0, ang = -1.9 + k * 2.4;
+      line(ax, GY - R, ax + Math.cos(ang) * W * D.reach * 0.9, GY - R + Math.sin(ang) * W * D.reach * 0.9, activeNow ? HOT : BONE, activeNow ? 3 : 2);
+      mote(ax, GY - R, 0, HOT);
+      if (activeNow) { rect(hb[0], hb[1], hb[2], hb[3], "rgba(245,138,138,0.25)"); ctx.strokeStyle = HOT; ctx.lineWidth = 1.5; ctx.strokeRect(hb[0], hb[1], hb[2], hb[3]); label("hitbox", hb[0] + 3, hb[1] - 4, HOT); }
+      else { ctx.setLineDash([2, 4]); ctx.strokeStyle = "rgba(245,138,138,0.3)"; ctx.lineWidth = 1; ctx.strokeRect(hb[0], hb[1], hb[2], hb[3]); ctx.setLineDash([]); }
+      // the defender: flickers while invincible, hurtbox off
+      const visible = invF <= 0 || Math.floor(invF / 3) % 2 === 0;
+      if (invF <= 0) { rect(ub[0], ub[1], ub[2], ub[3], "rgba(138,217,245,0.18)"); ctx.strokeStyle = MOVER; ctx.lineWidth = 1.5; ctx.strokeRect(ub[0], ub[1], ub[2], ub[3]); label("hurtbox", ub[0] + ub[2] + 3, ub[1] + 8, MOVER); }
+      else { ctx.setLineDash([2, 4]); ctx.strokeStyle = "rgba(201,160,245,0.5)"; ctx.lineWidth = 1; ctx.strokeRect(ub[0], ub[1], ub[2], ub[3]); ctx.setLineDash([]); label("hurtbox off", ub[0] + ub[2] + 3, ub[1] + 8, MAGIC); }
+      if (visible) mote(dx, dy, Math.PI);
+      if (invF > 0) {
+        rect(dx - 18, GY + 12, 36, 4, "rgba(201,160,245,0.25)");
+        rect(dx - 18, GY + 12, 36 * invF / Math.max(1, D.iframes), 4, MAGIC);
+        label("i-frames " + Math.ceil(invF), dx, GY + 26, MAGIC, "center");
+      }
+      if (flash > 0) { ring(fx, fy, 6 + (1 - flash) * 18, "rgba(245,138,138," + flash + ")", 2); }
+      if (noteT > 0) label(note, (ax + dx) / 2, GY - R * 4.5, note === "hit" ? HOT : (note === "whiff" ? DIM : MAGIC), "center");
+      label("hits " + hits + " · whiffs " + whiffs, W - 8, H - 22, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Iframes", "Invincible", "a two-frame active window against a long invulnerability — swings come often and hits almost never land", { active: [10, 11], iframes: 150, every: 1.2 });
+
+def("E", "Elastic", "contact", "elastic collision: two balls trade velocity along the line between centres, scaled by mass and restitution e (Newton's cradle, in 2D) — press to cue the mote", function (u) {
+  var D = { balls: 2,           // balls on the table (the mote is the first)
+            e: 0.85,            // restitution: 1 is a perfect bounce, 0 is clay
+            m: [1, 2.5, 1, 1, 1],   // masses; radius grows with √m
+            cue: 0.75,          // cue speed, ×W per second
+            friction: 0.5,      // rolling friction, per second
+            r: 8,               // the unit ball's radius, px
+            label: "j = −(1+e)(vᵣ·n)/(1/m₁+1/m₂) · v ± j·n/m" };
+  const { ctx, W, H, stage, dot, ring, line, rect, arrow, mote, label, rand, len, clamp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // when two round things collide, only the velocity ALONG THE NORMAL (the
+  // line between centres) changes; the sideways part is untouched, which is
+  // why a glancing shot barely deflects. the IMPULSE j is one number: the
+  // approach speed along the normal, times (1 + e), divided by the sum of
+  // inverse masses. each ball gets j over its own mass — the heavy one
+  // barely moves, the light one flies. the frozen overlay shows the last
+  // hit: faint arrows before, solid arrows after, the normal in bone.
+  const tx0 = W * 0.06, ty0 = H * 0.1, tw = W * 0.88, th = H * 0.7;
+  const balls = [];
+  for (let i = 0; i < Math.min(D.balls, D.m.length); i++) {
+    const m = D.m[i], r = D.r * Math.sqrt(m);
+    let x = tx0 + tw * 0.68, y = ty0 + th / 2;
+    if (i === 0) x = tx0 + tw * 0.25;
+    else { const row = i === 1 ? 0 : (i <= 3 ? 1 : 2), col = i === 1 ? 0 : (i - 2) % 2; x += row * r * 2.2; y += (col - 0.5) * r * 2.4 * (row ? 1 : 0); }
+    balls.push({ x: x, y: y, vx: 0, vy: 0, m: m, r: r });
+  }
+  const last = { on: 0, x: 0, y: 0, nx: 0, ny: 0, a: null, b: null, a1x: 0, a1y: 0, b1x: 0, b1y: 0, a2x: 0, a2y: 0, b2x: 0, b2y: 0, j: 0 };
+  let restT = 0;
+  function cue(px, py) { const b = balls[0], dx = px - b.x, dy = py - b.y, d = len(dx, dy) || 1; b.vx = dx / d * W * D.cue; b.vy = dy / d * W * D.cue; }
+  return {
+    press(px, py) { cue(px, py); restT = -2; },
+    frame(dt, t) {
+      stage();
+      let moving = false;
+      for (const b of balls) {
+        b.vx *= Math.exp(-D.friction * dt); b.vy *= Math.exp(-D.friction * dt);
+        b.x += b.vx * dt; b.y += b.vy * dt;
+        if (b.x < tx0 + b.r) { b.x = tx0 + b.r; b.vx = Math.abs(b.vx) * D.e; }
+        if (b.x > tx0 + tw - b.r) { b.x = tx0 + tw - b.r; b.vx = -Math.abs(b.vx) * D.e; }
+        if (b.y < ty0 + b.r) { b.y = ty0 + b.r; b.vy = Math.abs(b.vy) * D.e; }
+        if (b.y > ty0 + th - b.r) { b.y = ty0 + th - b.r; b.vy = -Math.abs(b.vy) * D.e; }
+        if (len(b.vx, b.vy) > 3) moving = true;
+      }
+      for (let i = 0; i < balls.length; i++) for (let j = i + 1; j < balls.length; j++) {
+        const a = balls[i], b = balls[j];
+        let dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy);
+        if (d >= a.r + b.r) continue;
+        if (d < 0.001) { dx = 1; dy = 0; d = 1; }
+        const nx = dx / d, ny = dy / d, ia = 1 / a.m, ib = 1 / b.m;
+        const push = (a.r + b.r - d) / (ia + ib);      // separate by inverse mass
+        a.x -= nx * push * ia; a.y -= ny * push * ia; b.x += nx * push * ib; b.y += ny * push * ib;
+        const vrel = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;   // approach speed along the normal
+        if (vrel <= 0) continue;
+        const jj = (1 + D.e) * vrel / (ia + ib);
+        last.a1x = a.vx; last.a1y = a.vy; last.b1x = b.vx; last.b1y = b.vy;
+        a.vx -= jj * nx * ia; a.vy -= jj * ny * ia; b.vx += jj * nx * ib; b.vy += jj * ny * ib;
+        last.on = 1; last.x = a.x + nx * a.r; last.y = a.y + ny * a.r; last.nx = nx; last.ny = ny; last.a = a; last.b = b;
+        last.a2x = a.vx; last.a2y = a.vy; last.b2x = b.vx; last.b2y = b.vy; last.j = jj;
+      }
+      if (!moving) { restT += dt; if (restT > 1.2) { restT = 0; const o = balls[1] || balls[0]; cue(o.x + rand(-o.r, o.r) * 0.8, o.y + rand(-o.r, o.r) * 0.8); } }
+      else restT = Math.min(restT, 0);
+      last.on = Math.max(0, last.on - dt * 0.6);
+      rect(tx0, ty0, tw, th, "rgba(155,226,138,0.07)");
+      ctx.strokeStyle = BONE; ctx.lineWidth = 3; ctx.strokeRect(tx0, ty0, tw, th);
+      if (last.on > 0) {                               // the frozen overlay of the last hit
+        ctx.globalAlpha = Math.min(1, last.on * 2);
+        const L = Math.max(W, H);
+        line(last.x - last.nx * L, last.y - last.ny * L, last.x + last.nx * L, last.y + last.ny * L, "rgba(201,196,228,0.35)", 1);
+        ctx.setLineDash([3, 4]); line(last.x - last.ny * 30, last.y + last.nx * 30, last.x + last.ny * 30, last.y - last.nx * 30, DIM, 1); ctx.setLineDash([]);
+        dot(last.x, last.y, 3, BONE);
+        const s = 0.22, a = last.a, b = last.b;
+        arrow(a.x, a.y, a.x + last.a1x * s, a.y + last.a1y * s, "rgba(138,217,245,0.3)");
+        arrow(b.x, b.y, b.x + last.b1x * s, b.y + last.b1y * s, "rgba(245,193,105,0.3)");
+        arrow(a.x, a.y, a.x + last.a2x * s, a.y + last.a2y * s, MOVER);
+        arrow(b.x, b.y, b.x + last.b2x * s, b.y + last.b2y * s, TARGET);
+        label("n", last.x + last.nx * 22 + 4, last.y + last.ny * 22, BONE);
+        label("j = " + (last.j / W).toFixed(2) + " W·m/s", last.x, last.y - 14, HOT, "center");
+        ctx.globalAlpha = 1;
+      }
+      for (let i = 0; i < balls.length; i++) {
+        const b = balls[i];
+        if (i === 0) mote(b.x, b.y, Math.atan2(b.vy, b.vx || 0.001), MOVER, b.r);
+        else { dot(b.x, b.y, b.r, "rgba(245,193,105,0.35)"); ring(b.x, b.y, b.r, TARGET, 1.5); label("m " + b.m, b.x, b.y + 3.5, TARGET, "center"); }
+      }
+      label("e = " + D.e + " · m₁ " + balls[0].m + (balls[1] ? " · m₂ " + balls[1].m : ""), W - 8, H - 22, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Elastic", "Eightball", "five equal balls at e 0.98 — the rack splits and the impulse passes down the line almost undiminished", { balls: 5, e: 0.98, m: [1, 1, 1, 1, 1] });
+
+def("O", "Obb", "contact", "SAT for rotated rectangles: project both onto every edge normal — a gap on any axis means no collision (Ragdoll's crate, spun) — press to spin the crate", function (u) {
+  var D = { spin: 0.5,          // the crate's idle turn, radians per second
+            w: 0.2, h: 0.12,    // the crates' sides, ×W
+            drift: 0.11,        // how fast the blue crate drifts in and out, cycles per second
+            kick: 4,            // radians per second a press adds
+            label: "SAT: project onto each edge normal · a gap ⇒ apart" };
+  const { ctx, W, H, stage, dot, line, poly, arrow, label, len, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // the SEPARATING AXIS THEOREM: two convex shapes are apart if and only if
+  // there is some direction along which their shadows do not overlap. for
+  // two rectangles you only have to try four directions — the edge normals
+  // of both — so the test is four projections. cast every corner onto an
+  // axis (a dot product), keep the min and max, and compare the two
+  // intervals: the rulers at the bottom are those shadows. one gap (green)
+  // and you are done; no gap on any axis and the smallest overlap is the
+  // push that separates them — the MTV.
+  const A = { x: 0, y: 0, a: 0, hw: 0, hh: 0 }, B = { x: W * 0.66, y: H * 0.4, a: 0.4, hw: 0, hh: 0 };
+  const cA = [[0, 0], [0, 0], [0, 0], [0, 0]], cB = [[0, 0], [0, 0], [0, 0], [0, 0]], cR = [[0, 0], [0, 0], [0, 0], [0, 0]];
+  const axes = [[1, 0], [0, 1], [1, 0], [0, 1]], iv = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]];
+  let angA = 0, kick = 0, rawX = 0, rawY = 0;
+  function corners(b, out) {
+    const c = Math.cos(b.a), s = Math.sin(b.a);
+    const ex = [c * b.hw, s * b.hw], ey = [-s * b.hh, c * b.hh];
+    out[0][0] = b.x - ex[0] - ey[0]; out[0][1] = b.y - ex[1] - ey[1];
+    out[1][0] = b.x + ex[0] - ey[0]; out[1][1] = b.y + ex[1] - ey[1];
+    out[2][0] = b.x + ex[0] + ey[0]; out[2][1] = b.y + ex[1] + ey[1];
+    out[3][0] = b.x - ex[0] + ey[0]; out[3][1] = b.y - ex[1] + ey[1];
+  }
+  function project(pts, ax, out, k) {
+    let lo = 1e9, hi = -1e9;
+    for (const p of pts) { const v = p[0] * ax[0] + p[1] * ax[1]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    out[k] = lo; out[k + 1] = hi;
+  }
+  return {
+    press() { kick += D.kick; },
+    frame(dt, t) {
+      stage();
+      kick *= Math.exp(-1.2 * dt);
+      angA += (D.spin + kick) * dt;
+      A.hw = W * D.w / 2; A.hh = W * D.h / 2; B.hw = W * D.w / 2; B.hh = W * D.h / 2;
+      A.a = angA; B.a = 0.4 - t * D.spin * 0.6;
+      rawX = A.x = W * 0.36 + Math.sin(t * D.drift * 6.283) * W * 0.13;
+      rawY = A.y = H * 0.4 + Math.cos(t * D.drift * 6.283 * 0.7) * H * 0.06;
+      corners(A, cA); corners(B, cB);
+      axes[0][0] = Math.cos(A.a); axes[0][1] = Math.sin(A.a); axes[1][0] = -Math.sin(A.a); axes[1][1] = Math.cos(A.a);
+      axes[2][0] = Math.cos(B.a); axes[2][1] = Math.sin(B.a); axes[3][0] = -Math.sin(B.a); axes[3][1] = Math.cos(B.a);
+      let sep = -1, sepGap = -1, mtv = -1, mtvOv = 1e9;
+      for (let i = 0; i < 4; i++) {
+        project(cA, axes[i], iv[i], 0); project(cB, axes[i], iv[i], 2);
+        const ov = Math.min(iv[i][1], iv[i][3]) - Math.max(iv[i][0], iv[i][2]);
+        if (ov < 0) { if (-ov > sepGap) { sepGap = -ov; sep = i; } }
+        else if (ov < mtvOv) { mtvOv = ov; mtv = i; }
+      }
+      const colliding = sep < 0;
+      if (colliding) {                                 // push A out along the axis of least overlap
+        const ax = axes[mtv], sgn = ((A.x - B.x) * ax[0] + (A.y - B.y) * ax[1]) >= 0 ? 1 : -1;
+        A.x += ax[0] * mtvOv * sgn; A.y += ax[1] * mtvOv * sgn;
+        corners(A, cR);
+      }
+      // the scene
+      poly(cB, "rgba(245,193,105,0.2)"); poly(cB, TARGET, 1.5);
+      if (colliding) {
+        poly(cA, DIM, 1);
+        poly(cR, "rgba(245,138,138,0.25)"); poly(cR, HOT, 1.5);
+        arrow(rawX, rawY, A.x, A.y, HOT);
+        label("push " + mtvOv.toFixed(0) + " px", (rawX + A.x) / 2, Math.min(rawY, A.y) - A.hw - 4, HOT, "center");
+      } else {
+        poly(cA, "rgba(138,217,245,0.2)"); poly(cA, MOVER, 1.5);
+        const ax = axes[sep], g = (Math.max(iv[sep][0], iv[sep][2]) + Math.min(iv[sep][1], iv[sep][3])) / 2;
+        const px = ax[0] * g, py = ax[1] * g, L = Math.max(W, H);   // the separating line: perpendicular to the axis
+        line(px - ax[1] * L, py + ax[0] * L, px + ax[1] * L, py - ax[0] * L, GOOD, 1.5);
+        arrow(px, py, px + ax[0] * 18, py + ax[1] * 18, GOOD);
+      }
+      // the four rulers
+      const rx0 = W * 0.16, rx1 = W * 0.92, ry0 = H * 0.66, rh = (H - 24 - ry0) / 4;
+      const names = ["A₁", "A₂", "B₁", "B₂"];
+      for (let i = 0; i < 4; i++) {
+        const y = ry0 + rh * (i + 0.5), v = iv[i];
+        const lo = Math.min(v[0], v[2]) - 8, hi = Math.max(v[1], v[3]) + 8, sc = (rx1 - rx0) / Math.max(1, hi - lo);
+        const gap = i === sep, ov = Math.min(v[1], v[3]) - Math.max(v[0], v[2]);
+        label(names[i], rx0 - 6, y + 3, gap ? GOOD : (i < 2 ? MOVER : TARGET), "right");
+        line(rx0, y, rx1, y, gap ? "rgba(155,226,138,0.5)" : DIM, 1);
+        arrow(rx0 - 26, y, rx0 - 26 + axes[i][0] * 8, y + axes[i][1] * 8, DIM);
+        line(rx0 + (v[0] - lo) * sc, y - 2.5, rx0 + (v[1] - lo) * sc, y - 2.5, MOVER, 3);
+        line(rx0 + (v[2] - lo) * sc, y + 2.5, rx0 + (v[3] - lo) * sc, y + 2.5, TARGET, 3);
+        if (gap) { line(rx0 + (Math.min(v[1], v[3]) - lo) * sc, y, rx0 + (Math.max(v[0], v[2]) - lo) * sc, y, GOOD, 3); label("gap " + (-ov).toFixed(0), rx1 + 2, y + 3, GOOD); }
+        else if (colliding && i === mtv) label("min " + ov.toFixed(0), rx1 + 2, y + 3, HOT);
+      }
+      label(colliding ? "no gap on any axis: collision" : "separating axis " + names[sep], W / 2, 14, colliding ? HOT : GOOD, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Obb", "Obtuse", "two long thin planks turning slowly — the shadows are long on one axis and slivers on the other, and the gap flickers open and shut", { w: 0.34, h: 0.04, spin: 0.2 });
+/* ============================== PLATFORMER VERBS ==============================
+   The ledge, the ladder, the wall. A platformer is a small vocabulary of
+   VERBS, and each verb is a state with its own gravity and its own exits:
+   a ledge grab is two rays (chest blocked, head clear) and a scripted arc;
+   a ladder switches gravity off and snaps x to the rail; a wall run is a
+   timer that borrows the wall for gravity; a slide shrinks the hitbox and
+   is not allowed to stand up under a beam; a dodge roll turns the hurtbox
+   off for its middle third; a glide trades speed for lift until it stalls;
+   a jetpack is thrust minus gravity while the tank lasts; water pushes up
+   by the fraction under the surface; gravity is just a vector you may
+   flip; a zipline, a minecart, a crumbling ledge and a bounce pad are all
+   the same lesson — the designer chose the number, the physics obeyed. */
+
+def("M", "Mantle", "verbs", "ledge grab: chest ray blocked, head ray clear → hands snap to the edge (Xmarks' rays), a scripted arc lifts the body — press to jump / mantle", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            jumpH: 0.2,        // a jump's apex, ×H
+            run: 0.3,          // run speed, ×W per second
+            probe: 0.07,       // the rays' reach, ×W
+            hang: 0.5,         // seconds hung before the mantle starts
+            mantleT: 0.45,     // seconds the scripted arc takes
+            fromBelow: false,  // may the hands catch an edge while still rising?
+            steps: [0.14, 0.3, 0.5],   // ledge tops above the floor, ×H
+            label: "grab ⇔ chest ray hit ∧ head ray clear · then hang, then arc" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, mote, label, lerp, ease, clamp, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, DIM } = u;
+  // a LEDGE GRAB is two raycasts and a promise. every frame the body casts a
+  // short ray forward at chest height and another at head height; when the
+  // chest ray hits a wall but the head ray sails over it, there is an edge
+  // right there, and the hands snap to it. the body then HANGS (gravity off,
+  // a timer), and the MANTLE is not physics at all: a scripted arc that
+  // lifts the body up and over in a fixed time. Grapple's hook was the same
+  // idea — find the point, then own it — and a tall ledge is simply one
+  // the head ray also hits: refused, so the mote must jump for it.
+  const R = 8;
+  const L = [];                                        // the ledges: x where each starts, its top
+  for (let i = 0; i < D.steps.length; i++) L.push({ x: W * (0.28 + i * 0.22), top: GY - H * D.steps[i] });
+  let x = W * 0.08, y = GY - R, vy = 0, floor = GY, state = "run", tm = 0, hx = 0, hy = 0, sx = 0, sy = 0, refused = 0;
+  let chestHit = false, headHit = false;
+  function floorAt(px) { let f = GY; for (const l of L) if (px >= l.x) f = l.top; return f; }
+  function wallAhead(px, py, reach) {                  // the first ledge face this ray crosses, or none
+    for (const l of L) if (px < l.x && px + reach >= l.x && py > l.top) return l;
+    return null;
+  }
+  function jump() { vy = -Math.sqrt(2 * H * D.g * H * D.jumpH); state = "air"; }
+  return {
+    press() {
+      if (state === "hang") { state = "mantle"; tm = 0; sx = x; sy = y; }
+      else if (state === "run") jump();
+    },
+    frame(dt, t) {
+      stage();
+      const reach = W * D.probe;
+      if (state === "run" || state === "air") {
+        x += W * D.run * dt;
+        vy += H * D.g * dt; y += vy * dt;
+        floor = floorAt(x + R);
+        const face = wallAhead(x + R, y, 0);           // pressed against a face: stop
+        if (face && y + R > face.top) x = face.x - R;
+        if (y >= floor - R) { y = floor - R; vy = 0; state = "run"; }
+        else state = "air";
+        const chest = wallAhead(x + R, y - R * 0.3, reach), head = wallAhead(x + R, y - R * 2.2, reach);
+        chestHit = !!chest; headHit = !!head;
+        if (chest && !head && (vy >= 0 || D.fromBelow)) {   // the grab
+          state = "hang"; tm = 0; hx = chest.x; hy = chest.top; vy = 0;
+          x = hx - R; y = hy + R * 0.9;
+        } else if (chest && head) {                    // too tall for the hands: refused, jump instead
+          refused = 0.4;
+          if (state === "run") jump();
+        }
+      } else if (state === "hang") {
+        tm += dt;
+        if (tm >= D.hang) { state = "mantle"; tm = 0; sx = x; sy = y; }
+      } else if (state === "mantle") {
+        tm += dt;
+        const k = clamp(tm / D.mantleT, 0, 1);        // the scripted arc: up first, then over
+        y = lerp(sy, hy - R, ease(Math.min(1, k * 1.6)));
+        x = lerp(sx, hx + R * 1.2, ease(Math.max(0, (k - 0.35) / 0.65)));
+        if (k >= 1) { state = "run"; vy = 0; }
+      }
+      if (x > W + R) { x = -R; y = GY - R; vy = 0; state = "run"; }
+      refused = Math.max(0, refused - dt);
+      // the world
+      for (let i = 0; i < L.length; i++) {
+        const l = L[i];
+        rect(l.x, l.top, W - l.x, GY - l.top, "rgba(201,196,228,0.08)");
+        line(l.x, l.top, l.x, GY, BONE, 1.5); line(l.x, l.top, W, l.top, BONE, 1.5);
+      }
+      ground();
+      // the two rays, coloured by what they found
+      if (state === "run" || state === "air") {
+        line(x + R, y - R * 0.3, x + R + reach, y - R * 0.3, chestHit ? HOT : GOOD, 1.5);
+        line(x + R, y - R * 2.2, x + R + reach, y - R * 2.2, headHit ? HOT : GOOD, 1.5);
+        label("chest", x + R + reach + 3, y - R * 0.3 + 3, chestHit ? HOT : DIM);
+        label("head", x + R + reach + 3, y - R * 2.2 + 3, headHit ? HOT : DIM);
+      }
+      if (state === "hang") {                          // hands on the edge, the hang timer
+        dot(hx, hy, 3, TARGET); dot(hx - 5, hy + 1, 2.5, TARGET);
+        rect(x - 14, y - R * 3, 28, 3, "rgba(232,229,244,0.15)");
+        rect(x - 14, y - R * 3, 28 * clamp(tm / D.hang, 0, 1), 3, TARGET);
+        label("hang", x, y - R * 3.6, TARGET, "center");
+      }
+      if (state === "mantle") {                        // the arc, drawn as the promise it is
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = MAGIC; ctx.lineWidth = 1; ctx.beginPath();
+        ctx.moveTo(sx, sy); ctx.quadraticCurveTo(sx, hy - R, hx + R * 1.2, hy - R); ctx.stroke();
+        ctx.setLineDash([]);
+        label("mantle " + (tm / D.mantleT * 100).toFixed(0) + "%", x, y - R * 2.4, MAGIC, "center");
+      }
+      if (refused > 0) label("too tall — jump", x, y - R * 3.4, "rgba(245,138,138," + refused * 2 + ")", "center");
+      mote(x, y, state === "hang" ? -Math.PI / 2 : 0);
+      label(state, W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Mantle", "Monkeybars", "the hands catch an edge even while rising, and the arc takes a third of the time — a climber, not a clamberer", { fromBelow: true, mantleT: 0.15, hang: 0.2 });
+
+def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and turns gravity off; a hop off the top (Grid's snap, one axis) — press above to climb, below to drop", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            climb: 0.22,       // climb speed, ×H per second
+            walk: 0.25,        // walk speed, ×W per second
+            hopV: 0.55,        // the little hop off the top, ×H per second
+            sway: 0,           // 0 = a ladder; 1 = a rope that swings
+            swayRate: 1.6,     // rope swing, radians per second
+            top: 0.22,         // the ladder's top, ×H
+            label: "in rect ∧ up ⇒ x = rail, g = 0, y −= climb·dt · top ⇒ hop" };
+  const { ctx, W, H, GY, stage, ground, line, rect, mote, label, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a LADDER is a rectangle and a mode. inside the rectangle, pressing up
+  // ENTERS the mode: x snaps to the rail (the way Grid snaps to a cell, but
+  // on one axis only), gravity is switched off, and up/down move y at a
+  // fixed climb speed. leaving happens three ways: walk off the side, drop
+  // (gravity back on), or reach the top, where a small scripted hop puts
+  // the feet on the platform so the body never pops through it. a ROPE is
+  // the same mode with the rail swaying: the sway dial bends the rail's x
+  // by height, and the climber's x follows it.
+  const R = 8, lx = W * 0.5, half = W * 0.05;
+  let x = W * 0.1, y = GY - R, vy = 0, dir = 1, state = "walk", want = 0;   // want: +1 up, −1 down
+  const topY = H * D.top, platX = lx + half;           // the platform the top exits onto
+  function railX(py, t) { return lx + Math.sin(t * D.swayRate + (GY - py) / H * 2.5) * D.sway * W * 0.06 * ((GY - py) / (GY - topY)); }
+  return {
+    press(x0, y0) {
+      if (state === "climb") { if (y0 > y) { state = "fall"; vy = 0; } }
+      else if (y0 < y && Math.abs(x - lx) < half + R) { state = "climb"; want = 1; }
+    },
+    frame(dt, t) {
+      stage();
+      if (state === "walk") {
+        x += dir * W * D.walk * dt;
+        if (dir > 0 && Math.abs(x - lx) < W * D.walk * dt + 1 && y > GY - R - 1) { x = lx; state = "climb"; want = 1; }   // the autopilot presses up
+        if (x > W - R && y < GY - R - 1) { state = "fall"; vy = 0; }   // walks off the platform's end
+        if (x > W + R) { x = -R; y = GY - R; dir = 1; }
+        if (x < R) dir = 1;
+      } else if (state === "climb") {
+        x = railX(y, t);                               // the snap, every frame
+        y -= want * H * D.climb * dt;
+        if (y - R < topY) { state = "hop"; vy = -H * D.hopV; }
+      } else if (state === "hop") {
+        vy += H * D.g * dt; y += vy * dt; x += W * D.walk * dt;
+        if (vy > 0 && x > platX && y >= topY - R) { y = topY - R; state = "walk"; dir = 1; }
+        if (y > GY - R) { y = GY - R; state = "walk"; }
+      } else if (state === "fall") {
+        vy += H * D.g * dt; y += vy * dt;
+        if (y >= GY - R) { y = GY - R; vy = 0; state = "walk"; dir = 1; }
+      }
+      // the world: the ladder rect, the rails and rungs, the top platform
+      rect(lx - half, topY, half * 2, GY - topY, "rgba(155,226,138,0.06)");
+      ctx.strokeStyle = "rgba(155,226,138,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+      ctx.strokeRect(lx - half, topY, half * 2, GY - topY); ctx.setLineDash([]);
+      ctx.strokeStyle = BONE; ctx.lineWidth = 1.5; ctx.beginPath();
+      const n = 10;
+      for (let i = 0; i <= n; i++) {
+        const yy = topY + (GY - topY) * i / n, rx = railX(yy, t);
+        if (i === 0) ctx.moveTo(rx - half * 0.6, yy); else ctx.lineTo(rx - half * 0.6, yy);
+      }
+      for (let i = n; i >= 0; i--) { const yy = topY + (GY - topY) * i / n; ctx.lineTo(railX(yy, t) + half * 0.6, yy); }
+      ctx.stroke();
+      for (let i = 1; i < n; i++) { const yy = topY + (GY - topY) * i / n, rx = railX(yy, t); line(rx - half * 0.6, yy, rx + half * 0.6, yy, BONE, 1); }
+      rect(platX, topY, W - platX, 4, BONE);
+      ground();
+      if (state === "climb") {
+        line(x, y, lx, y, TARGET, 1);                  // x is owned by the rail
+        label("g = 0 · x = rail", x + R + 6, y + 3, GOOD);
+        rect(W - 30, H * 0.3, 6, GY - H * 0.3, "rgba(232,229,244,0.1)");
+        rect(W - 30, y, 6, GY - y, GOOD);
+      }
+      if (state === "hop") label("hop", x, y - R * 2, TARGET, "center");
+      if (state === "fall") label("dropped", x + R + 4, y, HOT);
+      mote(x, y, state === "climb" ? -Math.PI / 2 : 0);
+      label(state, W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Ladder", "Lianas", "the rail sways like a jungle rope and the climb is slow — the same mode, a different plant", { sway: 1, climb: 0.12, swayRate: 1.2 });
+
+def("W", "Wallrun", "verbs", "wall run: airborne on a wall above a minimum speed, gravity ×wallG while a timer runs (Ninja's cling with a clock) — press to jump off along n̂", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            run: 0.42,         // run speed, ×W per second
+            minSpeed: 0.3,     // the speed the wall demands, ×W per second
+            wallG: 0.15,       // gravity's share during the run
+            runTime: 0.7,      // seconds the wall lends itself
+            kick: 0.5,         // the jump-off along the normal, ×W per second
+            jumpV: 0.7,        // the jump-off upward part, ×H per second
+            wall: 0.72,        // the wall's x, ×W
+            label: "on wall ∧ |v| > min ⇒ g·wallG while t < runTime · off: v = n̂·kick" };
+  const { W, H, GY, stage, ground, dot, line, rect, arrow, mote, label, len, clamp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // the WALL RUN is a timer that borrows the wall for gravity. Ninja clung
+  // and slid; here the body must arrive FAST — a speed below minSpeed just
+  // slides — and when it does, gravity is multiplied by wallG for runTime
+  // seconds and the forward speed is turned up the wall. the timer is the
+  // whole design: while it runs the body climbs, when it ends gravity is
+  // handed back and the fall begins. the jump off leaves ALONG THE NORMAL
+  // — the wall's outward direction — plus a fixed upward part, so the
+  // player cannot steer it, only time it.
+  const R = 8, wx = W * D.wall;
+  let x = W * 0.15, y = GY - R, vx = 0, vy = 0, state = "run", tm = 0, flash = 0, back = false;
+  return {
+    press() {
+      if (state === "wallrun" || state === "slide") {
+        vx = -W * D.kick; vy = -H * D.jumpV; state = "air"; flash = 0.5;   // along the normal (−x), plus up
+      } else if (state === "run") { vy = -H * 0.5; state = "air"; }
+    },
+    frame(dt, t) {
+      stage();
+      if (state === "run") {
+        if (back) { x -= W * D.run * dt; if (x < W * 0.15) back = false; }
+        else { vx = W * D.run; x += vx * dt; if (x > wx - W * 0.28) { vy = -H * 0.55; state = "air"; } }   // the autopilot leaps at the wall
+      } else if (state === "air") {
+        vy += H * D.g * dt; x += vx * dt; y += vy * dt;
+        if (x >= wx - R) {                             // arrival: fast enough?
+          x = wx - R;
+          const sp = len(vx, vy);
+          if (sp / W > D.minSpeed) { state = "wallrun"; tm = 0; vy = -Math.min(sp * 0.8, H * 0.9); vx = 0; }
+          else { state = "slide"; vx = 0; }
+        }
+        if (y >= GY - R) { y = GY - R; vy = 0; state = "run"; back = true; }
+      } else if (state === "wallrun") {
+        tm += dt;
+        vy += H * D.g * D.wallG * dt; y += vy * dt;
+        if (tm >= D.runTime) { state = "slide"; }
+        else if (tm > D.runTime * 0.75) { vx = -W * D.kick; vy = -H * D.jumpV; state = "air"; flash = 0.5; }   // the autopilot's jump-off
+      } else if (state === "slide") {
+        vy = Math.min(vy + H * D.g * dt, H * 0.25); y += vy * dt;
+        if (y >= GY - R) { y = GY - R; vy = 0; state = "run"; back = true; }
+      }
+      if (y < R) { y = R; vy = Math.max(0, vy); }
+      flash = Math.max(0, flash - dt);
+      // the wall and its normal
+      rect(wx, 0, W - wx, GY, "rgba(150,145,190,0.13)");
+      line(wx, 0, wx, GY, BONE, 1.5);
+      ground();
+      const ny = Math.min(y, GY - R * 4);
+      arrow(wx, ny, wx - W * 0.09, ny, BONE); label("n̂", wx - W * 0.09 - 12, ny + 3, BONE);
+      if (state === "wallrun") {                       // the timer, on the wall beside the runner
+        const k = clamp(tm / D.runTime, 0, 1);
+        rect(wx + 5, y - 20, 5, 40, "rgba(232,229,244,0.12)");
+        rect(wx + 5, y - 20 + 40 * k, 5, 40 * (1 - k), GOOD);
+        label("t " + tm.toFixed(2) + " / " + D.runTime, wx + 14, y + 3, GOOD);
+        label("g × " + D.wallG, x - R - 4, y + 3, GOOD, "right");
+      }
+      if (state === "slide") label("slide: timer spent", x - R - 4, y + 3, HOT, "right");
+      if (state === "air" && vx > 0) {
+        const sp = len(vx, vy) / W;
+        label("|v| " + sp.toFixed(2) + (sp > D.minSpeed ? " > " : " < ") + D.minSpeed, x, y - R * 2.2, sp > D.minSpeed ? GOOD : HOT, "center");
+      }
+      if (flash > 0) arrow(x, y, x - W * 0.1, y - H * 0.1, "rgba(245,138,138," + flash * 2 + ")");
+      if (state === "air") for (let i = 1; i <= 3; i++) dot(x - vx * dt * i * 4, y - vy * dt * i * 4, 1.5, "rgba(138,217,245," + (0.3 - i * 0.08) + ")");
+      mote(x, y, state === "wallrun" ? -Math.PI / 2 : (state === "run" && back ? Math.PI : Math.atan2(vy, vx || 1)));
+      label(state, W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Wallrun", "Wuxia", "the wall holds for two full seconds with almost no gravity — a martial-arts film, running straight up", { runTime: 2.0, wallG: 0.03, kick: 0.7 });
+
+def("K", "Kneel", "verbs", "crouch & slide: the hitbox shrinks, speed decays under friction (Inertia's), standing is refused while a ceiling ray hits the beam — press to slide", function (u) {
+  var D = { run: 0.34,         // run speed, ×W per second
+            slideFriction: 0.28,   // speed lost per second, ×W per second²
+            crawl: 0.06,       // crawl speed under a beam, ×W per second
+            standH: 0.16,      // standing hitbox height, ×H
+            crouchH: 0.08,     // crouching hitbox height, ×H
+            tunnel: 0.28,      // the beam's length, ×W
+            beamY: 0.1,        // the gap under the beam, ×H (fits a crouch, not a stand)
+            label: "slide: v −= μ·dt · stand ⇔ ceiling ray clear" };
+  const { ctx, W, H, GY, stage, ground, line, rect, mote, label, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // CROUCH shrinks the hitbox; SLIDE is a crouch that keeps the run's
+  // speed and lets friction eat it (Inertia's decay, with a knee on the
+  // floor). the rule beginners forget: standing up is a collision test —
+  // a ray from the body to full height must be CLEAR, or the head would
+  // pop into the beam. while the ray hits, standing is refused and the
+  // body crawls; the moment it clears, the body pops up and runs on.
+  const R = 8, bx0 = W * 0.4;
+  let x = W * 0.05, v = 0, state = "run", refused = 0;
+  return {
+    press() { if (state === "run") { state = "slide"; v = W * D.run; } },
+    frame(dt, t) {
+      stage();
+      const beamW = W * D.tunnel, gap = H * D.beamY, beamY = GY - gap, standH = H * D.standH, crouchH = H * D.crouchH;
+      const under = x + R > bx0 && x - R < bx0 + beamW;
+      const rayHit = under && standH > gap;            // the ceiling ray: from the floor up to standing height
+      if (state === "run") {
+        v = W * D.run; x += v * dt;
+        if (x > bx0 - W * 0.16 && x < bx0) { state = "slide"; }   // the autopilot slides for the beam
+        if (under && rayHit) { state = "crouch"; }
+      } else if (state === "slide") {
+        v = Math.max(0, v - W * D.slideFriction * dt); x += v * dt;
+        if (v <= W * D.crawl) { state = rayHit ? "crouch" : "run"; if (rayHit) refused = 0.5; }
+      } else if (state === "crouch") {
+        v = W * D.crawl; x += v * dt;
+        if (!rayHit) { state = "run"; refused = 0; }
+      }
+      if (x > W + R) x = -R;
+      refused = Math.max(0, refused - dt);
+      // the beam and the tunnel
+      rect(bx0, 0, beamW, beamY, "rgba(150,145,190,0.13)");
+      line(bx0, beamY, bx0 + beamW, beamY, BONE, 1.5);
+      line(bx0, 0, bx0, beamY, BONE, 1.5); line(bx0 + beamW, 0, bx0 + beamW, beamY, BONE, 1.5);
+      ground();
+      // the hitbox, and the ceiling ray from the feet to standing height
+      const hh = state === "run" ? standH : crouchH;
+      rect(x - R, GY - hh, R * 2, hh, state === "run" ? "rgba(138,217,245,0.15)" : "rgba(245,193,105,0.15)");
+      ctx.strokeStyle = state === "run" ? MOVER : TARGET; ctx.lineWidth = 1; ctx.strokeRect(x - R, GY - hh, R * 2, hh);
+      if (state !== "run") {
+        line(x, GY, x, GY - standH, rayHit ? HOT : GOOD, 1.5);
+        line(x - 4, GY - standH, x + 4, GY - standH, rayHit ? HOT : GOOD, 1.5);
+        label(rayHit ? "stand refused" : "clear", x + R + 4, GY - standH + 3, rayHit ? HOT : GOOD);
+      }
+      if (state === "slide") label("v " + (v / W).toFixed(2), x, GY - crouchH - 6, TARGET, "center");
+      if (state === "crouch") label("crawl", x, GY - crouchH - 6, HOT, "center");
+      mote(x, GY - hh / 2, 0, undefined, state === "run" ? 8 : 6);
+      label(state, W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Kneel", "Kickslide", "a quarter of the friction and a tunnel twice as long — the slide crosses the whole room on its knees", { slideFriction: 0.07, tunnel: 0.5 });
+
+
+def("D", "Dodge", "verbs", "dodge roll: a fixed-distance dash (Dash's), hurtbox OFF for the middle third (Iframes); recovery can't be cancelled — press to roll toward your click", function (u) {
+  var D = { dist: 0.26,        // the roll's length, ×W — fixed, not a velocity
+            dur: 0.5,          // seconds the whole roll takes
+            startup: 0.15,     // the first phase, as a share of dur: hurtbox still on
+            invuln: 0.5,       // the middle share: hurtbox off — the rest is recovery
+            bulletSpeed: 0.5,  // bullets, ×W per second
+            bulletEvery: 1.1,  // seconds between bullets
+            label: "x += dist/dur · hurtbox off for k ∈ [startup, startup + invuln]" };
+  const { ctx, W, H, GY, stage, ground, dot, rect, line, mote, label, clamp, ease, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a DODGE ROLL is Dash with a calendar. the distance is fixed and so is the
+  // time, which splits into three PHASES: STARTUP (the body is still there to
+  // be hit), INVULNERABLE (the hurtbox is switched off — bullets pass through
+  // the picture of the body), and RECOVERY (the hurtbox is back and no new
+  // roll may begin: that is the price of the dodge). the bar over the mote
+  // is the roll's clock; the box round the body is the hurtbox, dashed while
+  // it is off. bullets fly in from the sides; the autopilot rolls through
+  // the ones it sees coming, and sometimes mistimes on purpose.
+  const R = 8, bw = R * 2.2, bh = R * 2.4;
+  const bullets = [];
+  for (let i = 0; i < 6; i++) bullets.push({ x: 0, y: 0, vx: 0, on: false, through: false });
+  let x = W * 0.5, dir = 1, rolling = false, k = 0, x0 = 0, spawnT = 0.4, side = 1, flash = 0, refused = 0, hits = 0, dodged = 0, late = 0;
+  function roll(d) {
+    if (rolling) { if (k > D.startup + D.invuln) refused = 0.4; return; }   // recovery: no cancel
+    rolling = true; k = 0; dir = d; x0 = x;
+    if (x0 + dir * W * D.dist < R * 2 || x0 + dir * W * D.dist > W - R * 2) dir = -dir;
+  }
+  return {
+    press(px) { roll(px < x ? -1 : 1); },
+    frame(dt, t) {
+      stage(); ground();
+      const k0 = D.startup, k1 = D.startup + D.invuln;
+      let hurt = true;
+      if (rolling) {
+        k += dt / D.dur;
+        x = x0 + dir * W * D.dist * ease(clamp(k, 0, 1));
+        hurt = !(k >= k0 && k <= k1);
+        if (k >= 1) { rolling = false; k = 0; }
+      }
+      // bullets: spawn from alternating sides, fly at the mote's height
+      spawnT -= dt;
+      if (spawnT <= 0) {
+        spawnT = D.bulletEvery;
+        for (const b of bullets) if (!b.on) { b.on = true; b.through = false; b.x = side > 0 ? -6 : W + 6; b.vx = side * W * D.bulletSpeed; b.y = GY - R; side = -side; late = rand(0, 1) < 0.25 ? 1 : 0; break; }
+      }
+      for (const b of bullets) {
+        if (!b.on) continue;
+        b.x += b.vx * dt;
+        const arrive = (x - b.x) / b.vx;             // seconds until it reaches the body
+        if (!rolling && arrive > 0 && arrive < (late ? D.dur * D.startup * 0.5 : D.dur * (D.startup + D.invuln * 0.5))) roll(b.vx > 0 ? 1 : -1);   // the autopilot's dodge
+        const inBox = Math.abs(b.x - x) < bw / 2 + 3;
+        if (inBox && hurt && !b.through) { b.on = false; flash = 0.5; hits++; }
+        else if (inBox && !hurt) b.through = true;
+        if (b.through && !inBox && Math.sign(b.x - x) === Math.sign(b.vx)) { dodged++; b.through = false; b.on = false; }
+        if (b.x < -10 || b.x > W + 10) b.on = false;
+      }
+      flash = Math.max(0, flash - dt); refused = Math.max(0, refused - dt);
+      // the bullets
+      for (const b of bullets) if (b.on) {
+        line(b.x - Math.sign(b.vx) * 10, b.y, b.x, b.y, b.through ? "rgba(245,138,138,0.35)" : HOT, 2);
+        dot(b.x, b.y, 2.5, b.through ? "rgba(245,138,138,0.35)" : HOT);
+      }
+      // the hurtbox: solid while it counts, dashed while it does not
+      ctx.lineWidth = 1.5;
+      if (hurt) { ctx.strokeStyle = flash > 0 ? HOT : MOVER; ctx.setLineDash([]); }
+      else { ctx.strokeStyle = GOOD; ctx.setLineDash([3, 3]); }
+      ctx.strokeRect(x - bw / 2, GY - bh, bw, bh); ctx.setLineDash([]);
+      if (flash > 0) rect(x - bw / 2, GY - bh, bw, bh, "rgba(245,138,138," + flash * 0.5 + ")");
+      // the phase bar: three bands and a cursor
+      const bx = x - 24, by = GY - bh - 14, bwid = 48;
+      rect(bx, by, bwid * k0, 4, rolling ? BONE : "rgba(201,196,228,0.25)");
+      rect(bx + bwid * k0, by, bwid * D.invuln, 4, rolling ? GOOD : "rgba(155,226,138,0.25)");
+      rect(bx + bwid * k1, by, bwid * (1 - k1), 4, rolling ? HOT : "rgba(245,138,138,0.25)");
+      if (rolling) { line(bx + bwid * k, by - 3, bx + bwid * k, by + 7, "#E8E5F4", 1.5); }
+      label(rolling ? (k < k0 ? "startup" : k <= k1 ? "invulnerable" : "recovery") : "ready", x, by - 5, rolling ? (k < k0 ? BONE : k <= k1 ? GOOD : HOT) : DIM, "center");
+      if (refused > 0) label("can't cancel recovery", x, by - 16, "rgba(245,138,138," + refused * 2.5 + ")", "center");
+      mote(x, GY - R - (rolling ? Math.sin(clamp(k, 0, 1) * Math.PI) * R * 0.4 : 0), rolling ? clamp(k, 0, 1) * Math.PI * 2 * dir : (dir > 0 ? 0 : Math.PI), hurt ? undefined : "rgba(138,217,245,0.45)");
+      label("hit " + hits + " · dodged " + dodged, 8, 14, DIM);
+      label("startup " + (D.dur * k0).toFixed(2) + " s · i-frames " + (D.dur * D.invuln).toFixed(2) + " s · recovery " + (D.dur * (1 - k1)).toFixed(2) + " s", W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Dodge", "Dancer", "a short quick roll that is invulnerable for three quarters of it and recovers in a blink — the i-frames are the whole move", { dist: 0.14, dur: 0.3, invuln: 0.8 });
+
+def("G", "Glide", "verbs", "a controllable glide: pitch sets the lift/drag mix on v² (Umbrella's drag, Kite's lift); too slow or too steep = STALL, nose drops — drag: y = pitch", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            lift: 20,          // lift per radian of angle of attack, ×H/s² at 1 H/s
+            drag: 0.08,        // drag at zero pitch, ×H/s² at 1 H/s
+            dragK: 1.0,        // induced drag: how much pitching costs
+            maxAoA: 0.4,       // full pitch = this angle of attack, radians
+            stallAoA: 0.3,     // past this the wing stops working
+            stallV: 0.5,       // below this speed the wing stops working, ×H per second
+            stallDrop: 0.25,   // the lift that survives a stall
+            launchV: 0.8,      // the speed a fresh glider starts with, ×H per second
+            label: "L = lift·α·v² ⊥ v · Dr = (drag + dragK·α²)·v² ∥ −v · stall ⇒ L × stallDrop" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, rect, arrow, mote, label, clamp, len, smooth, noise, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a GLIDE is a fall with a wing on it. two forces grow with the SQUARE of
+  // the speed: LIFT, perpendicular to the velocity and proportional to the
+  // ANGLE OF ATTACK (the pitch you hold), and DRAG, straight back along it.
+  // pitch up and lift grows — but so does induced drag, and the speed bleeds
+  // away; pitch past the stall angle, or let the speed fall under stallV,
+  // and the wing STALLS: most of the lift vanishes and gravity turns the
+  // velocity downward, which is the nose dropping. the world scrolls under
+  // a glider that stays at one x; the pointer's height is the pitch.
+  const R = 8, mx = W * 0.4;
+  let y = H * 0.3, vx = H * D.launchV, vy = 0, pitch = 0, want = 0, idle = 9, scroll = 0, stalled = false, speed = 0, aoa = 0, liftA = 0, dragA = 0, launched = 0;
+  function launch() { y = H * 0.25; vx = H * D.launchV; vy = 0; launched = 0.8; }
+  return {
+    drag: true,
+    press(px, py) { want = clamp(1 - 2 * py / H, -1, 1); idle = 0; },
+    frame(dt, t) {
+      stage();
+      idle += dt;
+      if (idle > 1.5) {                                // the autopilot: trim, then pull up into a stall, then recover
+        const k = t % 11;
+        want = k < 7 ? 0.5 + Math.sin(t * 0.7) * 0.12 : k < 8.6 ? 1.0 : k < 10 ? 0.2 : 0.5;
+      }
+      pitch += (want - pitch) * smooth(6, dt);
+      // the forces, in H units per second
+      speed = len(vx, vy) / H;
+      const ux = speed > 1e-4 ? vx / (speed * H) : 1, uy = speed > 1e-4 ? vy / (speed * H) : 0;   // along the velocity
+      aoa = pitch * D.maxAoA;
+      stalled = speed < D.stallV || aoa > D.stallAoA;
+      const v2 = speed * speed;
+      liftA = D.lift * aoa * v2 * (stalled ? D.stallDrop : 1);
+      dragA = (D.drag + D.dragK * aoa * aoa) * v2;
+      const nx = uy, ny = -ux;                        // the wing's up: left of the velocity
+      const ax = (nx * liftA - ux * dragA) * H, ay = (ny * liftA - uy * dragA + D.g) * H;
+      vx += ax * dt; vy += ay * dt;
+      vx = clamp(vx, H * 0.05, H * 3); vy = clamp(vy, -H * 3, H * 3);
+      y += vy * dt; scroll += vx * dt;
+      if (y < R + 2) { y = R + 2; vy = Math.max(vy, 0); }
+      if (y > GY - R) launch();                       // touched down: throw it again
+      launched = Math.max(0, launched - dt);
+      // the scrolling world: posts and low hills
+      for (let i = -1; i < 12; i++) {
+        const px = ((i * W * 0.13 - scroll) % (W * 1.3) + W * 1.3) % (W * 1.3) - W * 0.15;
+        const hh = (noise(px / W * 3 + scroll / W * 0.01) * 0.5 + 0.5) * H * 0.08 + 4;
+        line(px, GY, px, GY - hh, "rgba(201,196,228,0.25)", 1.5);
+      }
+      ground();
+      // the forces drawn where they act
+      const S = H * 0.09;
+      arrow(mx, y, mx + nx * liftA * S, y + ny * liftA * S, stalled ? "rgba(155,226,138,0.4)" : GOOD);
+      arrow(mx, y, mx - ux * dragA * S, y - uy * dragA * S, HOT);
+      arrow(mx, y, mx, y + D.g * S, DIM);
+      line(mx, y, mx + ux * 22, y + uy * 22, "rgba(138,217,245,0.5)", 1);
+      label("L", mx + nx * liftA * S + nx * 8, y + ny * liftA * S + ny * 8 + 3, GOOD, "center");
+      label("Dr", mx - ux * dragA * S - 10, y - uy * dragA * S - 4, HOT, "center");
+      label("g", mx + 8, y + D.g * S + 2, DIM);
+      mote(mx, y, Math.atan2(uy, ux) - aoa);
+      if (stalled) label("STALL" + (speed < D.stallV ? " — too slow" : " — too steep"), mx, y - R * 2.6, HOT, "center");
+      else if (launched > 0) label("launched at v = " + D.launchV, mx, y - R * 2.6, "rgba(245,193,105," + launched + ")", "center");
+      // the speed gauge, with the stall speed marked
+      const gx = W - 18, g0 = H * 0.2, gh = H * 0.5;
+      rect(gx, g0, 6, gh, "rgba(232,229,244,0.1)");
+      const kv = clamp(speed / 2, 0, 1), ks = clamp(D.stallV / 2, 0, 1);
+      rect(gx, g0 + gh * (1 - kv), 6, gh * kv, speed < D.stallV ? HOT : MOVER);
+      line(gx - 3, g0 + gh * (1 - ks), gx + 9, g0 + gh * (1 - ks), HOT, 1);
+      label("v " + speed.toFixed(2), gx + 3, g0 - 6, MOVER, "center");
+      label("stall", gx - 5, g0 + gh * (1 - ks) + 3, HOT, "right");
+      // the pitch control: the pointer's height
+      const px0 = 14;
+      rect(px0, g0, 6, gh, "rgba(232,229,244,0.1)");
+      const kp = (1 - pitch) / 2, kst = (1 - D.stallAoA / D.maxAoA) / 2;
+      rect(px0, g0 + gh * Math.min(kp, 0.5), 6, gh * Math.abs(0.5 - kp), aoa > D.stallAoA ? HOT : TARGET);
+      line(px0 - 3, g0 + gh * kst, px0 + 9, g0 + gh * kst, HOT, 1);
+      label("α " + (aoa * 57.3).toFixed(0) + "°", px0 + 3, g0 - 6, TARGET, "center");
+      label(idle > 1.5 ? "autopilot" : "pitch", px0 + 3, g0 + gh + 12, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Glide", "Gull", "a wing with far more lift, less drag and a gentle stall that keeps most of it — long lazy soaring, forgiving of a heavy hand", { lift: 30, drag: 0.05, stallDrop: 0.7 });
+
+def("J", "Jetpack", "verbs", "jetpack: thrust minus gravity while fuel > 0 (Rocket's exhaust), the tank refills on the ground; two arrows and a fuel bar — drag: hold to thrust", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            thrust: 3.6,       // upward acceleration while burning, ×H per second²
+            tank: 2.2,         // seconds of fuel in a full tank
+            refill: 1.6,       // seconds to refill from empty, on the ground
+            lean: 0.28,        // sideways push toward the pointer, ×W per second²
+            hoverY: 0.42,      // the autopilot's wanted height, ×H
+            label: "a = thrust − g while fuel > 0 · fuel −= dt · grounded: fuel += dt·tank/refill" };
+  const { ctx, W, H, GY, stage, ground, dot, rect, line, arrow, mote, label, clamp, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a JETPACK is Rocket's thrust with a budget. every second of burn spends
+  // a second of FUEL; the acceleration is thrust upward minus gravity down,
+  // and the two arrows show which one is winning. an empty tank hands the
+  // body to gravity, and the tank only REFILLS on the ground, at its own
+  // rate — so the verb has a rhythm: burn, fall, land, wait. the autopilot
+  // hovers bang-bang around the dashed line, pulsing the burn on and off;
+  // your pointer takes over the throttle and leans the body toward its x.
+  const R = 8;
+  const puffs = [];
+  for (let i = 0; i < 40; i++) puffs.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0 });
+  let x = W * 0.5, y = GY - R, vx = 0, vy = 0, fuel = D.tank, held = 0, idle = 9, leanX = 0, burning = false, grounded = true, empty = 0, rest = false;
+  return {
+    drag: true,
+    press(px) { held = 0.07; idle = 0; leanX = px; },
+    frame(dt, t) {
+      stage();
+      idle += dt; held -= dt;
+      let want = held > 0;
+      if (idle > 2) {                                  // the autopilot: bang-bang hover
+        const hy = H * D.hoverY;
+        want = y > hy + H * 0.02 || (y > hy - H * 0.04 && vy > 0);
+        if (grounded && fuel < D.tank * 0.05) rest = true;   // ran dry: rest until the tank is nearly full
+        if (fuel > D.tank * 0.9) rest = false;
+        if (rest) want = false;
+        leanX = W * 0.5 + Math.sin(t * 0.4) * W * 0.3;
+      }
+      burning = want && fuel > 0;
+      if (burning) { fuel = Math.max(0, fuel - dt); vy -= H * D.thrust * dt; if (fuel === 0) empty = 0.8; }
+      vy += H * D.g * dt;
+      vx += Math.sign(leanX - x) * W * D.lean * dt * (burning ? 1 : 0.3);
+      vx *= Math.exp(-1.2 * dt);
+      x += vx * dt; y += vy * dt;
+      grounded = false;
+      if (y >= GY - R) { y = GY - R; vy = 0; vx *= 0.5; grounded = true; fuel = Math.min(D.tank, fuel + dt * D.tank / D.refill); }
+      if (y < R) { y = R; vy = Math.max(0, vy); }
+      if (x < R) { x = R; vx = Math.abs(vx); } if (x > W - R) { x = W - R; vx = -Math.abs(vx); }
+      empty = Math.max(0, empty - dt);
+      // exhaust
+      if (burning) for (let n = 0; n < 3; n++) for (const p of puffs) if (p.life <= 0) { p.x = x + rand(-3, 3); p.y = y + R; p.vx = vx * 0.3 + rand(-20, 20); p.vy = H * 0.9 + rand(0, H * 0.3); p.life = 0.45; break; }
+      for (const p of puffs) if (p.life > 0) { p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; if (p.y > GY) p.vy = -Math.abs(p.vy) * 0.3; dot(p.x, p.y, 1 + p.life * 4, p.life > 0.3 ? "rgba(245,193,105," + p.life + ")" : "rgba(245,138,138," + p.life + ")"); }
+      // the hover line
+      ctx.setLineDash([4, 4]); line(0, H * D.hoverY, W, H * D.hoverY, idle > 2 ? "rgba(245,193,105,0.35)" : DIM, 1); ctx.setLineDash([]);
+      ground();
+      // the two arrows
+      const S = H * 0.05;
+      arrow(x, y, x, y + D.g * S, BONE); label("g " + D.g, x + 12, y + D.g * S, BONE);
+      if (burning) { arrow(x, y, x, y - D.thrust * S, HOT); label("thrust " + D.thrust, x + 12, y - D.thrust * S + 3, HOT); }
+      else if (empty > 0) label("empty", x, y - R * 2.4, "rgba(245,138,138," + empty + ")", "center");
+      // the fuel bar
+      rect(8, 8, W * 0.3, 6, "rgba(232,229,244,0.1)");
+      rect(8, 8, W * 0.3 * fuel / D.tank, 6, fuel < D.tank * 0.2 ? HOT : (grounded && fuel < D.tank ? GOOD : TARGET));
+      label("fuel " + fuel.toFixed(2) + " s" + (grounded && fuel < D.tank ? " · refilling" : ""), 8, 24, fuel < D.tank * 0.2 ? HOT : DIM);
+      label(burning ? "a = " + (D.thrust - D.g).toFixed(1) + " H/s²" : "a = −" + D.g + " H/s²", W - 8, 14, burning ? HOT : DIM, "right");
+      label(idle > 2 ? "autopilot" : "held", W - 8, 26, DIM, "right");
+      mote(x, y, -Math.PI / 2 + clamp(vx / W, -0.5, 0.5));
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Jetpack", "Jumpjets", "three times the thrust from a tank a third the size that fills in a moment — bursts and drops, never a hover", { thrust: 9, tank: 0.6, refill: 0.5 });
+
+def("U", "Underwater", "verbs", "swimming: buoyancy pushes up by the SUBMERGED FRACTION (Yacht's), water drag, a bobbing surface — press below the surface to dive, above to leap", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            buoy: 3.2,         // buoyancy at full submersion, ×H per second² (float ⇔ buoy > g)
+            dragW: 2.6,        // water drag, per second
+            dragA: 0.15,       // air drag, per second
+            dive: 0.9,         // a dive's downward kick, ×H per second
+            leap: 0.85,        // a leap's upward kick, ×H per second
+            swim: 0.5,         // sideways swim, ×W per second²
+            surface: 0.42,     // the water's rest surface, ×H
+            wave: 0.012,       // the surface wave, ×H
+            bodyH: 0.1,        // the body's height, ×H — the fraction is measured on it
+            every: 2.4,        // seconds between the autopilot's dives and leaps
+            label: "f = submerged/bodyH · a = g − buoy·f · v ×= e^(−drag(f)·dt)" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, mote, label, clamp, lerp, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // BUOYANCY is gravity's mirror: an upward push proportional to how much
+  // of the body is under the surface — the SUBMERGED FRACTION f, read off
+  // the body's height against the wavy waterline. with buoy > g the body
+  // sinks until g = buoy·f and floats there, bobbing as the wave changes f
+  // under it (Yacht's trick). drag is blended by f too, thick in water and
+  // thin in air, so a leap is fast and a dive is smothered. rings mark each
+  // crossing of the surface; the autopilot dives and leaps on a timer.
+  const R = 8, bh = H * D.bodyH;
+  const rings = [];
+  for (let i = 0; i < 6; i++) rings.push({ x: 0, y: 0, r: 0, life: 0 });
+  let x = W * 0.5, y = H * D.surface, vx = 0, vy = 0, wantX = W * 0.5, timer = 1.2, f = 0, wasUnder = false, phase = 0;
+  function surfaceAt(px, t) { return H * D.surface + Math.sin(t * 2.1 + px / W * 7) * H * D.wave + Math.sin(t * 1.3 - px / W * 4) * H * D.wave * 0.6; }
+  function splash(sx, sy) { for (const r of rings) if (r.life <= 0) { r.x = sx; r.y = sy; r.r = 3; r.life = 0.7; return; } }
+  return {
+    press(px, py) {
+      wantX = px;
+      if (py > surfaceAt(px, 0)) { vy += H * D.dive; phase = 1; }         // below the line: dive
+      else if (f > 0.25) { vy = -H * D.leap; phase = 0; }                 // above it, and afloat: leap
+    },
+    frame(dt, t) {
+      stage();
+      timer -= dt;
+      if (timer <= 0) {                                // the autopilot alternates
+        timer = D.every; wantX = W * rand(0.2, 0.8);
+        if (phase === 0) { vy += H * D.dive; phase = 1; } else { if (f > 0.25) vy = -H * D.leap; phase = 0; }
+      }
+      const sy = surfaceAt(x, t);
+      f = clamp((y + bh / 2 - sy) / bh, 0, 1);
+      vy += H * (D.g - D.buoy * f) * dt;
+      vx += Math.sign(wantX - x) * (Math.abs(wantX - x) > 4 ? 1 : 0) * W * D.swim * dt * (0.3 + 0.7 * f);
+      const drag = lerp(D.dragA, D.dragW, f);
+      const k = Math.exp(-drag * dt); vx *= k; vy *= k;
+      x += vx * dt; y += vy * dt;
+      if (y + bh / 2 > GY) { y = GY - bh / 2; vy = Math.min(0, vy); }
+      if (y - bh / 2 < 0) { y = bh / 2; vy = Math.max(0, vy); }
+      if (x < R) { x = R; vx = Math.abs(vx); } if (x > W - R) { x = W - R; vx = -Math.abs(vx); }
+      const under = y > sy;
+      if (under !== wasUnder && Math.abs(vy) > H * 0.2) splash(x, sy);
+      wasUnder = under;
+      // the water: a wavy surface, a translucent body of it
+      ctx.fillStyle = "rgba(138,217,245,0.12)";
+      ctx.beginPath(); ctx.moveTo(0, GY);
+      for (let i = 0; i <= 32; i++) ctx.lineTo(W * i / 32, surfaceAt(W * i / 32, t));
+      ctx.lineTo(W, GY); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(138,217,245,0.6)"; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let i = 0; i <= 32; i++) { const px = W * i / 32, py = surfaceAt(px, t); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.stroke();
+      ground();
+      for (const r of rings) if (r.life > 0) { r.life -= dt; r.r += dt * 60; ring(r.x, r.y, r.r, "rgba(232,229,244," + r.life * 0.8 + ")", 1.5); ring(r.x, r.y, r.r * 0.6, "rgba(232,229,244," + r.life * 0.5 + ")", 1); }
+      // the body, its submerged share painted, the forces beside it
+      rect(x - R, y - bh / 2, R * 2, bh, "rgba(138,217,245,0.12)");
+      rect(x - R, Math.max(y - bh / 2, sy), R * 2, Math.max(0, y + bh / 2 - Math.max(y - bh / 2, sy)), "rgba(138,217,245,0.35)");
+      ctx.strokeStyle = MOVER; ctx.lineWidth = 1; ctx.strokeRect(x - R, y - bh / 2, R * 2, bh);
+      const S = H * 0.05;
+      arrow(x + R + 8, y, x + R + 8, y - D.buoy * f * S, GOOD);
+      arrow(x - R - 8, y, x - R - 8, y + D.g * S, BONE);
+      label("buoy·f " + (D.buoy * f).toFixed(2), x + R + 12, y - D.buoy * f * S - 3, GOOD);
+      label("g " + D.g, x - R - 12, y + D.g * S + 9, BONE, "right");
+      label("f = " + f.toFixed(2), x, y + bh / 2 + 11, f > 0 ? MOVER : DIM, "center");
+      mote(x, y - bh / 2 + R, vy > H * 0.15 ? Math.PI / 2 : vy < -H * 0.15 ? -Math.PI / 2 : (vx < 0 ? Math.PI : 0));
+      label("drag " + lerp(D.dragA, D.dragW, f).toFixed(2) + " /s", 8, 14, DIM);
+      label(under ? (vy > H * 0.1 ? "diving" : "afloat") : "in the air", W - 8, 14, DIM, "right");
+      dot(wantX, sy - 4, 2, TARGET);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Underwater", "Uplift", "twice the buoyancy through thin water — a cork: it will not stay down, and pops clear of the surface every time", { buoy: 6.5, dragW: 1.2, leap: 0.4 });
+
+def("G", "Gravity", "verbs", "gravity as a VECTOR: feet face −g, floor and ceiling both catch (Normals); 'flip' (VVVVVV) or 'planet' (Magnet) — press to flip / place the planet", function (u) {
+  var D = { mode: "flip",      // "flip": g points up or down · "planet": g points at a centre
+            g: 2.0,            // gravity's size, ×H per second²
+            run: 0.28,         // run speed along whatever is the floor, ×W per second
+            every: 1.7,        // seconds between the autopilot's flips (or hops)
+            hop: 0.55,         // a planet hop, ×H per second, straight up from the surface
+            planetR: 0.14,     // the planet's radius, ×H
+            ceiling: 0.12,     // the room's ceiling, ×H
+            label: "a = g⃗ · up = −g⃗/|g⃗| · body rotated so its feet face g⃗" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, mote, label, clamp, len, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // most games hide gravity inside "vy += g·dt". write it as a VECTOR and
+  // two verbs fall out for free. FLIP: negate it, and the ceiling becomes
+  // the floor — the body must be drawn with its feet toward g, so it walks
+  // upside down (Normals' up-vector, chosen by the designer). PLANET: aim it
+  // at a centre, |g| along the unit vector to it, and the body walks round a
+  // little world, hops straight "up" (radially), and with a weak enough g
+  // a hop turns into an orbit (Magnet's pull, felt from the inside).
+  const R = 8, cy0 = H * D.ceiling;
+  let x = W * 0.3, y = GY - R, vx = 0, vy = 0, gx = 0, gy = 1, dir = 1, timer = 1, grounded = true, cx = W * 0.5, cyp = H * 0.48, flash = 0;
+  const trail = [];
+  for (let i = 0; i < 60; i++) trail.push([0, 0]);
+  let ti = 0, tn = 0;
+  function flip() { gy = -gy; flash = 0.5; grounded = false; }
+  return {
+    press(px, py) {
+      if (D.mode === "planet") { cx = px; cyp = py; flash = 0.5; }
+      else flip();
+    },
+    frame(dt, t) {
+      stage();
+      timer -= dt;
+      const planet = D.mode === "planet", pr = H * D.planetR, G = H * D.g;
+      if (planet) {                                    // g aims at the centre
+        let rx = x - cx, ry = y - cyp, d = len(rx, ry);
+        if (d < 1e-3) { rx = 0; ry = -1; d = 1; }
+        const ux = rx / d, uy = ry / d;
+        gx = -ux; gy = -uy;
+        vx += gx * G * dt; vy += gy * G * dt;
+        x += vx * dt; y += vy * dt;
+        rx = x - cx; ry = y - cyp; d = len(rx, ry);
+        const ux2 = d > 1e-3 ? rx / d : 0, uy2 = d > 1e-3 ? ry / d : -1;
+        grounded = false;
+        if (d < pr + R) {                              // on the surface: stand, then run along the tangent
+          x = cx + ux2 * (pr + R); y = cyp + uy2 * (pr + R);
+          const vr = vx * ux2 + vy * uy2;
+          if (vr < 0) { vx -= vr * ux2; vy -= vr * uy2; }
+          const tx = -uy2, ty = ux2, vt = vx * tx + vy * ty, want = dir * W * D.run;
+          vx += (want - vt) * tx; vy += (want - vt) * ty;
+          grounded = true;
+          if (timer <= 0) { timer = D.every; vx += ux2 * H * D.hop; vy += uy2 * H * D.hop; }   // the hop, straight up
+        }
+        if (x < -W * 0.3 || x > W * 1.3 || y < -H * 0.3 || y > H * 1.3) { x = cx; y = cyp - pr - R; vx = W * D.run; vy = 0; }   // lost to space: back home
+      } else {                                         // the room: floor and ceiling
+        if (timer <= 0) { timer = D.every; flip(); }
+        gx = 0;
+        vy += gy * G * dt;
+        vx = dir * W * D.run;
+        x += vx * dt; y += vy * dt;
+        grounded = false;
+        if (gy > 0 && y > GY - R) { y = GY - R; vy = 0; grounded = true; }
+        if (gy < 0 && y < cy0 + R) { y = cy0 + R; vy = 0; grounded = true; }
+        if (x > W - R) { x = W - R; dir = -1; } if (x < R) { x = R; dir = 1; }
+      }
+      flash = Math.max(0, flash - dt);
+      trail[ti][0] = x; trail[ti][1] = y; ti = (ti + 1) % trail.length; tn = Math.min(tn + 1, trail.length);
+      // the world
+      if (planet) {
+        dot(cx, cyp, pr, "rgba(201,196,228,0.12)"); ring(cx, cyp, pr, BONE, 1.5);
+        for (let a = 0; a < TAU; a += TAU / 14) line(cx + Math.cos(a) * pr, cyp + Math.sin(a) * pr, cx + Math.cos(a) * pr * 0.9, cyp + Math.sin(a) * pr * 0.9, "rgba(201,196,228,0.35)");
+        dot(cx, cyp, 2.5, TARGET);
+        ctx.setLineDash([2, 4]); line(x, y, cx, cyp, "rgba(245,193,105,0.35)"); ctx.setLineDash([]);
+      } else {
+        ground();
+        line(0, cy0, W, cy0, "rgba(201,196,228,0.5)", 1.5);
+        ctx.strokeStyle = "rgba(201,196,228,0.16)"; ctx.beginPath();
+        for (let px = 4; px < W; px += 12) { ctx.moveTo(px, cy0 - 2); ctx.lineTo(px - 5, cy0 - 8); }
+        ctx.stroke();
+      }
+      for (let i = 0; i < tn; i++) { const p = trail[(ti - 1 - i + trail.length * 2) % trail.length]; dot(p[0], p[1], 1.2, "rgba(138,217,245," + (0.3 - i / trail.length * 0.3) + ")"); }
+      // the g vector, and the body rotated so its feet face it
+      const S = H * 0.06;
+      arrow(x, y, x + gx * D.g * S, y + gy * D.g * S, flash > 0 ? HOT : TARGET);
+      label("g⃗ (" + (gx * D.g).toFixed(1) + ", " + (gy * D.g).toFixed(1) + ")", x + gx * D.g * S + 10, y + gy * D.g * S + 3, flash > 0 ? HOT : TARGET);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(gy, gx) - Math.PI / 2);   // local +y is "down" = along g
+      ctx.scale(dir, 1);
+      mote(0, 0, 0);
+      line(-4, R, -4, R + 4, MOVER, 2); line(4, R, 4, R + 4, MOVER, 2);   // feet, toward g
+      ctx.restore();
+      label(D.mode + (grounded ? " · standing" : planet ? " · in orbit" : " · falling"), W - 8, 14, DIM, "right");
+      label("up = (" + (-gx).toFixed(1) + ", " + (-gy).toFixed(1) + ")", 8, 14, GOOD);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Gravity", "Gravitywell", "the same body on a little planet with a third of the gravity — every hop becomes a low orbit skimming the surface", { mode: "planet", g: 0.7, hop: 0.62 });
+
+def("Z", "Zipline", "verbs", "zipline / rail grind: lock to a path (Path's), speed integrates the slope (g along the tangent), let go with that velocity — press to let go / grab", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            friction: 0.18,    // speed lost per second, as a share
+            y0: 0.16, y1: 0.5, // the rail's two ends, ×H
+            sag: 0.1,          // how far the middle droops, ×H
+            waves: 0,          // ripples along the rail (0 = a plain sag)
+            waveAmp: 0.05,     // the ripples' height, ×H
+            attachV: 0.05,     // the speed a fresh grab starts with, ×W per second
+            rideT: 2.2,        // seconds the autopilot hangs on before dropping
+            reach: 0.09,       // how near the rail a hand can grab it, ×H
+            label: "on rail: v̇ = g·t̂ᵧ − μv · p += v·t̂·dt · let go: v⃗ = v·t̂" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, line, arrow, mote, label, clamp, len, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a ZIPLINE is a one-dimensional world. while attached the body has one
+  // number, its speed along the rail, and the only physics is gravity's
+  // shadow on the local TANGENT: a downhill tangent has a positive y part
+  // and speeds you up, an uphill one slows you, a valley rocks you back and
+  // forth (Path's arc-length, with a real force on it). LETTING GO is the
+  // honest part: the velocity you leave with is that speed times the
+  // tangent, so a fast drop from a steep bit flies far. a rail grind is
+  // the same card with the body on top instead of hanging under.
+  const R = 8;
+  function railY(px) { const s = clamp(px / W, 0, 1); return H * (D.y0 + (D.y1 - D.y0) * s + D.sag * 4 * s * (1 - s) + D.waveAmp * Math.sin(s * D.waves * TAU) * (D.waves ? 1 : 0)); }
+  let x = W * 0.02, y = railY(W * 0.02) + R, v = W * D.attachV, vx = 0, vy = 0, state = "ride", timer = 0, tx = 1, ty = 0, gAlong = 0, flash = 0;
+  const trail = [];
+  for (let i = 0; i < 40; i++) trail.push([0, 0]);
+  let ti = 0, tn = 0;
+  function tangent(px) { const dy = (railY(px + 2) - railY(px - 2)) / 4, L = len(1, dy); tx = 1 / L; ty = dy / L; }
+  function letGo() { vx = v * tx; vy = v * ty; state = "free"; timer = 0; flash = 0.5; }
+  function grab() { tangent(x); v = vx * tx + vy * ty; y = railY(x) + R; state = "ride"; timer = 0; flash = 0.5; }
+  return {
+    press() {
+      if (state === "ride") letGo();
+      else if (state === "free" && Math.abs(y - R - railY(x)) < H * D.reach) grab();
+      else if (state === "walk" || state === "climb") { vy = -H * 0.75; vx = 0; state = "free"; timer = 0; }
+    },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (state === "ride") {
+        tangent(x);
+        gAlong = H * D.g * ty;                         // gravity's share along the rail
+        v += gAlong * dt; v *= Math.exp(-D.friction * dt);
+        v = clamp(v, -W * 2, W * 2);
+        x += v * tx * dt; y = railY(x) + R;
+        if (x > W - R || x < 0) letGo();               // ran off the end
+        else if (timer > D.rideT && x > W * 0.3) letGo();   // the autopilot's drop
+      } else if (state === "free") {
+        vy += H * D.g * dt; x += vx * dt; y += vy * dt;
+        if (timer > 0.25 && vy > 0 && Math.abs(y - R - railY(x)) < H * 0.03 && x > R && x < W - R) grab();   // fell back onto the rail
+        if (y >= GY - R) { y = GY - R; vy = 0; state = "walk"; }
+        if (x < R) { x = R; vx = Math.abs(vx); } if (x > W - R) { x = W - R; vx = -Math.abs(vx); }
+      } else if (state === "walk") {                   // back to the start, then up the pole
+        x -= W * 0.5 * dt;
+        if (x <= W * 0.02) { x = W * 0.02; state = "climb"; }
+      } else if (state === "climb") {
+        y -= H * 0.6 * dt;
+        if (y <= railY(x) + R) { y = railY(x) + R; v = W * D.attachV; state = "ride"; timer = 0; }
+      }
+      flash = Math.max(0, flash - dt);
+      trail[ti][0] = x; trail[ti][1] = y; ti = (ti + 1) % trail.length; tn = Math.min(tn + 1, trail.length);
+      // the rail and its posts
+      ctx.strokeStyle = BONE; ctx.lineWidth = 2; ctx.beginPath();
+      for (let i = 0; i <= 48; i++) { const px = W * i / 48, py = railY(px); if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); }
+      ctx.stroke();
+      line(W * 0.02, railY(W * 0.02), W * 0.02, GY, "rgba(201,196,228,0.45)", 3);
+      line(W * 0.98, railY(W * 0.98), W * 0.98, GY, "rgba(201,196,228,0.45)", 3);
+      ground();
+      for (let i = 0; i < tn; i++) { const p = trail[(ti - 1 - i + trail.length * 2) % trail.length]; dot(p[0], p[1], 1.2, "rgba(138,217,245," + (0.3 - i / trail.length * 0.3) + ")"); }
+      if (state === "ride") {                          // the tangent, gravity's share of it, the speed
+        const S = H * 0.07;
+        arrow(x, y - R, x + tx * 26, y - R + ty * 26, TARGET);
+        arrow(x, y, x + tx * gAlong / H * S * 2, y + ty * gAlong / H * S * 2, HOT);
+        line(x, y - R, x, y - R - 6, BONE, 2);         // the hand on the rail
+        label("t̂", x + tx * 26 + 6, y - R + ty * 26 + 3, TARGET);
+        label("g·t̂ᵧ " + (gAlong / H).toFixed(2) + (gAlong > 0 ? " ↓" : " ↑"), x + 12, y + 14, HOT);
+        label("v " + (v / W).toFixed(2) + " W/s", x, y - R - 12, MOVER, "center");
+      }
+      if (state === "free") {
+        arrow(x, y, x + vx * 0.25, y + vy * 0.25, flash > 0 ? HOT : "rgba(138,217,245,0.6)");
+        if (Math.abs(y - R - railY(x)) < H * D.reach) label("in reach — grab", x, y - R * 2.2, GOOD, "center");
+      }
+      mote(x, y, state === "ride" ? Math.atan2(ty * Math.sign(v || 1), tx * Math.sign(v || 1)) : state === "free" ? Math.atan2(vy, vx || 1) : state === "walk" ? Math.PI : -Math.PI / 2);
+      label(state, W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Zipline", "Zigrail", "a rippled rail with almost no friction and a running start — a grind that rocks back through every valley, both ways", { waves: 3, friction: 0.03, attachV: 0.45 });
+
+def("M", "Minecart", "verbs", "minecart: a track of humps, v += g·sin θ·dt (Path's arc, a real force) — hills slow it, dips speed it, a push station keeps it looping — press to push", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            humps: 2,          // humps across the loop
+            amp: 0.09,         // a hump's half-height, ×H
+            base: 0.5,         // the track's mean height, ×H
+            friction: 0.12,    // speed lost per second, as a share
+            push: 0.42,        // the station's shove, ×W per second
+            label: "v̇ = g·sin θ − μv · θ = slope of the track · x += v·cos θ·dt" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, line, rect, arrow, mote, label, clamp, len, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a MINECART is one number on a curve. the track gives every x a height
+  // and therefore a SLOPE θ; gravity's share along the rails is g·sin θ —
+  // positive going downhill, negative climbing — and that is the whole
+  // engine (Path's arc-length parameter, pushed by physics instead of a
+  // clock). a hump the cart cannot crest sends it rolling back to rock in
+  // the dip until the PUSH STATION at the bottom shoves it again; Elevator
+  // moved a rider on a schedule, this one is moved by the shape of the ground.
+  const R = 8;
+  function trackY(px) { return H * D.base + Math.sin(px / W * D.humps * TAU) * H * D.amp; }
+  let station = 0, best = -1;
+  for (let i = 0; i < 64; i++) { const px = W * i / 64 / Math.max(1, D.humps); if (trackY(px) > best) { best = trackY(px); station = px; } }   // the lowest point of the first dip
+  const period = W / Math.max(1, D.humps);           // one station per dip: the same spot, every period
+  let x = station - W * 0.05, v = 0, tx = 1, ty = 0, gAlong = 0, flash = 0, pushed = 0, lastSeg = 0;
+  return {
+    press() { v += (v >= 0 ? 1 : -1) * W * D.push; flash = 0.5; pushed++; },
+    frame(dt, t) {
+      stage();
+      const dy = (trackY(x + 2) - trackY(x - 2)) / 4, L = len(1, dy);
+      tx = 1 / L; ty = dy / L;
+      gAlong = H * D.g * ty;                           // g·sin θ, signed along +x
+      v += gAlong * dt; v *= Math.exp(-D.friction * dt);
+      v = clamp(v, -W * 2, W * 2);
+      x += v * tx * dt;
+      if (x > W) x -= W; if (x < 0) x += W;
+      const seg = Math.floor((((x - station) % W) + W) % W / period);   // which dip we are in, counted from a station
+      if (seg !== lastSeg && v > 0 && v < W * D.push * 1.5) { v += W * D.push; flash = 0.5; }   // crossed a station rightward, slowly: a shove
+      lastSeg = seg;
+      flash = Math.max(0, flash - dt);
+      const y = trackY(x);
+      // the track: two rails and sleepers, periodic in W
+      ctx.strokeStyle = BONE; ctx.lineWidth = 1.5;
+      for (let r = -1; r <= 1; r += 2) { ctx.beginPath(); for (let i = 0; i <= 64; i++) { const px = W * i / 64, py = trackY(px) + r * 2; if (i) ctx.lineTo(px, py); else ctx.moveTo(px, py); } ctx.stroke(); }
+      for (let i = 0; i < 64; i += 2) { const px = W * i / 64, py = trackY(px); line(px, py - 4, px, py + 4, "rgba(201,196,228,0.35)", 1); }
+      ground();
+      // the station
+      for (let i = 0; i < D.humps; i++) {
+        const sx = station + i * period;
+        rect(sx - 5, trackY(sx) + 6, 10, 10, flash > 0 && Math.abs(x - sx) < period * 0.5 ? HOT : "rgba(245,193,105,0.5)");
+        label("push", sx, trackY(sx) + 26, flash > 0 && Math.abs(x - sx) < period * 0.5 ? HOT : TARGET, "center");
+      }
+      // the cart, rotated onto the tangent
+      const ang = Math.atan2(ty, tx);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(ang);
+      rect(-11, -10, 22, 8, "rgba(201,196,228,0.7)");
+      dot(-6, 0, 3, BONE); dot(6, 0, 3, BONE);
+      ctx.restore();
+      mote(x - Math.sin(ang) * -14, y - Math.cos(ang) * 14, v < 0 ? ang + Math.PI : ang, undefined, 6);
+      // the tangent, gravity's share of it, the numbers
+      const S = H * 0.075;
+      arrow(x, y, x + tx * 28, y + ty * 28, TARGET);
+      arrow(x, y, x + tx * gAlong / H * S, y + ty * gAlong / H * S, HOT);
+      label("θ " + (ang * 57.3).toFixed(0) + "°", x + tx * 28 + 8, y + ty * 28 + 3, TARGET);
+      label("g·sin θ " + (gAlong / H).toFixed(2), x, y + 22, HOT, "center");
+      if (flash > 0) label("+" + D.push + " W/s", x, y - 24, "rgba(245,138,138," + flash * 2 + ")", "center");
+      label("v " + (v / W).toFixed(2) + " W/s", 8, 14, MOVER);
+      label(v < 0 ? "rolling back" : (gAlong > 0 ? "downhill" : "climbing"), W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Minecart", "Mineshaft", "humps nearly twice as steep and rails four times as rough — the cart rocks in the dip for two or three shoves before it crests", { amp: 0.16, friction: 0.45, push: 0.5 });
+
+def("B", "Brittle", "verbs", "a crumbling platform: stand → SHAKE (Jitter's) → fall → fade → RESPAWN after N s; three timers, Platform's rider hops across — press to shake one", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            stand: 0.9,        // seconds a platform holds before it falls
+            mult: [0.6, 1, 1.6],   // each platform's share of that time: quick, normal, patient
+            respawn: 2.5,      // seconds gone before it comes back
+            fade: 0.9,         // seconds the fall takes to fade out
+            hopClear: 0.08,    // how far above its target a hop's apex sits, ×H
+            platW: 0.16,       // a platform's width, ×W
+            platY: 0.5,        // the platforms' height, ×H
+            label: "stand → shake t < stand·k → fall: vy += g → α → 0 → respawn after N s" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, mote, label, clamp, rand, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a CRUMBLING platform is a small state machine with a body inside it.
+  // IDLE until a foot lands; then SHAKE — Jitter's random offset, growing
+  // as the timer runs out, the warning the player reads; then FALL, a real
+  // body now, vy += g, fading as it goes; then GONE, an outline and a
+  // countdown, and after the respawn time it POPS back. three platforms
+  // share one recipe with three timers, so the hop across is a rhythm to
+  // learn: the quick one gives you no time at all, the patient one lets
+  // you wait. the rider is Platform's, landing from above only.
+  const R = 8, pw = W * D.platW, py = H * D.platY;
+  const P = [];
+  for (let i = 0; i < 3; i++) P.push({ x: W * (0.2 + i * 0.3), y: py, vy: 0, state: "idle", tm: 0, jx: 0, jy: 0, hold: D.stand * D.mult[i] });
+  let x = W * 0.06, y = GY - R, vx = 0, vy = 0, on = -1, state = "walk", tm = 0;
+  function hopTo(tx, ty) {                             // rise hopClear above the target, then solve the flight time T
+    const G = H * D.g, up = Math.max(0, y - ty) + H * D.hopClear, v0 = -Math.sqrt(2 * G * up);
+    const disc = Math.max(0, v0 * v0 + 2 * G * (ty - y)), T = Math.max(0.05, (-v0 + Math.sqrt(disc)) / G);   // v₀T + ½gT² = Δy
+    vx = (tx - x) / T; vy = v0; state = "air"; on = -1;
+  }
+  return {
+    press(px) {
+      let bi = 0; for (let i = 1; i < 3; i++) if (Math.abs(P[i].x - px) < Math.abs(P[bi].x - px)) bi = i;
+      const p = P[bi]; if (p.state === "idle" || p.state === "shake") { p.state = "shake"; p.tm = Math.max(p.tm, p.hold * 0.65); }
+    },
+    frame(dt, t) {
+      stage(); ground();
+      // the platforms
+      for (let i = 0; i < 3; i++) {
+        const p = P[i];
+        p.jx = 0; p.jy = 0;
+        if (p.state === "shake") {
+          p.tm += dt;
+          const k = clamp(p.tm / p.hold, 0, 1);
+          p.jx = rand(-1, 1) * 3 * k; p.jy = rand(-1, 1) * 2 * k;
+          if (p.tm >= p.hold) { p.state = "fall"; p.tm = 0; p.vy = 0; if (on === i) { on = -1; state = "air"; vx = 0; vy = 0; } }
+        } else if (p.state === "fall") {
+          p.tm += dt; p.vy += H * D.g * dt; p.y += p.vy * dt;
+          if (p.tm >= D.fade || p.y > H + 10) { p.state = "gone"; p.tm = 0; }
+        } else if (p.state === "gone") {
+          p.tm += dt;
+          if (p.tm >= D.respawn) { p.state = "idle"; p.tm = 0; p.y = py; }
+        }
+      }
+      // the rider
+      if (state === "walk") {
+        x += Math.sign(W * 0.06 - x) * W * 0.3 * dt;
+        if (Math.abs(x - W * 0.06) < 2) { x = W * 0.06; if (P[0].state === "idle" || P[0].state === "shake") hopTo(P[0].x, P[0].y - R); }
+      } else if (state === "stand") {
+        const p = P[on]; x = p.x + p.jx; y = p.y + p.jy - R; tm += dt;
+        if (p.state === "idle") { p.state = "shake"; p.tm = 0; }
+        if (tm > Math.min(p.hold * 0.8, 0.6 + (on === 1 ? 0.35 : 0))) {   // hop on, before it goes
+          if (on < 2) hopTo(P[on + 1].x, P[on + 1].y - R); else hopTo(W * 0.96, GY - R);
+        }
+      } else if (state === "air") {
+        const py0 = y;
+        vy += H * D.g * dt; x += vx * dt; y += vy * dt;
+        if (vy > 0) for (let i = 0; i < 3; i++) {
+          const p = P[i];
+          if ((p.state === "idle" || p.state === "shake") && Math.abs(x - p.x) < pw / 2 && py0 + R <= p.y + 1 && y + R >= p.y) { on = i; state = "stand"; tm = 0; y = p.y - R; vy = 0; break; }
+        }
+        if (y >= GY - R) { y = GY - R; vy = 0; vx = 0; state = "walk"; }
+        if (x > W - R) { x = W - R; }
+      }
+      // draw the platforms
+      for (let i = 0; i < 3; i++) {
+        const p = P[i], k = clamp(p.tm / p.hold, 0, 1);
+        if (p.state === "gone") {
+          ctx.setLineDash([3, 3]); ctx.strokeStyle = DIM; ctx.lineWidth = 1; ctx.strokeRect(p.x - pw / 2, py, pw, 6); ctx.setLineDash([]);
+          label("back in " + Math.max(0, D.respawn - p.tm).toFixed(1) + " s", p.x, py - 6, DIM, "center");
+          continue;
+        }
+        const a = p.state === "fall" ? 1 - clamp(p.tm / D.fade, 0, 1) : 1;
+        rect(p.x - pw / 2 + p.jx, p.y + p.jy, pw, 6, "rgba(201,196,228," + 0.75 * a + ")");
+        const cracks = p.state === "shake" ? Math.floor(k * 5) : (p.state === "fall" ? 5 : 0);
+        for (let c = 0; c < cracks; c++) line(p.x - pw / 2 + pw * (c + 0.5) / 5 + p.jx, p.y + p.jy, p.x - pw / 2 + pw * (c + 0.5) / 5 + 3 + p.jx, p.y + p.jy + 6, "rgba(19,16,32," + 0.9 * a + ")", 1);
+        if (p.state === "shake") {
+          rect(p.x - pw / 2, py - 12, pw, 3, "rgba(232,229,244,0.12)");
+          rect(p.x - pw / 2, py - 12, pw * (1 - k), 3, k > 0.7 ? HOT : TARGET);
+          label(((p.hold - p.tm)).toFixed(1) + " s", p.x, py - 16, k > 0.7 ? HOT : TARGET, "center");
+        } else if (p.state === "idle") label("holds " + p.hold.toFixed(1) + " s", p.x, py - 6, DIM, "center");
+        else if (p.state === "fall") label("α " + a.toFixed(2), p.x + pw / 2 + 6, p.y + 6, "rgba(232,229,244," + a + ")");
+      }
+      mote(x, y, state === "air" ? Math.atan2(vy, vx || 1) : 0);
+      label(state + (on >= 0 ? " on #" + (on + 1) : ""), W - 8, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Brittle", "Bulwark", "platforms that hold for two and a half seconds and take six to come back — the Mario kind, stern about second chances", { stand: 2.5, respawn: 6, fade: 0.5 });
+
+def("B", "Bouncepad", "verbs", "a bounce pad assigns a FIXED velocity √(2gh) for a DESIGNED apex (Jump's) with Slime's squash; beside it restitution decays — drag: y sets the apex", function (u) {
+  var D = { g: 2.2,            // gravity, ×H per second²
+            apex: 0.55,        // the designed apex, as a share of the room above the pad
+            e: 0.72,           // the honest floor's restitution, for comparison
+            drop: 0.85,        // both balls start this high, share of the room
+            squash: 1,         // how theatrical the squash is
+            squashT: 0.16,     // seconds the squash lasts
+            padW: 0.16,        // the pad's width, ×W
+            label: "pad: vy = −√(2·g·h), h chosen · floor: vy = −e·vy, apex ×e² per bounce" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, mote, label, clamp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // two ways to bounce. RESTITUTION is honest physics: the floor hands back
+  // a share e of the speed it was hit with, so every apex is e² of the last
+  // and the ball dies down. a BOUNCE PAD is a designer's lie: it ignores the
+  // incoming speed and ASSIGNS the launch velocity — Jump's v₀ = √(2gh) run
+  // backward from the apex the level needs — so the ball reaches the same
+  // dashed line every time, however it arrived. the squash is Slime's:
+  // width up, height down, springing back over a few frames.
+  const R = 8, lx = W * 0.28, rx = W * 0.72, room = GY - 12;
+  let apex = D.apex;
+  let ly = GY - room * D.drop, lvy = 0, ry = GY - room * D.drop, rvy = 0, lsq = 0, rsq = 0, rTop = GY - room * D.drop, rTopNext = GY - room * D.drop, lv0 = 0;
+  return {
+    drag: true,
+    press(px, py) { apex = clamp((GY - py) / room, 0.08, 0.95); },
+    frame(dt, t) {
+      stage(); ground();
+      const G = H * D.g, h = room * apex, padH = 6;
+      // the pad lane: assigned velocity
+      lvy += G * dt; ly += lvy * dt;
+      if (ly >= GY - padH - R && lvy > 0) { ly = GY - padH - R; lvy = -Math.sqrt(2 * G * h); lv0 = -lvy; lsq = 1; }
+      // the floor lane: restitution
+      rvy += G * dt; ry += rvy * dt;
+      if (ry < rTopNext) rTopNext = ry;               // the highest point since the last bounce
+      if (ry >= GY - R && rvy > 0) {
+        ry = GY - R; rvy = -rvy * D.e; rsq = 1; rTop = rTopNext; rTopNext = GY;
+        if (-rvy < H * 0.15) { ry = GY - room * D.drop; rvy = 0; rTop = ry; rTopNext = ry; }   // dead: drop it again
+      }
+      lsq = Math.max(0, lsq - dt / D.squashT); rsq = Math.max(0, rsq - dt / D.squashT);
+      // the designed apex line, and the decaying one
+      ctx.setLineDash([4, 4]);
+      line(lx - W * 0.2, GY - padH - h, lx + W * 0.2, GY - padH - h, TARGET, 1.5);
+      line(rx - W * 0.2, rTop, rx + W * 0.2, rTop, DIM, 1);
+      ctx.setLineDash([]);
+      label("h = " + apex.toFixed(2) + " · designed", lx, GY - padH - h - 5, TARGET, "center");
+      label("last apex ×e²", rx, rTop - 5, DIM, "center");
+      // the pad, squashed
+      const pw = W * D.padW * (1 + 0.4 * lsq * D.squash), ph = padH * Math.max(0.2, 1 - 0.7 * lsq * D.squash);
+      rect(lx - pw / 2, GY - ph, pw, ph, lsq > 0 ? GOOD : "rgba(155,226,138,0.6)");
+      for (let i = -1; i <= 1; i++) line(lx + i * pw * 0.25, GY - ph, lx + i * pw * 0.25 + 4, GY - ph - 3 * (1 - lsq), "rgba(155,226,138,0.5)", 1);
+      // the two balls, squashed on contact
+      const drawBall = (bx, by, sq, c, vy) => {
+        ctx.save(); ctx.translate(bx, by + R * 0.5 * sq * D.squash);
+        ctx.scale(1 + 0.5 * sq * D.squash, Math.max(0.2, 1 - 0.5 * sq * D.squash));
+        mote(0, 0, -Math.PI / 2 * (vy < 0 ? 1 : -1), c); ctx.restore();
+      };
+      drawBall(lx, ly, lsq, undefined, lvy);
+      drawBall(rx, ry, rsq, BONE, rvy);
+      if (lsq > 0.3) label("vy = −√(2gh) = " + (lv0 / H).toFixed(2) + " H/s", lx, GY - padH - R * 3, GOOD, "center");
+      if (rsq > 0.3) label("vy = −e·vy · e = " + D.e, rx, GY - R * 3, HOT, "center");
+      label("pad", lx, 14, GOOD, "center"); label("restitution", rx, 14, BONE, "center");
+      label("vy " + (-lvy / H).toFixed(2), lx + R + 6, ly + 3, MOVER);
+      label("vy " + (-rvy / H).toFixed(2), rx + R + 6, ry + 3, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Bouncepad", "Boing", "the apex almost at the ceiling and a squash three times as theatrical — the cartoon spring, the same one line of maths", { apex: 0.9, squash: 3 });
+
+/* ========================= WHEELS, WINGS & BALLAST =========================
+   Vehicles and flight: a body that answers a throttle, a wheel, a stick —
+   and the physics that answers back. Velocity split into forward and
+   sideways (grip is what eats the sideways part); springs between wheels
+   and chassis; a spring holding a hover height; the lean and bank a turn
+   demands (a_lat = v²/R, ω = g·tan(bank)/v); a speed cap that boosts and
+   decays; the OutRun road and the warp starfield, both one division by z;
+   a ship with no up; a helicopter that must tilt to travel; a submarine
+   trading ballast for buoyancy; a rider parented to a mount; and a train
+   whose cars are its own history, read back at fixed spacing. */
+
+def("D", "Donuts", "wheels", "split v into forward and sideways; GRIP eats the sideways part, the handbrake lowers grip so the slide lives — press: handbrake, drag: steer", function (u) {
+  var D = { accel: 0.5,         // throttle, ×W per second²
+            maxSpeed: 0.55,     // forward speed cap, ×W per second
+            grip: 5,            // sideways velocity dies at this rate, per second — tyres holding
+            brakeGrip: 0.8,     // grip with the handbrake pulled: the slide barely dies
+            turn: 3.0,          // rad/s of heading at full speed and full lock
+            drag: 0.4,          // forward drag, per second
+            flip: 3.4,          // seconds per autopilot phase (the lock flips: a figure eight)
+            marks: 240,         // tyre-mark dots remembered
+            hold: 4,            // seconds a press's steer and handbrake are respected
+            label: "v = vf·fwd + vl·side   ·   vl ×= e^(−grip·dt)" };
+  const { ctx, W, H, TAU, stage, dot, rect, line, arrow, label, clamp, MOVER, BONE, HOT, TARGET, DIM } = u;
+  // Vehicle steered by geometry and never slid. a DRIFT model splits the
+  // velocity into a FORWARD part (along the nose) and a SIDEWAYS part and
+  // treats them differently: the forward part is driven and dragged, the
+  // sideways part is eaten by GRIP — an exponential decay, quick on tarmac.
+  // the HANDBRAKE simply lowers grip, so a turn with the brake pulled keeps
+  // its sideways velocity: the nose turns, the car keeps going where it was
+  // going — a donut. COUNTERSTEER is steering against the slide to catch it.
+  let x = W * 0.5, y = H * 0.5, h = 0, vx = 0, vy = 0;
+  let steer = 1, dir = 1, brake = false, autoT = 0, manualT = 0, brakeT = 0, clock = 0, lastPress = -9;
+  let vf = 0, vl = 0, counter = false;
+  const mk = new Float32Array(D.marks * 2);
+  let mi = 0, mn = 0;                                  // tyre marks: a ring of (x, y)
+  return {
+    drag: true,
+    press(px, py) {
+      if (clock - lastPress > 0.3) { brake = !brake; brakeT = D.hold; }   // a fresh press pulls or drops the handbrake
+      lastPress = clock;
+      steer = clamp((px / W - 0.5) * 2.5, -1, 1); manualT = D.hold;      // ...and a held one steers
+    },
+    frame(dt, t) {
+      stage();
+      clock += dt;
+      if (manualT > 0) manualT -= dt;
+      else {                                            // the autopilot: full lock, flipping sides
+        autoT += dt;
+        if (autoT > D.flip) { autoT = 0; dir = -dir; }
+        steer = dir;
+      }
+      if (brakeT > 0) brakeT -= dt;
+      else brake = autoT < D.flip * 0.72;              // handbrake for most of a phase, released to cross over
+      const fx = Math.cos(h), fy = Math.sin(h), sx = -fy, sy = fx;
+      vf = vx * fx + vy * fy;                           // ← the split
+      vl = vx * sx + vy * sy;
+      const cap = W * D.maxSpeed;
+      if (!brake) vf += W * D.accel * dt;
+      vf *= Math.exp(-D.drag * dt);
+      if (vf > cap) vf = cap;
+      const g = brake ? D.brakeGrip : D.grip;
+      vl *= Math.exp(-g * dt);                          // ← grip: the sideways part decays
+      counter = manualT <= 0 && !brake && Math.abs(vl) > W * 0.08;
+      const st = counter ? -Math.sign(vl) : steer;      // countersteer: lock against the slide
+      h += st * D.turn * clamp(vf / cap, -1, 1) * dt;
+      vx = vf * fx + vl * sx; vy = vf * fy + vl * sy;   // recompose in the OLD basis; the new heading finds a new split
+      x += vx * dt; y += vy * dt;
+      if (x < -16) x = W + 16; if (x > W + 16) x = -16;
+      if (y < -16) y = H + 16; if (y > H + 16) y = -16;
+      if (Math.abs(vl) > W * 0.05) {                    // the rear tyres write on the tarmac
+        for (let s = -1; s <= 1; s += 2) {
+          mk[mi * 2] = x - fx * 7 + sx * s * 5; mk[mi * 2 + 1] = y - fy * 7 + sy * s * 5;
+          mi = (mi + 1) % D.marks; if (mn < D.marks) mn++;
+        }
+      }
+      for (let i = 0; i < mn; i++) {
+        const age = ((mi - 1 - i + D.marks * 2) % D.marks) / D.marks;
+        dot(mk[i * 2], mk[i * 2 + 1], 1.5, "rgba(201,196,228," + (0.4 * (1 - age)).toFixed(3) + ")");
+      }
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(h);
+      rect(-8, -7, 4, 3, BONE); rect(-8, 4, 4, 3, BONE);          // rear wheels
+      for (let s = -1; s <= 1; s += 2) {                            // front wheels, turned by the lock
+        ctx.save(); ctx.translate(6, s * 5.5); ctx.rotate(st * 0.5); rect(-2, -1.5, 4, 3, BONE); ctx.restore();
+      }
+      rect(-10, -5, 20, 10, MOVER);
+      ctx.fillStyle = "#131020";
+      ctx.beginPath(); ctx.arc(5, -2, 1.6, 0, TAU); ctx.fill();
+      ctx.restore();
+      arrow(x, y, x + fx * vf * 0.25, y + fy * vf * 0.25, MOVER);   // the forward part
+      arrow(x, y, x + sx * vl * 0.25, y + sy * vl * 0.25, HOT);     // the sideways part: what grip is eating
+      const slip = Math.atan2(vl, vf) * 180 / Math.PI;
+      label("slip " + Math.round(slip) + "°", x, y - 16, DIM, "center");
+      if (counter) label("countersteer", x, y + 24, TARGET, "center");
+      label((brake ? "HANDBRAKE  ·  " : "") + "grip = " + g + " /s", W / 2, 14, brake ? HOT : DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Donuts", "Dragrace", "grip 40 with or without the handbrake and a lazy lock — nothing slides, the car goes where the nose points: the grip car", { grip: 40, brakeGrip: 40, turn: 0.9 });
+
+def("U", "Uphill", "wheels", "two wheels on Damp's springs ride a noise hill; the chassis angle is read off the two spring heights (Normals) — drag: x = throttle", function (u) {
+  var D = { omega: 11, zeta: 0.45,        // each spring: k = ω², c = 2ζω (Damp's dials)
+            wheelbase: 0.26,              // axle to axle, ×W
+            rest: 0.08,                   // spring rest length, ×H
+            wheelR: 0.034,                // wheel radius, ×H
+            amp1: 0.12, amp2: 0.03,       // the hill's two noise octaves, ×H...
+            f1: 1.3, f2: 4.4,             // ...and their frequencies, per W
+            accel: 0.55, maxSpeed: 0.5, drag: 0.5,   // throttle ×W/s²; cap ×W/s; rolling drag per second
+            g: 1.5,                       // gravity ×H/s², felt along the slope
+            hold: 4,                      // seconds your throttle lasts
+            label: "a = ω²(rest − x) − 2ζω·v   ·   θ = atan(Δh ÷ L)" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, label, clamp, noise, MOVER, BONE, HOT, TARGET, DIM } = u;
+  // SUSPENSION is Damp's spring twice: each wheel sits on the road, and the
+  // chassis mount above it is pulled toward a point one REST LENGTH up with
+  // stiffness ω² and damping 2ζω. the body never touches the road — it only
+  // knows its two spring lengths — and its ANGLE is the atan of their
+  // difference over the wheelbase (Normals: the surface says which way is
+  // up, here by way of two samples). gravity along the slope, g·sin(θ),
+  // fights the throttle on every climb — the Hill Climb feel in one line.
+  const CAR = W * 0.38, L = W * D.wheelbase, R = H * D.wheelR, REST = H * D.rest;
+  let wx = 0, v = 0, throttle = 0.8, holdT = 0, spin = 0;
+  function terr(x) { return GY - H * 0.06 - (noise(x / W * D.f1) * D.amp1 + noise(x / W * D.f2 + 7.3) * D.amp2) * H; }
+  const m = [{ y: terr(-L / 2) - R - REST, vy: 0 }, { y: terr(L / 2) - R - REST, vy: 0 }];   // the two chassis mounts
+  return {
+    drag: true,
+    press(px) { throttle = clamp((px / W - 0.15) / 0.7, 0, 1); holdT = D.hold; },
+    frame(dt, t) {
+      stage();
+      if (holdT > 0) holdT -= dt; else throttle = clamp(0.75 + noise(t * 0.3 + 40) * 0.4, 0, 1);
+      const slope = (terr(wx + 6) - terr(wx - 6)) / 12;                // dy/dx: positive = downhill to the right
+      const sinT = slope / Math.sqrt(1 + slope * slope);
+      const a = throttle * D.accel * W + sinT * D.g * H - D.drag * v;  // throttle, gravity along the slope, drag
+      v = clamp(v + a * dt, -W * D.maxSpeed, W * D.maxSpeed);
+      wx += v * dt;
+      spin += v / R * dt;                                              // Motor: ω = v ÷ r
+      const w = D.omega, n = Math.max(1, Math.ceil(dt / 0.012)), hdt = dt / n;
+      const wy = [terr(wx - L / 2) - R, terr(wx + L / 2) - R];         // wheel centres: on the road
+      for (let k = 0; k < n; k++)
+        for (let i = 0; i < 2; i++) {
+          const mm = m[i], target = wy[i] - REST;
+          mm.vy += (w * w * (target - mm.y) - 2 * D.zeta * w * mm.vy) * hdt;   // ← Damp, per wheel
+          mm.y += mm.vy * hdt;
+          if (mm.y > wy[i] - R * 0.5) { mm.y = wy[i] - R * 0.5; if (mm.vy > 0) mm.vy = 0; }     // bottomed out
+          if (mm.y < wy[i] - REST * 2.2) { mm.y = wy[i] - REST * 2.2; if (mm.vy < 0) mm.vy = 0; }   // topped out
+        }
+      const th = Math.atan2(m[1].y - m[0].y, L);                       // ← the chassis angle, from two heights
+      ctx.fillStyle = "rgba(201,196,228,0.12)";                       // the hill
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let sx = 0; sx <= W + 5; sx += 5) ctx.lineTo(sx, terr(sx - CAR + wx));
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(201,196,228,0.55)"; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let sx = 0; sx <= W + 5; sx += 5) { const yy = terr(sx - CAR + wx); if (sx === 0) ctx.moveTo(sx, yy); else ctx.lineTo(sx, yy); }
+      ctx.stroke();
+      for (let i = 0; i < 2; i++) {
+        const cx = CAR + (i ? L / 2 : -L / 2), cy = wy[i], my = m[i].y;
+        const segs = 6, dy = (my - cy) / segs;                         // the spring, a zigzag that compresses
+        ctx.strokeStyle = BONE; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(cx, cy);
+        for (let k = 1; k < segs; k++) ctx.lineTo(cx + (k % 2 ? 4 : -4), cy + dy * k);
+        ctx.lineTo(cx, my); ctx.stroke();
+        ring(cx, cy, R, MOVER, 2.5);
+        for (let k = 0; k < 4; k++) { const sa = spin + k * TAU / 4; line(cx, cy, cx + Math.cos(sa) * R, cy + Math.sin(sa) * R, "rgba(138,217,245,0.6)", 1.2); }
+        dot(cx, my, 3, BONE);
+        label(((cy - my) / REST * 100).toFixed(0) + "%", cx + R + 4, my + 3, DIM);
+      }
+      const bx = CAR, by = (m[0].y + m[1].y) / 2;
+      ctx.save(); ctx.translate(bx, by); ctx.rotate(th);
+      rect(-L * 0.62, -R * 1.6, L * 1.24, R * 1.6, MOVER);            // the chassis, hung on the two mounts
+      rect(-L * 0.2, -R * 2.8, L * 0.42, R * 1.25, MOVER);
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(L * 0.14, -R * 2.2, 1.8, 0, TAU); ctx.fill();
+      ctx.restore();
+      line(bx - L * 0.5, by - R * 3.6, bx + L * 0.5, by - R * 3.6, DIM);   // level, for the eye
+      label("θ = " + Math.round(th * 180 / Math.PI) + "°", bx, by - R * 3.9, TARGET, "center");
+      const gx = W * 0.08, gw = W * 0.28;                              // the throttle
+      line(gx, 14, gx + gw, 14, DIM);
+      rect(gx, 11, gw * throttle, 6, HOT);
+      label("throttle " + Math.round(throttle * 100) + "%  ·  v = " + Math.round(v) + " px/s", gx + gw + 8, 18, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Uphill", "Unsprung", "springs three times as stiff and lightly damped on a road twice as bumpy — every pebble reaches the driver", { omega: 30, zeta: 0.25, amp2: 0.07 });
+
+def("H", "Hovercraft", "wheels", "a spring holds the height; nothing holds x: it slides past the goal and leans into the fan fetching it back (Drone + Inertia) — press to thrust there", function (u) {
+  var D = { omega: 6, zeta: 0.6,         // the height spring (Damp)
+            hover: 0.13,                 // ride height above the ground, ×H
+            thrust: 0.45,                // the fan, ×W per second²
+            friction: 0.25,              // horizontal decay per second — a skirt of air keeps almost nothing
+            lean: 0.9,                   // radians of tilt per (W/s²) of push
+            arrive: 2.2,                 // the pilot: wanted v = arrive · distance
+            maxSpeed: 0.5,               // wanted-speed cap, ×W/s
+            bounce: 0.6,                 // restitution at the card's edges
+            wander: 4,                   // seconds between goals
+            label: "aᵧ = ω²(h₀ − h) − 2ζω·vᵧ   ·   vₓ ×= e^(−μ·dt)" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, label, clamp, rand, MOVER, BONE, HOT, TARGET, DIM } = u;
+  // Drone held x AND height with springs. a HOVERCRAFT holds only its
+  // height — the cushion is a spring under the skirt — and sideways it is
+  // Inertia on ice: the fan pushes, a tiny friction μ takes almost nothing
+  // back, so it sails past the goal and must thrust the other way. the lean
+  // is read off the push, as Drone's was. the pilot is Arrive with a fan:
+  // wanted velocity = arrive · distance, push toward the difference.
+  let x = W * 0.3, y = GY - H * 0.13, vx = 0, vy = 0, tx = W * 0.7, timer = 0, push = 0, tilt = 0;
+  return {
+    press(px) { tx = clamp(px, W * 0.08, W * 0.92); timer = -6; },
+    frame(dt, t) {
+      stage(); ground();
+      timer += dt;
+      if (timer > D.wander) { timer = 0; tx = rand(W * 0.1, W * 0.9); }
+      const cap = W * D.maxSpeed;
+      const wantV = clamp((tx - x) * D.arrive, -cap, cap);
+      push = clamp((wantV - vx) * 4, -W * D.thrust, W * D.thrust);    // the fan: toward the wanted velocity, capped
+      vx += push * dt;
+      vx *= Math.exp(-D.friction * dt);                  // ← μ: the skirt barely holds
+      const w = D.omega, h0 = GY - H * D.hover;
+      vy += (w * w * (h0 - y) - 2 * D.zeta * w * vy) * dt;   // ← the cushion: Damp's spring
+      vy = clamp(vy, -H * 2, H * 2);
+      x += vx * dt; y += vy * dt;
+      if (x < 18) { x = 18; vx = Math.abs(vx) * D.bounce; }            // the boards
+      if (x > W - 18) { x = W - 18; vx = -Math.abs(vx) * D.bounce; }
+      if (y > GY - 6) { y = GY - 6; vy = -Math.abs(vy) * 0.3; }
+      tilt += (clamp(push / W * D.lean, -0.5, 0.5) - tilt) * Math.min(1, 6 * dt);
+      ctx.setLineDash([3, 4]);
+      line(0, h0, W, h0, "rgba(245,193,105,0.3)");                     // the rest height
+      ctx.setLineDash([]);
+      label("h₀", 6, h0 - 4, "rgba(245,193,105,0.6)");
+      ring(tx, GY - 4, 6, TARGET, 1.5);
+      const segs = 5, dy = (GY - y) / segs;                            // the cushion, drawn as the spring it is
+      ctx.strokeStyle = "rgba(201,196,228,0.5)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(x, y);
+      for (let k = 1; k < segs; k++) ctx.lineTo(x + (k % 2 ? 5 : -5), y + dy * k);
+      ctx.lineTo(x, GY); ctx.stroke();
+      if (Math.abs(vx) > 8) for (let i = 0; i < 3; i++) dot(x + rand(-16, 16), GY - rand(1, 6), 1.5, "rgba(232,229,244,0.35)");
+      ctx.save(); ctx.translate(x, y + Math.sin(t * 9) * 1.5); ctx.rotate(tilt);
+      ctx.fillStyle = "rgba(201,196,228,0.7)";
+      ctx.beginPath(); ctx.ellipse(0, 4, 22, 6, 0, 0, TAU); ctx.fill();   // the skirt
+      rect(-14, -8, 24, 12, MOVER);                                    // the hull
+      ring(16, -4, 6, BONE, 2);                                        // the fan
+      line(16 - 6, -4, 16 + 6, -4, BONE, 1);
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(5, -3, 1.8, 0, TAU); ctx.fill();
+      ctx.restore();
+      arrow(x, y - 16, x + push * 0.08, y - 16, HOT);                  // the push
+      label("vₓ = " + Math.round(vx) + "  ·  μ = " + D.friction, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Hovercraft", "Hoverpuck", "friction zero, lean zero, boards that give everything back — an air-hockey puck that never quite settles", { friction: 0, lean: 0, bounce: 1 });
+
+def("L", "Lean", "wheels", "lean* = atan(v²/R ÷ g); the visible roll is a spring chasing lean*, so it dips late into a corner and sways out of it — press to set the corner radius", function (u) {
+  var D = { speed: 0.42,          // along the track, ×W per second
+            radius: 0.2,          // corner radius, ×H
+            omega: 5, zeta: 0.55, // the roll spring (Damp)
+            g: 2.4,               // gravity ×H/s² — the scale of a_lat
+            leanMax: 1.1,         // radians the body may lean
+            label: "a_lat = v²/R   ·   lean* = atan(a_lat ÷ g)   ·   roll → lean*" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, arrow, mote, label, clamp, MOVER, BONE, HOT, TARGET, DIM } = u;
+  // BODY ROLL is presentation derived from physics: a corner of radius R at
+  // speed v demands a centripetal acceleration a_lat = v²/R, and a bike (or
+  // a car's body on its springs) LEANS by atan(a_lat/g) to line its weight
+  // up with the sum. the target lean switches on at the corner's entry and
+  // off at its exit; the visible roll is Damp's spring chasing that target
+  // — so it dips late going in and sways back going out. Drone read tilt
+  // off acceleration the same way; here the acceleration is the track's.
+  const cx = W * 0.4, cy = H * 0.52, a = W * 0.27;
+  let s = 0, roll = 0, rollV = 0, r = clamp(D.radius * H, H * 0.07, Math.min(a, H * 0.34));
+  const P = [0, 0, 0, 0];                              // x, y, heading, in-corner
+  function place(sd) {                                 // distance along the lap → the point
+    const hs = a - r, L = 4 * hs + TAU * r;
+    sd = ((sd % L) + L) % L;
+    if (sd < 2 * hs) { P[0] = cx - hs + sd; P[1] = cy - r; P[2] = 0; P[3] = 0; return; }
+    sd -= 2 * hs;
+    if (sd < Math.PI * r) { const an = -Math.PI / 2 + sd / r; P[0] = cx + hs + Math.cos(an) * r; P[1] = cy + Math.sin(an) * r; P[2] = an + Math.PI / 2; P[3] = 1; return; }
+    sd -= Math.PI * r;
+    if (sd < 2 * hs) { P[0] = cx + hs - sd; P[1] = cy + r; P[2] = Math.PI; P[3] = 0; return; }
+    sd -= 2 * hs;
+    const an = Math.PI / 2 + sd / r; P[0] = cx - hs + Math.cos(an) * r; P[1] = cy + Math.sin(an) * r; P[2] = an + Math.PI / 2; P[3] = -1;
+  }
+  return {
+    press(px, py) { r = clamp(Math.abs(py - cy), H * 0.07, Math.min(a, H * 0.34)); },
+    frame(dt, t) {
+      stage();
+      const v = W * D.speed, g = H * D.g;
+      s += v * dt;
+      place(s);
+      const x = P[0], y = P[1], hd = P[2], inC = P[3];
+      const aLat = inC ? v * v / r : 0;                 // ← v²/R, only in the corners
+      const want = clamp(Math.atan(aLat / g), 0, D.leanMax);   // ← the lean the physics asks for
+      const w = D.omega;
+      rollV += (w * w * (want - roll) - 2 * D.zeta * w * rollV) * dt;   // the roll spring chases it
+      roll += rollV * dt;
+      const hs = a - r;
+      ctx.strokeStyle = "rgba(201,196,228,0.12)"; ctx.lineWidth = 14; ctx.beginPath();   // the track
+      for (let i = 0; i <= 96; i++) { place(i / 96 * (4 * hs + TAU * r)); if (i === 0) ctx.moveTo(P[0], P[1]); else ctx.lineTo(P[0], P[1]); }
+      ctx.closePath(); ctx.stroke();
+      ctx.strokeStyle = DIM; ctx.lineWidth = 1; ctx.setLineDash([4, 6]); ctx.stroke(); ctx.setLineDash([]);
+      dot(cx + hs, cy, 2, DIM); dot(cx - hs, cy, 2, DIM);
+      if (inC) {
+        const ccx = cx + inC * hs;
+        line(x, y, ccx, cy, DIM);
+        label("R = " + Math.round(r), (x + ccx) / 2, (y + cy) / 2 - 4, DIM, "center");
+        const dx = ccx - x, dy = cy - y, d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+        arrow(x, y, x + dx / d * aLat * 0.06, y + dy / d * aLat * 0.06, HOT);   // a_lat, toward the centre
+      }
+      mote(x, y, hd);
+      const ix = W * 0.72, iy = H * 0.08, iw = W * 0.26, ih = H * 0.44;      // the inset: seen from behind
+      rect(ix, iy, iw, ih, "rgba(0,0,0,0.35)");
+      ring(ix, iy, 0.5, DIM);
+      ctx.strokeStyle = DIM; ctx.strokeRect(ix, iy, iw, ih);
+      const gx = ix + iw / 2, gy = iy + ih * 0.82, bl = ih * 0.6;
+      line(ix + 4, gy, ix + iw - 4, gy, BONE);
+      ctx.setLineDash([2, 3]);
+      line(gx, gy, gx + Math.sin(want) * bl, gy - Math.cos(want) * bl, TARGET);   // lean*: where the body should be
+      ctx.setLineDash([]);
+      line(gx, gy, gx + Math.sin(roll) * bl, gy - Math.cos(roll) * bl, MOVER, 3);   // the roll: where it is
+      ring(gx + Math.sin(roll) * bl * 0.12, gy - Math.cos(roll) * bl * 0.12, bl * 0.12, MOVER, 1.5);
+      mote(gx + Math.sin(roll) * bl, gy - Math.cos(roll) * bl, -Math.PI / 2 + roll, MOVER, 5);
+      label("roll " + Math.round(roll * 180 / Math.PI) + "° → " + Math.round(want * 180 / Math.PI) + "°", gx, iy + ih - 4, DIM, "center");
+      label("a_lat = " + Math.round(aLat) + " px/s²", W * 0.4, 14, inC ? HOT : DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Lean", "Lowrider", "a slow, soft roll spring — the body sways long after the corner and never quite catches up: a boat of a car", { omega: 1.6, zeta: 0.3, speed: 0.36 });
+
+def("B", "Boost", "wheels", "a boost is an impulse plus a raised speed CAP that decays back; pads give small ones, nitro a big one (Dash + Kart) — press to fire nitro", function (u) {
+  var D = { base: 0.32,              // the ordinary cap, ×W/s
+            accel: 0.5,              // approach to the cap, ×W/s²
+            padKick: 0.12, padBonus: 0.25,      // a pad: the impulse, and the cap raise, ×W/s
+            nitroKick: 0.2, nitroBonus: 0.45,   // nitro: the same, bigger
+            decay: 1.1,              // the bonus decays at this rate, per second
+            pads: 2,                 // pads on the lap
+            autoNitro: 6.5,          // seconds between the autopilot's nitros
+            rx: 0.36, ry: 0.27,      // the loop, ×W and ×H
+            label: "cap = base + bonus   ·   bonus ×= e^(−k·dt)   ·   v → cap" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, poly, label, clamp, rand, MOVER, BONE, HOT, TARGET, GOOD, DIM } = u;
+  // Dash was an impulse that decayed. a BOOST is that plus a second trick:
+  // the SPEED CAP itself is raised, and the raise decays back with the
+  // same e^(−k·dt) — so the kart does not merely get a shove, it is briefly
+  // ALLOWED to be faster, and the engine (which always approaches the cap)
+  // keeps it there until the cap sinks under it. the gauge shows both: the
+  // amber cap sliding up and back, the blue speed chasing it.
+  const cx = W / 2, cy = H * 0.52, a = W * D.rx, b = H * D.ry, r = Math.min(a, b), hs = Math.max(0, a - r);
+  const L = 4 * hs + TAU * r;
+  const P = [0, 0, 0];
+  function place(sd) {
+    sd = ((sd % L) + L) % L;
+    if (sd < 2 * hs) { P[0] = cx - hs + sd; P[1] = cy - r; P[2] = 0; return; }
+    sd -= 2 * hs;
+    if (sd < Math.PI * r) { const an = -Math.PI / 2 + sd / r; P[0] = cx + hs + Math.cos(an) * r; P[1] = cy + Math.sin(an) * r; P[2] = an + Math.PI / 2; return; }
+    sd -= Math.PI * r;
+    if (sd < 2 * hs) { P[0] = cx + hs - sd; P[1] = cy + r; P[2] = Math.PI; return; }
+    sd -= 2 * hs;
+    const an = Math.PI / 2 + sd / r; P[0] = cx - hs + Math.cos(an) * r; P[1] = cy + Math.sin(an) * r; P[2] = an + Math.PI / 2;
+  }
+  let s = 0, v = 0, bonus = 0, timer = 0, flash = 0, kind = "";
+  function nitro() { v += D.nitroKick * W; bonus = Math.max(bonus, D.nitroBonus); flash = 0.5; kind = "nitro"; }
+  return {
+    press() { nitro(); timer = 0; },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.autoNitro) { timer = rand(0, 1.5); nitro(); }
+      bonus *= Math.exp(-D.decay * dt);                  // ← the raise decays
+      const cap = (D.base + bonus) * W;                  // ← the cap, right now
+      if (v < cap) v = Math.min(cap, v + D.accel * W * dt);   // the engine approaches it
+      else v += (cap - v) * Math.min(1, 2.5 * dt);      // ...and above it, engine braking eases back
+      const s0 = s;
+      s += v * dt;
+      for (let i = 0; i < D.pads; i++) {                 // did we cross a pad this frame?
+        const ps = L * (i + 0.5) / D.pads;
+        if ((((ps - s0) % L) + L) % L < s - s0) { v += D.padKick * W; bonus = Math.max(bonus, D.padBonus); flash = 0.4; kind = "pad"; }
+      }
+      flash = Math.max(0, flash - dt);
+      ctx.strokeStyle = "rgba(201,196,228,0.12)"; ctx.lineWidth = 16; ctx.beginPath();
+      for (let i = 0; i <= 96; i++) { place(i / 96 * L); if (i === 0) ctx.moveTo(P[0], P[1]); else ctx.lineTo(P[0], P[1]); }
+      ctx.closePath(); ctx.stroke();
+      for (let i = 0; i < D.pads; i++) {                 // the pads: chevrons on the tarmac
+        place(L * (i + 0.5) / D.pads);
+        ctx.save(); ctx.translate(P[0], P[1]); ctx.rotate(P[2]);
+        for (let k = -1; k <= 1; k++) poly([[k * 7 - 3, -7], [k * 7 + 3, 0], [k * 7 - 3, 7], [k * 7, 0]], GOOD);
+        ctx.restore();
+      }
+      place(s);
+      const x = P[0], y = P[1], hd = P[2];
+      ctx.save(); ctx.translate(x, y); ctx.rotate(hd);
+      if (v > D.base * W * 1.04) {                       // over the base cap: flames
+        const f = 8 + rand(0, 8) + (v / W - D.base) * 40;
+        poly([[-9, -3], [-9 - f, 0], [-9, 3]], HOT);
+        poly([[-9, -1.5], [-9 - f * 0.55, 0], [-9, 1.5]], TARGET);
+      }
+      rect(-7, -6, 4, 3, BONE); rect(-7, 3, 4, 3, BONE); rect(4, -6, 4, 3, BONE); rect(4, 3, 4, 3, BONE);
+      rect(-9, -4, 18, 8, MOVER);
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(5, -1.5, 1.5, 0, TAU); ctx.fill();
+      ctx.restore();
+      if (flash > 0) label(kind + "  +cap", x, y - 16, "rgba(155,226,138," + (flash * 2).toFixed(2) + ")", "center");
+      const gx = W * 0.15, gw = W * 0.7, gy = 14;        // the gauge
+      const gmax = (D.base + Math.max(D.padBonus, D.nitroBonus) + 0.1) * W;
+      line(gx, gy, gx + gw, gy, DIM);
+      rect(gx, gy - 3, gw * clamp(Math.min(v, D.base * W) / gmax, 0, 1), 6, MOVER);
+      if (v > D.base * W) rect(gx + gw * D.base * W / gmax, gy - 3, gw * clamp((v - D.base * W) / gmax, 0, 1), 6, HOT);
+      line(gx + gw * D.base * W / gmax, gy - 6, gx + gw * D.base * W / gmax, gy + 6, BONE);
+      ring(gx + gw * clamp(cap / gmax, 0, 1), gy, 4.5, TARGET, 1.5);
+      label("base", gx + gw * D.base * W / gmax, gy + 16, DIM, "center");
+      label("cap", gx + gw * clamp(cap / gmax, 0, 1), gy - 9, TARGET, "center");
+      label("v = " + (v / W).toFixed(2) + " W/s  ·  bonus " + bonus.toFixed(2), W / 2, H * 0.52, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Boost", "Blastpad", "an enormous cap raise that decays almost at once — pure shove, the engine never gets to use the headroom", { padBonus: 1.2, nitroBonus: 1.5, decay: 8 });
+
+def("R", "Road", "wheels", "the OutRun trick: each row is a road slice at depth z, drawn W/z wide, bent by an accumulated curve and lifted by a hill, all ÷ z — drag: steer", function (u) {
+  var D = { segs: 44,              // road slices from the bumper to the horizon
+            dz: 0.55,              // depth per slice (the bumper is at z = 1)
+            camH: 1.0,             // camera height above the road, in depth units
+            roadW: 1.0,            // half the road width at the bumper, ×W
+            horizon: 0.42,         // the horizon line, ×H
+            speed: 7,              // depth units per second
+            curveK: 0.05, curveF: 0.12,   // curvature strength, and how often the noise changes it
+            hillAmp: 2.5, hillF: 0.06,    // hill height (depth units) and frequency
+            drift: 0.5,            // how hard a curve throws the car outward
+            steerRate: 1.1,        // road half-widths per second at full lock
+            posts: 4,              // depth between roadside posts
+            palette: "sunset",     // "sunset" or "rain"
+            hold: 4,               // seconds your steering lasts
+            label: "row: x = X(z) ÷ z   ·   y = (h(z) − cam) ÷ z   ·   w = W ÷ z" };
+  const { ctx, W, H, TAU, stage, dot, line, rect, poly, label, clamp, noise, rand, MOVER, BONE, HOT, DIM } = u;
+  // no 3D anywhere: the road is a stack of horizontal SLICES, each one a
+  // little further down the z axis. a slice at depth z is drawn 1/z as
+  // wide and 1/z as far below the horizon as the one at the bumper — that
+  // one division is the whole perspective (Perspective's stars use the same
+  // one). a CURVE is a lateral offset that ACCUMULATES slice by slice (the
+  // road bends away, the car never turns); a HILL is a height h(z) that
+  // moves each slice's y — drawn far to near, so a crest hides what is
+  // behind it. steering moves the road under a car that stays put.
+  const N = D.segs;
+  const SY = new Float32Array(N + 1), SX = new Float32Array(N + 1), SW = new Float32Array(N + 1);
+  const PAL = { sunset: { sky: ["#2A1B4E", "#E0704A"], grass: ["#1E4B3A", "#1A4233"], road: "#3A3550", rumble: ["#F5E8E0", "#C8506A"], line: "#F5E8E0", rain: false },
+                rain: { sky: ["#0B0E1C", "#26304A"], grass: ["#12201F", "#0F1A1A"], road: "#1B1D2B", rumble: ["#8F98B0", "#3E4660"], line: "#8F98B0", rain: true } };
+  let pos = 0, carX = 0, steer = 0, manualT = 0, speed = 0;
+  function kappa(d) { return noise(d * D.curveF) * D.curveK; }
+  function hill(d) { return (Math.sin(d * D.hillF) * 0.65 + Math.sin(d * D.hillF * 2.3 + 1.7) * 0.35) * D.hillAmp; }
+  return {
+    drag: true,
+    press(px) { steer = clamp((px / W - 0.5) * 2.4, -1, 1); manualT = D.hold; },
+    frame(dt, t) {
+      stage();
+      const P = PAL[D.palette] || PAL.sunset;
+      const off = Math.abs(carX) > 1.05;
+      speed += (D.speed * (off ? 0.45 : 1) - speed) * Math.min(1, 1.5 * dt);
+      pos += speed * dt;
+      const k0 = kappa(pos), hp = hill(pos);
+      carX -= k0 * speed * D.drift * 6 * dt;             // the curve throws the car outward
+      if (manualT > 0) manualT -= dt; else steer = clamp(-carX * 2.5, -1, 1);   // the autopilot aims for the middle, late
+      carX = clamp(carX + steer * D.steerRate * dt, -1.6, 1.6);
+      const cy = H * D.horizon, f = H - cy;
+      let X = 0, S = 0;
+      for (let k = 0; k <= N; k++) {                     // project every slice
+        const z = 1 + k * D.dz, d = pos + k * D.dz;
+        if (k > 0) { S += kappa(d) * D.dz; X += S * D.dz; }   // ← the curve accumulates
+        SY[k] = cy + (D.camH - (hill(d) - hp)) * f / z;   // ← y ÷ z
+        SX[k] = W / 2 + (X - carX * D.roadW) * W / z;     // ← x ÷ z
+        SW[k] = D.roadW * W / z;                          // ← w ÷ z
+      }
+      const g = ctx.createLinearGradient(0, 0, 0, cy + 4);
+      g.addColorStop(0, P.sky[0]); g.addColorStop(1, P.sky[1]);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, cy + 4);
+      rect(0, cy, W, H - cy, P.grass[0]);
+      let annK = -1;
+      for (let k = N - 1; k >= 0; k--) {                 // far to near: near slices paint over far ones
+        const y1 = SY[k + 1], y2 = SY[k];
+        if (y2 <= y1) continue;                          // faces away: hidden behind a crest
+        const d = pos + k * D.dz, stripe = ((Math.floor(d / (D.dz * 3)) % 2) + 2) % 2;
+        rect(0, y1, W, y2 - y1 + 1, P.grass[stripe]);
+        const x1 = SX[k + 1], w1 = SW[k + 1], x2 = SX[k], w2 = SW[k];
+        poly([[x1 - w1 * 1.12, y1], [x1 + w1 * 1.12, y1], [x2 + w2 * 1.12, y2], [x2 - w2 * 1.12, y2]], P.rumble[stripe]);
+        poly([[x1 - w1, y1], [x1 + w1, y1], [x2 + w2, y2], [x2 - w2, y2]], P.road);
+        if (stripe) poly([[x1 - w1 * 0.03, y1], [x1 + w1 * 0.03, y1], [x2 + w2 * 0.03, y2], [x2 - w2 * 0.03, y2]], P.line);
+        if (Math.floor(d / D.posts) !== Math.floor((d - D.dz) / D.posts)) {   // a roadside post, 1/z tall
+          const z = 1 + k * D.dz, ph = 0.9 * f / z, pxl = x2 - w2 * 1.5, pxr = x2 + w2 * 1.5;
+          line(pxl, y2, pxl, y2 - ph, BONE, Math.max(1, 3 / z)); line(pxr, y2, pxr, y2 - ph, BONE, Math.max(1, 3 / z));
+          rect(pxl - 4 / z * 2, y2 - ph - 5 / z * 2, 16 / z, 10 / z, HOT);
+        }
+        if (k === Math.round(N / 4)) annK = k;
+      }
+      if (annK > 0) {                                    // one slice, annotated
+        const yk = SY[annK], z = 1 + annK * D.dz;
+        line(SX[annK] - SW[annK], yk, SX[annK] + SW[annK], yk, "rgba(245,193,105,0.7)", 1);
+        label("z = " + z.toFixed(1) + "  w = W/z", SX[annK] + SW[annK] + 4, yk + 3, "rgba(245,193,105,0.8)");
+      }
+      if (P.rain) for (let i = 0; i < 26; i++) { const rx = rand(0, W), ry = rand(0, H); line(rx, ry, rx - 2, ry + 9, "rgba(170,180,210,0.35)"); }
+      const sc = W / 250, ccx = W / 2 + carX * W * 0.06 + (off ? rand(-1.5, 1.5) : 0), ccy = H * 0.9;   // the car, rear view
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath(); ctx.ellipse(ccx, ccy + 3 * sc, 20 * sc, 4 * sc, 0, 0, TAU); ctx.fill();
+      ctx.save(); ctx.translate(ccx, ccy); ctx.rotate(steer * 0.1);
+      rect(-19 * sc, -3 * sc, 7 * sc, 6 * sc, "#131020"); rect(12 * sc, -3 * sc, 7 * sc, 6 * sc, "#131020");
+      rect(-16 * sc, -11 * sc, 32 * sc, 12 * sc, MOVER);
+      rect(-10 * sc, -18 * sc, 20 * sc, 8 * sc, "#5FB1D6");
+      dot(-12 * sc, -6 * sc, 2 * sc, HOT); dot(12 * sc, -6 * sc, 2 * sc, HOT);
+      ctx.restore();
+      label("κ = " + k0.toFixed(3) + "  ·  h = " + hp.toFixed(1) + "  ·  " + N + " slices" + (off ? "  ·  OFF ROAD" : ""), W / 2, 14, "rgba(232,229,244,0.75)", "center");
+      label(D.label, W / 2, H - 8, "rgba(232,229,244,0.7)", "center");
+    }
+  };
+});
+rhymeOf("Road", "Rainroad", "a night palette with rain, hills half again as tall and curves that bend nearly twice as hard — the same slices, a harder drive", { palette: "rain", hillAmp: 3.8, curveK: 0.085 });
+
+def("P", "Perspective", "wheels", "warp stars: each star is (x, y, z) and the screen sees x/z, y/z; as z shrinks it races outward — a streak joins last frame to this — drag: speed", function (u) {
+  var D = { n: 150,               // stars alive at once
+            base: 0.25, peak: 3.2,  // the slowest and fastest warp, depth units per second
+            ramp: "sine",         // "sine" ramps up and down; "punch" jumps
+            period: 9,            // seconds per ramp
+            focal: 0.5,           // the lens, ×H (bigger = narrower view)
+            near: 0.03,           // a star this close is respawned far away
+            streakMax: 0.35,      // the longest streak drawn, ×W
+            hold: 4,              // seconds your speed lasts
+            label: "sx = W/2 + x ÷ z · f      sy = H/2 + y ÷ z · f" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, label, clamp, lerp, rng, MOVER, HOT, TARGET, DIM } = u;
+  // PERSPECTIVE is one division. a star at (x, y, z) lands on the screen at
+  // x/z, y/z (times a focal length): far stars huddle near the centre, near
+  // stars fly to the edges, and moving the camera forward is just z −= v·dt
+  // for everyone. the STREAK is honest motion blur — a line from where the
+  // star was drawn last frame to where it is now — so it grows with speed
+  // and with nearness, by itself. the same 1/z draws Road's slices.
+  const n = D.n, X = new Float32Array(n), Y = new Float32Array(n), Z = new Float32Array(n), LX = new Float32Array(n), LY = new Float32Array(n);
+  const seed = rng(3);
+  function spawn(i, z) {
+    X[i] = seed() * 2 - 1; Y[i] = seed() * 2 - 1; Z[i] = z;
+    const f = H * D.focal;
+    LX[i] = W / 2 + X[i] / z * f; LY[i] = H / 2 + Y[i] / z * f;        // no streak on the first frame
+  }
+  for (let i = 0; i < n; i++) spawn(i, seed() * 0.95 + 0.05);
+  let speed = D.base, manualT = 0, manualSpeed = 0;
+  return {
+    drag: true,
+    press(px) { manualSpeed = lerp(D.base, D.peak, clamp(px / W, 0, 1)); manualT = D.hold; },
+    frame(dt, t) {
+      stage();
+      if (manualT > 0) { manualT -= dt; speed += (manualSpeed - speed) * Math.min(1, 4 * dt); }
+      else {
+        const ph = ((t % D.period) + D.period) % D.period / D.period;
+        const k = D.ramp === "punch" ? (ph < 0.5 ? 0 : 1) : 0.5 - 0.5 * Math.cos(ph * TAU);
+        speed = D.base + (D.peak - D.base) * k;
+      }
+      const f = H * D.focal, maxS = W * D.streakMax;
+      ring(W / 2, H / 2, 5, DIM);
+      for (let i = 0; i < n; i++) {
+        Z[i] -= speed * dt;                              // ← the camera moves forward: every z shrinks
+        if (Z[i] < D.near) { spawn(i, 1); continue; }
+        const z = Z[i], sx = W / 2 + X[i] / z * f, sy = H / 2 + Y[i] / z * f;   // ← the division
+        if (sx < -20 || sx > W + 20 || sy < -20 || sy > H + 20) { spawn(i, 1); continue; }
+        let dx = sx - LX[i], dy = sy - LY[i];
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > maxS) { dx *= maxS / d; dy *= maxS / d; }
+        const al = clamp(1.25 - z, 0.15, 1), wd = clamp(1.6 / (z + 0.3), 0.6, 2.4);
+        if (i === 0) {                                   // the hero star, annotated
+          line(W / 2, H / 2, sx, sy, "rgba(245,193,105,0.25)");
+          line(sx - dx, sy - dy, sx, sy, TARGET, wd + 0.5);
+          label("(x/z, y/z)  z = " + z.toFixed(2), sx + 6, sy - 6, TARGET);
+        } else if (d < 1) dot(sx, sy, wd * 0.6, "rgba(232,229,244," + al.toFixed(2) + ")");
+        else line(sx - dx, sy - dy, sx, sy, "rgba(232,229,244," + al.toFixed(2) + ")", wd);
+        LX[i] = sx; LY[i] = sy;
+      }
+      const gx = W * 0.06, gw = W * 0.3;                 // the speed gauge
+      line(gx, H - 22, gx + gw, H - 22, DIM);
+      rect(gx, H - 25, gw * clamp((speed - D.base) / Math.max(1e-6, D.peak - D.base), 0, 1), 6, MOVER);
+      label("v = " + speed.toFixed(2) + " /s" + (D.ramp === "punch" ? "  (punch)" : ""), gx + gw + 6, H - 18, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Perspective", "Punchit", "no ramp: the warp steps from crawl to twice the peak in one frame, and streaks may run most of the screen", { ramp: "punch", peak: 6, streakMax: 0.8 });
+
+def("Z", "Zerog", "wheels", "thrust along the nose, spin with damping, no up, no drag: heading and velocity disagree until FLIGHT ASSIST kills the drift — press: assist, drag: aim", function (u) {
+  var D = { thrust: 0.45,          // ×W per second² along the nose
+            torque: 7,             // the pilot's turn authority: rad/s² per radian of error
+            angDamp: 3,            // spin damping, per second — the rcs the game gives you for free
+            assist: true,          // flight assist on at the start
+            assistK: 1.6,          // with assist: velocity off the nose decays at this rate
+            maxSpeed: 0.55,        // ×W/s
+            loopR: 0.3,            // the autopilot's lazy loop, ×H
+            loopRate: 0.45,        // rad/s of the loop's target
+            hold: 5,               // seconds your aim lasts
+            label: "v += nose·T·dt   ·   ω ×= e^(−c·dt)   ·   assist: v⊥ ×= e^(−k·dt)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, poly, arrow, label, wrapAngle, clamp, len, MOVER, BONE, HOT, TARGET, GOOD, DIM } = u;
+  // Asteroids in full: a ship with no up, no floor and no air. thrust only
+  // ever adds along the NOSE; the heading turns by an angular velocity ω
+  // that torque changes and a little damping bleeds (the pilot here only
+  // pushes toward the error — without that damping the nose rings for ever).
+  // so heading and velocity disagree: the amber arrow is where you are
+  // GOING, the blue nose where you are POINTING. FLIGHT ASSIST is one extra
+  // line: decay the part of v that is not along the nose, and the ship
+  // flies like a car again — the difference between Elite and Everspace.
+  const cx = W / 2, cy = H * 0.5;
+  let x = W * 0.3, y = H * 0.5, vx = 0, vy = 0, h = 0, om = 0, assist = D.assist;
+  let tx = 0, ty = 0, manualT = 0, clock = 0, lastPress = -9, burning = false, drift = 0;
+  const trail = new Float32Array(120);
+  let ti = 0, tn = 0;
+  return {
+    drag: true,
+    press(px, py) {
+      if (clock - lastPress > 0.3) assist = !assist;    // a fresh press flips the assist
+      lastPress = clock;
+      tx = px; ty = py; manualT = D.hold;               // a held one aims
+    },
+    frame(dt, t) {
+      stage();
+      clock += dt;
+      if (manualT > 0) manualT -= dt;
+      else { tx = cx + Math.cos(t * D.loopRate) * H * D.loopR * 1.4; ty = cy + Math.sin(t * D.loopRate) * H * D.loopR; }
+      const cap = W * D.maxSpeed;
+      let dvx = (tx - x) * 1.5, dvy = (ty - y) * 1.5;   // the wanted velocity (Arrive)
+      const ds = len(dvx, dvy);
+      if (ds > cap) { dvx *= cap / ds; dvy *= cap / ds; }
+      const ex = dvx - vx, ey = dvy - vy, es = len(ex, ey);
+      const want = es > 4 ? Math.atan2(ey, ex) : h;
+      const err = wrapAngle(want - h);
+      om += D.torque * err * dt;                         // the pilot: torque toward the error
+      om *= Math.exp(-D.angDamp * dt);                   // ← the game's spin damping
+      h += om * dt;
+      burning = es > 8 && Math.abs(err) < 0.5;
+      const nx = Math.cos(h), ny = Math.sin(h);
+      if (burning) { vx += nx * W * D.thrust * dt; vy += ny * W * D.thrust * dt; }   // ← thrust, along the nose only
+      if (assist) {                                      // ← flight assist: kill the sideways part
+        const along = vx * nx + vy * ny, px = vx - along * nx, py = vy - along * ny;
+        const k = Math.exp(-D.assistK * dt);
+        vx = along * nx + px * k; vy = along * ny + py * k;
+      }
+      const sp = len(vx, vy);
+      if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
+      x += vx * dt; y += vy * dt;
+      if (x < -12) x = W + 12; if (x > W + 12) x = -12;
+      if (y < -12) y = H + 12; if (y > H + 12) y = -12;
+      drift = sp > 4 ? wrapAngle(Math.atan2(vy, vx) - h) : 0;
+      trail[ti * 2] = x; trail[ti * 2 + 1] = y; ti = (ti + 1) % 60; if (tn < 60) tn++;
+      if (manualT <= 0) ring(cx, cy, H * D.loopR, "rgba(232,229,244,0.06)");
+      for (let i = 0; i < tn; i++) { const age = ((ti - 1 - i + 120) % 60) / 60; dot(trail[i * 2], trail[i * 2 + 1], 1.2, "rgba(138,217,245," + (0.3 * (1 - age)).toFixed(3) + ")"); }
+      ring(tx, ty, 7, TARGET, 1.5);
+      arrow(x, y, x + nx * 34, y + ny * 34, MOVER);      // pointing
+      arrow(x, y, x + vx * 0.3, y + vy * 0.3, TARGET);    // going
+      if (Math.abs(drift) > 0.15 && sp > 20) {
+        ctx.strokeStyle = HOT; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 22, h, h + drift, drift < 0); ctx.stroke();
+        label("drift " + Math.round(Math.abs(drift) * 180 / Math.PI) + "°", x, y - 28, HOT, "center");
+      }
+      ctx.save(); ctx.translate(x, y); ctx.rotate(h);
+      if (burning) poly([[-7, -3.5], [-14 - Math.random() * 6, 0], [-7, 3.5]], HOT);
+      if (assist && Math.abs(drift) > 0.15 && sp > 20) {   // the rcs puffs that do the assisting
+        const side = drift > 0 ? -1 : 1;
+        for (let i = 0; i < 3; i++) dot(-2 + i * 3, side * (8 + i * 2), 1.4, "rgba(155,226,138,0.7)");
+      }
+      poly([[12, 0], [-7, -7], [-4, 0], [-7, 7]], MOVER);
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(3, -2, 1.6, 0, TAU); ctx.fill();
+      ctx.restore();
+      label("FLIGHT ASSIST " + (assist ? "ON" : "OFF") + "   ·   ω = " + om.toFixed(1) + " rad/s   ·   c = " + D.angDamp, W / 2, 14, assist ? GOOD : HOT, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Zerog", "Zerodrag", "assist off and no spin damping at all — the nose rings about every target and the ship slides sideways through its loop: pure Newton", { assist: false, angDamp: 0, torque: 4 });
+
+def("Q", "Quadcopter", "wheels", "a helicopter pushes only along its own up: it hovers on a height spring and must TILT to travel; the tilt lags the command (Drone) — press to send it", function (u) {
+  var D = { omega: 3, zeta: 1,        // the height spring (Drone's, ζ = 1)
+            kp: 1.8, kd: 1.5,          // the pilot: tilt command = kp·error − kd·speed (per W)
+            tiltMax: 0.7,              // radians
+            tiltRate: 2.2,             // how fast the body reaches the commanded tilt, per second — the LAG
+            g: 2.4,                    // gravity ×H/s²: aₓ = g·tan(tilt)
+            wander: 3.5,               // seconds between waypoints
+            label: "aₓ = g·tan(tilt)   ·   tilt → cmd at rate r   ·   aᵧ = ω²(tᵧ − y) − 2ζω·vᵧ" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, arrow, label, clamp, rand, MOVER, BONE, HOT, TARGET, DIM } = u;
+  // Drone READ its tilt off the acceleration a spring asked for. a real
+  // helicopter is the other way round: the rotor can only push along the
+  // body's up, so the pilot must TILT first, and the horizontal acceleration
+  // FOLLOWS — aₓ = g·tan(tilt), because the thrust must still hold the
+  // weight. two lags stack: the body reaches the commanded tilt at a finite
+  // rate, and the tilt takes time to become speed — that is why a chopper
+  // overshoots and settles, where Drone snapped. height is the same spring.
+  const WP = [[0.2, 0.3], [0.75, 0.25], [0.55, 0.6], [0.3, 0.55]];
+  let x = W * 0.2, y = H * 0.3, vx = 0, vy = 0, tilt = 0, cmd = 0, spin = 0, wi = 0, timer = 0, hold = 0;
+  let tx = W * WP[1][0], ty = H * WP[1][1], ax = 0;
+  return {
+    press(px, py) { tx = clamp(px, W * 0.08, W * 0.92); ty = clamp(py, H * 0.1, GY - H * 0.12); hold = 6; },
+    frame(dt, t) {
+      stage(); ground();
+      if (hold > 0) hold -= dt;
+      else { timer += dt; if (timer > D.wander) { timer = 0; wi = (wi + 1) % WP.length; tx = W * WP[wi][0] + rand(-W * 0.05, W * 0.05); ty = H * WP[wi][1]; } }
+      const g = H * D.g, tmax = Math.min(D.tiltMax, 1.2);
+      cmd = clamp(D.kp * (tx - x) / W - D.kd * vx / W, -tmax, tmax);   // the pilot's command
+      tilt += (cmd - tilt) * (1 - Math.exp(-D.tiltRate * dt));        // ← lag one: the body rolls toward it
+      ax = g * Math.tan(tilt);                                          // ← the lean becomes acceleration
+      vx += ax * dt;                                                    // ← lag two: acceleration becomes speed
+      const w = D.omega;
+      vy += (w * w * (ty - y) - 2 * D.zeta * w * vy) * dt;             // height: the spring
+      x += vx * dt; y += vy * dt;
+      if (x < 12) { x = 12; vx = 0; } if (x > W - 12) { x = W - 12; vx = 0; }
+      if (y > GY - 10) { y = GY - 10; vy = 0; }
+      const T = g / Math.cos(tilt);                                     // the thrust that still holds the weight
+      spin += (16 + T / g * 8) * dt;
+      ctx.setLineDash([3, 4]); line(tx, GY, tx, ty, "rgba(245,193,105,0.3)"); ctx.setLineDash([]);
+      ring(tx, ty, 7, TARGET, 1.5);
+      for (let i = 0; i < WP.length; i++) dot(W * WP[i][0], H * WP[i][1], 1.5, DIM);
+      const arm = 16;
+      ctx.save(); ctx.translate(x, y); ctx.rotate(tilt);
+      rect(-arm - 3, -3, arm * 2 + 6, 4, BONE);
+      rect(-7, -5, 14, 10, MOVER);
+      rect(-3, 5, 6, 5, BONE);
+      const bl = arm * 0.75 * Math.abs(Math.cos(spin));
+      line(-bl, -7, bl, -7, "rgba(232,229,244,0.75)", 2);
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(3, -1, 1.7, 0, TAU); ctx.fill();
+      ctx.restore();
+      const ux = Math.sin(tilt), uy = -Math.cos(tilt);                 // the body's up
+      arrow(x, y, x + ux * T * 0.09, y + uy * T * 0.09, HOT);           // thrust, along it
+      arrow(x, y, x, y + g * 0.09, DIM);                                // weight
+      arrow(x, y + 16, x + ax * 0.09, y + 16, TARGET);                  // what is left over: aₓ
+      const my = y - 30;                                                // command vs actual
+      line(x - 22, my, x + 22, my, DIM);
+      line(x + cmd / tmax * 20, my - 4, x + cmd / tmax * 20, my + 4, TARGET, 2);
+      line(x + tilt / tmax * 20, my - 3, x + tilt / tmax * 20, my + 3, MOVER, 2);
+      label("cmd " + Math.round(cmd * 180 / Math.PI) + "°  tilt " + Math.round(tilt * 180 / Math.PI) + "°", x, my - 7, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Quadcopter", "Quickdrone", "the body snaps to its command ten times faster and the pilot is twice as bold — the lag is gone and so is the overshoot", { tiltRate: 25, kp: 4, kd: 2.8 });
+
+def("U", "Uboat", "wheels", "buoyancy up, ballast down, dive planes pitching a slow hull: a pump floods or blows tanks to hold a depth (Upright + Yacht) — press to set the depth", function (u) {
+  var D = { speed: 0.1,             // forward, ×W/s — everything down here is slow
+            pumpRate: 0.35,         // ballast fill/blow rate, per second (0 = tanks blown, 1 = flooded)
+            g: 0.5,                 // (ballast − ½) · g · H is the net vertical push, px/s²
+            planeLift: 0.9,         // the dive planes: aᵧ += v · sin(pitch) · lift
+            planeRate: 0.8,         // how fast the pitch reaches its command, per second
+            pitchMax: 0.45,         // radians
+            drag: 1.4,              // vertical water drag, per second
+            surface: 0.2,           // the sea's surface, ×H
+            wander: 8,              // seconds between target depths
+            bubbles: 28,
+            label: "aᵧ = (ballast − ½)·g + v·sin(pitch)·lift − c·vᵧ" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, poly, arrow, label, clamp, rand, MOVER, BONE, HOT, TARGET, GOOD, DIM } = u;
+  // a SUBMARINE has two ways down. BALLAST: flood the tanks and the weight
+  // beats the buoyancy (the water it displaces, which never changes); blow
+  // them and it rises — slow, because a pump is slow. DIVE PLANES: little
+  // wings at the tail that pitch the hull (Upright's spring-on-an-angle,
+  // commanded), so forward speed leaks into vertical speed by v·sin(pitch).
+  // heavy water drag makes every answer late, so the pump aims by depth
+  // error AND vertical speed, or it would overshoot for ever. the surface is
+  // Yacht's wave; depth is read off a gauge, as on the real thing.
+  const SURF = H * D.surface;
+  let x = W * 0.3, y = H * 0.5, vy = 0, ballast = 0.5, pitch = 0, ty = H * 0.65, timer = 0;
+  const BX = new Float32Array(D.bubbles), BY = new Float32Array(D.bubbles), BR = new Float32Array(D.bubbles);
+  for (let i = 0; i < D.bubbles; i++) { BX[i] = rand(0, W); BY[i] = rand(SURF, H); BR[i] = rand(0.8, 2); }
+  return {
+    press(px, py) { ty = clamp(py, SURF + H * 0.1, H - 22); timer = -8; },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.wander) { timer = 0; ty = rand(SURF + H * 0.12, H - 24); }
+      const v = W * D.speed, err = ty - y;
+      const wantB = 0.5 + clamp(err / H * 2.5 - vy / H * 3, -0.5, 0.5);   // trim: by depth error and vertical speed
+      ballast += clamp(wantB - ballast, -D.pumpRate * dt, D.pumpRate * dt);   // ← the pump is slow
+      const pcmd = clamp(err / H * 3, -D.pitchMax, D.pitchMax);
+      pitch += (pcmd - pitch) * (1 - Math.exp(-D.planeRate * dt));          // the planes pitch the hull
+      const aB = (ballast - 0.5) * D.g * H, aP = v * Math.sin(pitch) * D.planeLift;
+      vy += (aB + aP - D.drag * vy) * dt;                                   // ← the whole equation
+      y += vy * dt;
+      if (y < SURF + 12) { y = SURF + 12; vy = Math.max(0, vy); }
+      if (y > H - 16) { y = H - 16; vy = Math.min(0, vy); }
+      x += v * dt; if (x > W + 40) x = -40;
+      rect(0, SURF, W, H - SURF, "rgba(60,90,170,0.16)");                  // the sea
+      ctx.strokeStyle = "rgba(201,196,228,0.6)"; ctx.lineWidth = 1.5; ctx.beginPath();
+      for (let sx = 0; sx <= W; sx += 6) { const wy = SURF + Math.sin(sx / W * 14 - t * 1.6) * 3; if (sx === 0) ctx.moveTo(sx, wy); else ctx.lineTo(sx, wy); }
+      ctx.stroke();
+      for (let i = 0; i < D.bubbles; i++) {                                // bubbles rise; new ones leave the tail
+        BY[i] -= (12 + BR[i] * 8) * dt; BX[i] += Math.sin(t * 3 + i) * 6 * dt;
+        if (BY[i] < SURF + 2) { BX[i] = x - 26; BY[i] = y + rand(-3, 3); BR[i] = rand(0.8, 2); }
+        ring(BX[i], BY[i], BR[i], "rgba(232,229,244,0.35)");
+      }
+      ctx.save(); ctx.translate(x, y); ctx.rotate(pitch);
+      ctx.fillStyle = MOVER; ctx.beginPath(); ctx.ellipse(0, 0, 28, 8, 0, 0, TAU); ctx.fill();   // the hull
+      rect(-6, -15, 12, 8, MOVER);                                                              // the tower
+      rect(-14, -3, 28 * ballast, 6, "rgba(19,16,32,0.55)");                                    // the tanks, filled to ballast
+      ctx.strokeStyle = "rgba(19,16,32,0.7)"; ctx.lineWidth = 1; ctx.strokeRect(-14, -3, 28, 6);
+      line(-26, 0, -34, 0, BONE, 2);
+      poly([[-22, -4], [-30, -4 - 8 * Math.sin(pitch)], [-30, 4 - 8 * Math.sin(pitch)], [-22, 4]], BONE);   // the planes
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(14, -2, 1.6, 0, TAU); ctx.fill();
+      ctx.restore();
+      arrow(x + 4, y, x + 4, y - 0.5 * D.g * H * 0.25, GOOD);             // buoyancy: constant
+      arrow(x - 4, y, x - 4, y + ballast * D.g * H * 0.25, HOT);           // weight: the ballast
+      if (Math.abs(aB) > 2) arrow(x + 40, y, x + 40, y + aB * 0.25, TARGET);   // net
+      label("ballast " + Math.round(ballast * 100) + "%  ·  pitch " + Math.round(pitch * 180 / Math.PI) + "°", x, y - 24, DIM, "center");
+      const gx = W - 18;                                                   // the depth gauge
+      line(gx, SURF, gx, H - 14, BONE);
+      for (let d = 0; d <= 1; d += 0.25) line(gx - 3, SURF + (H - 14 - SURF) * d, gx + 3, SURF + (H - 14 - SURF) * d, DIM);
+      line(gx - 7, ty, gx + 7, ty, TARGET, 2);
+      dot(gx, y, 3.5, MOVER);
+      label(Math.round((y - SURF) / H * 100) + " m", gx - 8, y + 3, MOVER, "right");
+      label(Math.round((ty - SURF) / H * 100) + " m", gx - 8, ty + (ty > y ? 12 : -5), TARGET, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Uboat", "Ultraslow", "a pump at a quarter of the rate, planes that answer in seconds and half the way — a deep-sea crawl where every correction is late", { pumpRate: 0.08, planeRate: 0.25, speed: 0.06 });
+
+def("Y", "Yak", "wheels", "the rider is the mount's child (Nest): mount + R(θ)·offset carries Gait's bob into the saddle; dismount keeps its velocity — press to hop off / on", function (u) {
+  var D = { speed: 0.22,          // the mount's walk, ×W/s
+            size: 0.1,            // the mount's body height, ×H
+            bob: 0.035,           // the gait bob, ×H
+            tilt: 0.08,           // radians of body rock with the stride
+            offset: [0.05, -0.95],  // the saddle, in body sizes (x forward, y up)
+            hop: 0.22,            // the dismount hop, ×H
+            g: 2.2,               // gravity ×H/s²
+            rideFor: 4.5,         // seconds ridden before the autopilot hops off
+            label: "rider = mount + R(θ)·offset   ·   dismount: v = v_mount + hop" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, MOVER, BONE, TARGET, HOT, DIM } = u;
+  // a MOUNT is a parent frame (Nest): the rider stores one local OFFSET —
+  // the saddle — and every frame is placed at mount + rotate(offset, θ),
+  // so the mount's gait BOB and stride rock (Gait, Hover's derivative
+  // lean) reach the rider without a line of rider code. DISMOUNT is the
+  // un-parenting: the rider becomes a body of its own, and the honest part
+  // is that it keeps the mount's velocity plus a hop — nobody stops dead in
+  // mid-air. mounting is the reverse: close enough to the saddle, re-parent.
+  const S = H * D.size, LEG = S * 0.8;
+  let mx = W * 0.3, dir = 1, phase = 0;
+  let mode = "ride", rx = 0, ry = 0, rvx = 0, rvy = 0, rideT = 0;
+  const G = H * D.g;
+  let sx = 0, sy = 0, by = 0, th = 0;
+  function dismount() { mode = "air"; rvx = dir * W * D.speed; rvy = -Math.sqrt(2 * G * H * D.hop); rideT = 0; }
+  return {
+    press() {
+      if (mode === "ride") dismount();
+      else if (mode === "ground" && Math.abs(mx - rx) < S * 2.2) { mode = "air"; rvx = (sx - rx) * 3; rvy = -Math.sqrt(2 * G * H * D.hop); }
+    },
+    frame(dt, t) {
+      stage(); ground();
+      const v = dir * W * D.speed;
+      mx += v * dt;
+      if (mx > W * 0.86) dir = -1; if (mx < W * 0.14) dir = 1;
+      phase += Math.abs(v) / (S * 0.9) * dt;                            // the stride clock
+      const bob = Math.abs(Math.sin(phase)) * H * D.bob;
+      by = GY - LEG - S * 0.5 - bob;                                    // the body, carried by the gait
+      th = Math.cos(phase) * D.tilt * dir;                              // the rock: the bob's derivative
+      const ox = D.offset[0] * S * dir, oy = D.offset[1] * S;
+      sx = mx + ox * Math.cos(th) - oy * Math.sin(th);                  // ← the saddle: parent + R(θ)·offset
+      sy = by + ox * Math.sin(th) + oy * Math.cos(th);
+      if (mode === "ride") {
+        rx = sx; ry = sy; rideT += dt;
+        if (rideT > D.rideFor) dismount();
+      } else {
+        if (mode === "air") {
+          rvy += G * dt; rx += rvx * dt; ry += rvy * dt;
+          if (Math.abs(rx - sx) < S * 0.5 && Math.abs(ry - sy) < S * 0.5 && rvy > -H * 0.2) mode = "ride";   // re-parent
+          else if (ry >= GY - 8) { ry = GY - 8; rvy = 0; rvx = 0; mode = "ground"; }
+        } else {                                                        // on foot: walk toward the mount, hop on when it passes
+          const want = clamp((mx - rx) * 2, -W * 0.16, W * 0.16);
+          rx += want * dt;
+          if (Math.abs(mx - rx) < S * 1.6 && rideT > 1.2) { mode = "air"; rvx = (sx - rx) * 3 + v; rvy = -Math.sqrt(2 * G * H * D.hop); }
+          rideT += dt;
+        }
+        rx = clamp(rx, 8, W - 8);
+      }
+      ctx.save(); ctx.translate(mx, by); ctx.rotate(th);                // the mount
+      for (let i = 0; i < 4; i++) {                                     // four legs, two beats
+        const hx = (i < 2 ? 0.6 : -0.6) * S * dir, sw = Math.sin(phase + (i % 2) * Math.PI) * 0.45;
+        line(hx, S * 0.3, hx + Math.sin(sw) * LEG, S * 0.3 + Math.cos(sw) * LEG + bob, BONE, 3);
+      }
+      ctx.fillStyle = BONE; ctx.beginPath(); ctx.ellipse(0, 0, S * 1.1, S * 0.55, 0, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(S * 1.2 * dir, -S * 0.25, S * 0.32, 0, TAU); ctx.fill();   // the head
+      line(S * 1.2 * dir, -S * 0.5, S * 1.45 * dir, -S * 0.85, BONE, 2);                  // horns
+      line(S * 1.2 * dir, -S * 0.5, S * 0.95 * dir, -S * 0.85, BONE, 2);
+      rect(ox - S * 0.3, -S * 0.7, S * 0.6, S * 0.25, "#131020");                          // the saddle
+      ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(S * 1.3 * dir, -S * 0.3, 1.6, 0, TAU); ctx.fill();
+      ctx.restore();
+      ctx.setLineDash([2, 3]);
+      line(mx, by, sx, sy, mode === "ride" ? TARGET : DIM);            // the offset, drawn
+      ctx.setLineDash([]);
+      dot(mx, by, 2, TARGET);
+      ring(sx, sy, 3, TARGET, 1);
+      mote(rx, ry, mode === "air" ? Math.atan2(rvy, rvx) : (dir > 0 ? 0 : Math.PI), MOVER, 6);
+      label(mode === "ride" ? "riding: θ = " + Math.round(th * 180 / Math.PI) + "°" : mode === "air" ? "v = v_mount + hop" : "on foot", rx, ry - 14, mode === "air" ? HOT : DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Yak", "Yearling", "a small quick mount with a big bob — the rider bounces, and a hop off it lands far ahead", { size: 0.065, speed: 0.36, bob: 0.06 });
+
+def("L", "Locomotive", "wheels", "the cars are the engine's own past: a ring buffer of where it was, read back at fixed spacing by arc length (Queue + Path) — press to couple a car", function (u) {
+  var D = { speed: 0.3,           // ×W per second along the rail
+            spacing: 0.06,        // coupling length between car centres, ×W
+            carLen: 0.042, carW: 0.024,   // ×W
+            cars: 3,              // cars behind the engine at the start
+            maxCars: 8,           // the yard's limit — then it starts over
+            addEvery: 3,          // seconds between the autopilot's couplings
+            lobes: 3, wobble: 0.2,  // the rail: a loop with this many bulges, this deep
+            hist: 512,            // history samples kept (a ring buffer)
+            label: "car k = history(s_engine − k · spacing)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, label, clamp, MOVER, BONE, TARGET, DIM } = u;
+  // Queue's leader-following, done by DISTANCE instead of by frames: the
+  // engine writes its position and its arc length s into a RING BUFFER
+  // every frame; car k is wherever the engine was when its s was exactly
+  // k·spacing less — found by walking back through the buffer and
+  // interpolating between two samples. the couplings are thereby distance
+  // constraints for free, they never stretch or bunch however the speed
+  // changes, and a winding rail costs nothing: the cars follow the path
+  // because the engine did.
+  const cx = W / 2, cy = H * 0.5, A = W * 0.4, B = H * 0.34, NH = D.hist;
+  const HX = new Float32Array(NH), HY = new Float32Array(NH), HS = new Float32Array(NH);
+  let hi = 0, hn = 0, ang = 0, sEng = 0, cars = D.cars, timer = 0, rest = 0;
+  const P = [0, 0];
+  function rail(a) { const rr = 1 + D.wobble * Math.sin(D.lobes * a); P[0] = cx + Math.cos(a) * A * rr; P[1] = cy + Math.sin(a) * B * rr; }
+  function step(dt) {
+    rail(ang); const x0 = P[0], y0 = P[1];
+    rail(ang + 1e-3); const dd = Math.max(1e-3, Math.sqrt((P[0] - x0) * (P[0] - x0) + (P[1] - y0) * (P[1] - y0)) / 1e-3);   // |dP/da|
+    ang += W * D.speed * dt / dd;
+    rail(ang);
+    const ds = Math.sqrt((P[0] - x0) * (P[0] - x0) + (P[1] - y0) * (P[1] - y0));
+    sEng += ds;
+    HX[hi] = P[0]; HY[hi] = P[1]; HS[hi] = sEng; hi = (hi + 1) % NH; if (hn < NH) hn++;   // ← write the past
+  }
+  for (let i = 0; i < 400; i++) step(1 / 60);         // a history to start with
+  const C = [0, 0, 0];
+  function readBack(sWant, from) {                     // ← the past, read at an arc length; returns the sample index reached
+    let j = from;
+    for (let n = 0; n < hn - 1; n++) {
+      const jp = (j - 1 + NH) % NH;
+      if (HS[jp] <= sWant) break;
+      j = jp;
+    }
+    const jp = (j - 1 + NH) % NH;
+    const s1 = HS[jp], s2 = HS[j], k = s2 > s1 ? clamp((sWant - s1) / (s2 - s1), 0, 1) : 1;
+    C[0] = HX[jp] + (HX[j] - HX[jp]) * k; C[1] = HY[jp] + (HY[j] - HY[jp]) * k;
+    C[2] = Math.atan2(HY[j] - HY[jp], HX[j] - HX[jp]);
+    return j;
+  }
+  function car(x, y, hd, len, wid, c) {
+    ctx.save(); ctx.translate(x, y); ctx.rotate(hd);
+    rect(-len / 2, -wid / 2, len, wid, c);
+    ctx.restore();
+  }
+  return {
+    press() { if (cars < D.maxCars) cars++; timer = 0; },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.addEvery) { timer = 0; if (cars < D.maxCars) cars++; else if (++rest > 1) { cars = D.cars; rest = 0; } }
+      step(dt);
+      ctx.strokeStyle = "rgba(201,196,228,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([3, 5]); ctx.beginPath();
+      for (let i = 0; i <= 140; i++) { rail(i / 140 * TAU); if (i === 0) ctx.moveTo(P[0], P[1]); else ctx.lineTo(P[0], P[1]); }
+      ctx.closePath(); ctx.stroke(); ctx.setLineDash([]);
+      const LEN = W * D.carLen, WID = W * D.carW, SP = W * D.spacing;
+      const newest = (hi - 1 + NH) % NH;
+      let j = newest, px = HX[newest], py = HY[newest], phd = 0;
+      const ex = px, ey = py;
+      readBack(sEng - 1, newest); phd = C[2];
+      for (let k = 1; k <= cars; k++) {
+        j = readBack(sEng - k * SP, j);                  // ← car k: the engine's past, k spacings ago
+        line(px, py, C[0], C[1], BONE, 1.5);             // the coupling
+        car(C[0], C[1], C[2], LEN, WID, k % 2 ? "rgba(201,196,228,0.85)" : "rgba(245,193,105,0.75)");
+        if (k === 1) { ring(C[0], C[1], 2.5, TARGET, 1); label("spacing", (px + C[0]) / 2, (py + C[1]) / 2 - 8, TARGET, "center"); }
+        px = C[0]; py = C[1];
+      }
+      let tail = readBack(sEng - cars * SP - SP * 1.5, j);   // the unused history behind the last car
+      for (let n = 0; n < 40; n++) { const idx = (j - n + NH) % NH; if (n > 0 && HS[idx] < HS[tail]) break; dot(HX[idx], HY[idx], 1, DIM); }
+      car(ex, ey, phd, LEN * 1.3, WID * 1.15, MOVER);    // the engine
+      ctx.save(); ctx.translate(ex, ey); ctx.rotate(phd); rect(LEN * 0.25, -WID * 0.3, LEN * 0.25, WID * 0.6, "#131020"); ctx.restore();
+      for (let i = 0; i < 3; i++) dot(ex - Math.cos(phd) * (LEN * 0.1 + i * 5) - Math.sin(phd) * 6, ey - Math.sin(phd) * (LEN * 0.1 + i * 5) + Math.cos(phd) * 6 - i * 4 - (t * 30 % 6), 1.5 + i, "rgba(232,229,244," + (0.3 - i * 0.08).toFixed(2) + ")");
+      label("cars " + cars + " / " + D.maxCars + "  ·  s = " + Math.round(sEng) + " px  ·  " + hn + " samples", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Locomotive", "Luggagetrain", "tiny cars coupled half as close, sixteen of them — the same buffer read sixteen times", { spacing: 0.028, carLen: 0.018, maxCars: 16 });
+
+def("Y", "Yoke", "wheels", "a coordinated turn: roll into a bank and the bank turns the heading, ω = g·tan(bank) ÷ v; pitch climbs (Yaw + Drone) — drag: x = bank, y = pitch", function (u) {
+  var D = { speed: 0.28,          // ×W/s over the ground
+            rollRate: 3,          // how fast the wings reach the commanded bank, per second
+            bankMax: 0.95,        // radians of bank at full lock
+            pitchMax: 0.45,       // radians of pitch at full stick
+            g: 0.35,              // gravity, in W/s² — sets how hard a bank turns
+            climb: 0.5,           // screens of altitude per second at full pitch
+            wander: 4,            // seconds per autopilot manoeuvre
+            hold: 4,              // seconds your stick lasts
+            label: "ω = g·tan(bank) ÷ v   ·   bank → cmd at rollRate   ·   alt += v·sin(pitch)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, poly, arrow, label, clamp, rand, MOVER, BONE, HOT, TARGET, GOOD, DIM } = u;
+  // an aircraft does not turn with a rudder. it ROLLS into a BANK, and the
+  // tilted lift now has a sideways part that swings the heading round at
+  // ω = g·tan(bank) ÷ v — the COORDINATED TURN (Lean's a_lat = v²/R read
+  // backward: the bank chooses the radius). so a fast plane needs more
+  // bank for the same turn, and the roll itself takes time (rollRate), which
+  // is the whole hand-feel of a flight game. pitch trades speed for height:
+  // alt += v·sin(pitch). the inset is the attitude indicator: the horizon
+  // as the plane sees it — rolled by the bank, dropped by the pitch.
+  let x = W * 0.3, y = H * 0.55, h = -0.4, bank = 0, pitch = 0, alt = 0.5, bankCmd = 0.6, pitchCmd = 0, timer = 0, manualT = 0, om = 0;
+  const trail = new Float32Array(160);
+  let ti = 0, tn = 0;
+  return {
+    drag: true,
+    press(px, py) { bankCmd = clamp((px / W - 0.5) * 2.4, -1, 1); pitchCmd = clamp((0.5 - py / H) * 2.4, -1, 1); manualT = D.hold; },
+    frame(dt, t) {
+      stage();
+      if (manualT > 0) manualT -= dt;
+      else { timer += dt; if (timer > D.wander) { timer = 0; bankCmd = rand(-1, 1); pitchCmd = rand(-1, 1) * (alt > 0.8 ? -1 : alt < 0.25 ? 1 : 1) * (Math.random() < 0.5 ? 1 : 0.4); } }
+      const v = W * D.speed;
+      bank += (bankCmd * D.bankMax - bank) * (1 - Math.exp(-D.rollRate * dt));   // ← the roll, at a finite rate
+      pitch += (pitchCmd * D.pitchMax - pitch) * (1 - Math.exp(-D.rollRate * dt));
+      om = D.g * Math.tan(clamp(bank, -1.3, 1.3)) / D.speed;                     // ← the coordinated turn
+      h += om * dt;
+      alt = clamp(alt + Math.sin(pitch) * D.climb * dt, 0.1, 1);
+      if (alt <= 0.1 && pitchCmd < 0) pitchCmd = 0.3;                            // the ground is not a goal
+      x += Math.cos(h) * v * dt; y += Math.sin(h) * v * dt;
+      if (x < -20) x = W + 20; if (x > W + 20) x = -20;
+      if (y < -20) y = H + 20; if (y > H + 20) y = -20;
+      trail[ti * 2] = x; trail[ti * 2 + 1] = y; ti = (ti + 1) % 80; if (tn < 80) tn++;
+      for (let i = 0; i < tn; i++) { const age = ((ti - 1 - i + 160) % 80) / 80; dot(trail[i * 2], trail[i * 2 + 1], 1.2, "rgba(138,217,245," + (0.3 * (1 - age)).toFixed(3) + ")"); }
+      const sc = 0.7 + alt * 0.6, sh = alt * H * 0.1;                              // altitude: bigger, shadow further
+      const plane = (px, py, c, s) => {
+        ctx.save(); ctx.translate(px, py); ctx.rotate(h); ctx.scale(s, s);
+        ctx.save(); ctx.scale(1, Math.max(0.15, Math.cos(bank)));                 // the wings foreshorten with the bank
+        poly([[2, -18], [6, -18], [4, 18], [0, 18]], c);
+        ctx.restore();
+        poly([[14, 0], [-10, -3], [-12, 0], [-10, 3]], c);
+        ctx.save(); ctx.scale(1, Math.max(0.15, Math.cos(bank))); poly([[-10, -6], [-8, -6], [-10, 6], [-12, 6]], c); ctx.restore();
+        ctx.restore();
+      };
+      plane(x + sh, y + sh, "rgba(0,0,0,0.35)", sc * 0.9);
+      if (Math.abs(om) > 0.1) {                                                   // the turn circle it is flying
+        const R = v / om;
+        ring(x - Math.sin(h) * R, y + Math.cos(h) * R, Math.abs(R), "rgba(232,229,244,0.07)");
+      }
+      plane(x, y, MOVER, sc);
+      ctx.save(); ctx.translate(x, y); ctx.rotate(h); ctx.scale(sc, sc); ctx.fillStyle = "#131020"; ctx.beginPath(); ctx.arc(8, -1, 1.5, 0, TAU); ctx.fill(); ctx.restore();
+      const ix = W * 0.76, iy = H * 0.1, ir = Math.min(W * 0.11, H * 0.17);      // the attitude indicator
+      ctx.save(); ctx.beginPath(); ctx.arc(ix + ir, iy + ir, ir, 0, TAU); ctx.clip();
+      ctx.translate(ix + ir, iy + ir); ctx.rotate(-bank); ctx.translate(0, pitch * ir * 1.2);
+      rect(-ir * 2, -ir * 3, ir * 4, ir * 3, "#3E6FA8");
+      rect(-ir * 2, 0, ir * 4, ir * 3, "#6B4B2A");
+      line(-ir * 2, 0, ir * 2, 0, "#E8E5F4", 1.5);
+      for (let k = -2; k <= 2; k++) if (k) line(-ir * 0.3, k * ir * 0.3, ir * 0.3, k * ir * 0.3, "rgba(232,229,244,0.5)");
+      ctx.restore();
+      ring(ix + ir, iy + ir, ir, BONE, 1.5);
+      line(ix + ir - ir * 0.6, iy + ir, ix + ir - ir * 0.2, iy + ir, TARGET, 2); line(ix + ir + ir * 0.2, iy + ir, ix + ir + ir * 0.6, iy + ir, TARGET, 2);
+      dot(ix + ir, iy + ir, 2, TARGET);
+      label("bank " + Math.round(bank * 180 / Math.PI) + "°  pitch " + Math.round(pitch * 180 / Math.PI) + "°", ix + ir, iy + ir * 2 + 12, DIM, "center");
+      label("ω = " + om.toFixed(2) + " rad/s  ·  alt " + Math.round(alt * 100) + "%", W * 0.38, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Yoke", "Yellowbird", "rolls three times as fast, banks past 70° and turns on a wingtip — a stunt plane", { rollRate: 10, bankMax: 1.2, g: 0.45 });
+/* ============================== SQUADS & MAPS ==============================
+   Many bodies and ONE PLAN. The steering family gave a body an intention
+   and the crowds family gave every body one rule; here a group shares a
+   picture — formation slots hung off a leader, a wingman's offset, the
+   midpoint a bodyguard guards, the far side of a rock. And then the map
+   itself starts thinking: a grid where every cell holds a NUMBER (a
+   distance, a threat), so a route is "step to the smaller neighbour" and
+   a retreat is "step to the larger one". The brains on top — a behaviour
+   tree, a utility scorer, a daily schedule — only ever read those numbers. */
+
+def("F", "Formation", "squads", "slots hung off the leader's heading — a V, a line, a ring (Queue's leader, Herd's flock) — press the leader to change shape, elsewhere to send it", function (u) {
+  var D = { n: 6,               // followers
+            shape: "v",         // "v", "line" or "ring" — the slot pattern
+            spacing: 0.1,       // slot pitch, × min(W, H)
+            maxsp: 150, maxf: 420, slow: 30,   // Arrive: top speed, steering clamp (px/s²), brake ring (px)
+            leadSpeed: 55,      // the leader's cruise, px/s
+            retarget: 4,        // seconds before the leader picks a new spot
+            reassign: 0.6,      // seconds between slot re-assignments (nearest free slot wins)
+            label: "slot = leader + R(heading) · offset · Arrive" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, rand, len, clamp, wrapAngle, MOVER, TARGET, GOOD, DIM } = u;
+  // a FORMATION is a list of OFFSETS in the leader's own frame: (back, side)
+  // pairs for a V, a row for a line, angles for a ring. every frame each
+  // offset is rotated by the leader's heading and added to its position —
+  // that is the SLOT (an amber ring) — and each follower simply ARRIVES at
+  // its slot with card A's brake ring. slots are re-dealt now and then by
+  // nearest-first, so a follower never crosses the whole squad to reach
+  // the one it was born with. the leader knows nothing about any of this.
+  const S = Math.min(W, H) * D.spacing;
+  const lead = { x: W * 0.5, y: H * 0.5, h: 0, vx: 0, vy: 0 };
+  let tx = W * 0.75, ty = H * 0.4, timer = 0, dealT = 0;
+  const fol = [], slots = [];
+  for (let i = 0; i < D.n; i++) {
+    fol.push({ x: rand(W * 0.1, W * 0.9), y: rand(H * 0.1, H * 0.9), vx: 0, vy: 0, slot: i });
+    slots.push({ ox: 0, oy: 0, x: 0, y: 0, taken: -1 });
+  }
+  const SHAPES = ["v", "line", "ring"];
+  let shape = SHAPES.indexOf(D.shape) < 0 ? 0 : SHAPES.indexOf(D.shape);
+  function layout() {                                  // offsets in the leader's frame: +x forward
+    for (let i = 0; i < D.n; i++) {
+      const s = slots[i], k = Math.floor(i / 2) + 1, side = (i % 2 ? 1 : -1);
+      if (shape === 0) { s.ox = -k * S * 0.9; s.oy = side * k * S * 0.8; }                    // a V, trailing
+      else if (shape === 1) { s.ox = -S * 0.3; s.oy = side * k * S; }                          // a line abreast
+      else { const a = (i + 0.5) / D.n * TAU; s.ox = Math.cos(a) * S * 1.4; s.oy = Math.sin(a) * S * 1.4; }   // a ring
+    }
+  }
+  layout();
+  function deal() {                                    // nearest free slot wins, one follower at a time
+    for (const s of slots) s.taken = -1;
+    for (const f of fol) f.slot = -1;
+    for (let round = 0; round < D.n; round++) {
+      let best = null, bd = Infinity, bs = -1;
+      for (let fi = 0; fi < D.n; fi++) {
+        const f = fol[fi];
+        if (f.slot >= 0) continue;
+        for (let si = 0; si < D.n; si++) {
+          if (slots[si].taken >= 0) continue;
+          const d = len(slots[si].x - f.x, slots[si].y - f.y);
+          if (d < bd) { bd = d; best = fi; bs = si; }
+        }
+      }
+      if (best === null) break;
+      fol[best].slot = bs; slots[bs].taken = best;
+    }
+  }
+  function arrive(b, gx, gy, dt) {
+    const dx = gx - b.x, dy = gy - b.y, d = len(dx, dy) || 1;
+    const sp = D.maxsp * Math.min(1, d / D.slow);
+    let sx = dx / d * sp - b.vx, sy = dy / d * sp - b.vy;
+    const sl = len(sx, sy);
+    if (sl > D.maxf) { sx = sx / sl * D.maxf; sy = sy / sl * D.maxf; }
+    b.vx += sx * dt; b.vy += sy * dt;
+    b.x += b.vx * dt; b.y += b.vy * dt;
+  }
+  return {
+    press(px, py) {
+      if (len(px - lead.x, py - lead.y) < 18) { shape = (shape + 1) % 3; layout(); dealT = 0; }
+      else { tx = clamp(px, 12, W - 12); ty = clamp(py, 12, H - 12); timer = -5; }
+    },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.retarget) { timer = 0; tx = rand(W * 0.15, W * 0.85); ty = rand(H * 0.15, H * 0.85); }
+      const dx = tx - lead.x, dy = ty - lead.y, d = len(dx, dy) || 1;   // the leader: a slow turn toward its spot
+      lead.h += wrapAngle(Math.atan2(dy, dx) - lead.h) * Math.min(1, 2.5 * dt);
+      const sp = D.leadSpeed * Math.min(1, d / 40);
+      lead.x += Math.cos(lead.h) * sp * dt; lead.y += Math.sin(lead.h) * sp * dt;
+      const c = Math.cos(lead.h), s = Math.sin(lead.h);
+      for (const sl of slots) {                        // offset → world: rotate by the heading, add the leader
+        sl.x = lead.x + sl.ox * c - sl.oy * s;
+        sl.y = lead.y + sl.ox * s + sl.oy * c;
+      }
+      dealT -= dt;
+      if (dealT <= 0) { dealT = D.reassign; deal(); }
+      for (const sl of slots) { ring(sl.x, sl.y, 5, "rgba(245,193,105,0.45)"); line(lead.x, lead.y, sl.x, sl.y, "rgba(245,193,105,0.12)"); }
+      for (const f of fol) {
+        const sl = slots[f.slot < 0 ? 0 : f.slot];
+        arrive(f, sl.x, sl.y, dt);
+        f.x = clamp(f.x, -20, W + 20); f.y = clamp(f.y, -20, H + 20);
+        arrow(f.x, f.y, f.x + f.vx * 0.25, f.y + f.vy * 0.25, "rgba(155,226,138,0.5)");
+        mote(f.x, f.y, Math.atan2(f.vy, f.vx), GOOD, 6);
+      }
+      ring(tx, ty, 6, TARGET, 1.5);
+      mote(lead.x, lead.y, lead.h, MOVER, 8);
+      label(SHAPES[shape] + " · " + D.n + " slots · redeal every " + D.reassign + " s", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Formation", "Fleet", "a ring of ten around a slower flagship, re-dealt twice as often — an escort screen instead of geese", { shape: "ring", n: 10, leadSpeed: 40 });
+
+def("E", "Escort", "squads", "offset pursuit: wingmen hold a slot off a leader who will not wait, aiming at Chase's predicted point (leader + v · lead) — press to send the leader", function (u) {
+  var D = { n: 3,               // escorts
+            gap: 0.09,          // slot distance behind and beside the leader, × min(W, H)
+            lead: 0.6,          // how far ahead each escort predicts, as a fraction of its time-to-slot
+            maxsp: 170, maxf: 520, slow: 26,   // Arrive
+            ax: 0.32, ay: 0.3, fx: 0.31, fy: 0.47,   // the leader's Lissajous: amplitudes (× W, × H) and frequencies (Hz)
+            label: "goal = predict(leader, eta · lead) + R(h) · offset" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, len, clamp, smooth, MOVER, TARGET, GOOD, DIM } = u;
+  // OFFSET PURSUIT. an escort's slot is an offset in the leader's frame,
+  // like Formation's — but this leader never slows down, so aiming at the
+  // slot where it IS means always trailing. Chase's trick fixes it: guess
+  // the time to get there (eta = distance ÷ speed), move the leader forward
+  // by its velocity × eta × lead, and hang the slot off THAT point (the
+  // faint amber ring). the leader flies a Lissajous, so its velocity is
+  // known exactly — a real game would difference two frames.
+  const S = Math.min(W, H) * D.gap;
+  const esc = [];
+  for (let i = 0; i < D.n; i++) esc.push({ x: W * 0.5, y: H * 0.5, vx: 0, vy: 0 });
+  let cx = W * 0.5, cy = H * 0.5, wx = cx, wy = cy;    // the Lissajous centre and where it is drifting to
+  let lx = cx, ly = cy, lh = 0;
+  const gx = [], gy = [];
+  return {
+    press(px, py) { wx = clamp(px, W * 0.35, W * 0.65); wy = clamp(py, H * 0.35, H * 0.65); },
+    frame(dt, t) {
+      stage();
+      const k = smooth(1.5, dt);
+      cx += (wx - cx) * k; cy += (wy - cy) * k;
+      const a = t * D.fx * TAU, b = t * D.fy * TAU;
+      lx = cx + Math.sin(a) * W * D.ax; ly = cy + Math.sin(b) * H * D.ay;
+      const lvx = Math.cos(a) * D.fx * TAU * W * D.ax, lvy = Math.cos(b) * D.fy * TAU * H * D.ay;   // the derivative
+      if (len(lvx, lvy) > 1) lh = Math.atan2(lvy, lvx);
+      const c = Math.cos(lh), s = Math.sin(lh);
+      for (let i = 0; i < D.n; i++) {
+        const e = esc[i], row = Math.floor(i / 2) + 1, side = (i % 2 ? 1 : -1) * (D.n === 1 ? 0 : 1);
+        const ox = -row * S, oy = side * row * S * 0.8;
+        const sx0 = lx + ox * c - oy * s, sy0 = ly + ox * s + oy * c;      // the slot right now
+        const eta = clamp(len(sx0 - e.x, sy0 - e.y) / D.maxsp, 0, 1.2);   // time to get there, at full speed
+        const px = lx + lvx * eta * D.lead, py = ly + lvy * eta * D.lead;   // the leader, predicted
+        gx[i] = px + ox * c - oy * s; gy[i] = py + ox * s + oy * c;         // the slot, predicted
+        const dx = gx[i] - e.x, dy = gy[i] - e.y, d = len(dx, dy) || 1;
+        const sp = D.maxsp * Math.min(1, d / D.slow);
+        let fx = dx / d * sp - e.vx, fy = dy / d * sp - e.vy;
+        const fl = len(fx, fy);
+        if (fl > D.maxf) { fx = fx / fl * D.maxf; fy = fy / fl * D.maxf; }
+        e.vx += fx * dt; e.vy += fy * dt;
+        e.x = clamp(e.x + e.vx * dt, -30, W + 30); e.y = clamp(e.y + e.vy * dt, -30, H + 30);
+        if (i === 0) {                                 // the prediction, made visible for one wingman
+          ring(px, py, 5, "rgba(245,193,105,0.6)");
+          ctx.setLineDash([3, 4]);
+          line(lx, ly, px, py, "rgba(245,193,105,0.45)");
+          ctx.setLineDash([]);
+        }
+        ring(gx[i], gy[i], 4, "rgba(245,193,105,0.35)");
+        ring(sx0, sy0, 2.5, "rgba(232,229,244,0.2)");
+      }
+      ctx.strokeStyle = "rgba(138,217,245,0.12)";     // the leader's figure, faint
+      ctx.beginPath();
+      for (let i = 0; i <= 60; i++) {
+        const tt = t - i * 0.05, xx = cx + Math.sin(tt * D.fx * TAU) * W * D.ax, yy = cy + Math.sin(tt * D.fy * TAU) * H * D.ay;
+        if (i === 0) ctx.moveTo(xx, yy); else ctx.lineTo(xx, yy);
+      }
+      ctx.stroke();
+      for (const e of esc) mote(e.x, e.y, Math.atan2(e.vy, e.vx), GOOD, 6);
+      arrow(lx, ly, lx + lvx * 0.3, ly + lvy * 0.3, "rgba(138,217,245,0.6)");
+      mote(lx, ly, lh, MOVER, 8);
+      label("eta = |slot − me| ÷ maxsp · lead " + D.lead, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Escort", "Entourage", "six wingmen in three tight rows predicting further ahead — a motorcade that corners as one body", { n: 6, lead: 1.0, gap: 0.07 });
+
+def("I", "Interpose", "squads", "the bodyguard Arrives at the midpoint between a VIP and a threat, both predicted ahead — press to move the threat", function (u) {
+  var D = { aim: "midpoint",    // "midpoint" guards the gap; "threat" goes for the attacker's future position
+            lead: 0.7,          // seconds of prediction on both bodies
+            maxsp: 190, maxf: 600, slow: 30,   // Arrive
+            vipSpeed: 45, threatSpeed: 70,     // px/s
+            label: "goal = (vip′ + threat′) ÷ 2 · x′ = x + v · lead" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, rand, len, clamp, noise, MOVER, TARGET, GOOD, HOT, DIM } = u;
+  // INTERPOSE: stand between. the goal is the MIDPOINT of two moving things
+  // — but the midpoint of where they ARE is already stale, so both are
+  // pushed forward by their velocity × lead first (Chase's prediction, used
+  // twice), and card A's Arrive does the rest. the VIP grazes on noise; the
+  // threat homes on the VIP; the mote is the bodyguard. the dashed line is
+  // the gap being guarded, the amber ring the point it wants.
+  const vip = { x: W * 0.3, y: H * 0.5, vx: 0, vy: 0 };
+  const thr = { x: W * 0.85, y: H * 0.2, vx: 0, vy: 0 };
+  const me = { x: W * 0.5, y: H * 0.8, vx: 0, vy: 0 };
+  let blocks = 0, flash = 0, hold = 0;
+  return {
+    press(px, py) { thr.x = clamp(px, 10, W - 10); thr.y = clamp(py, 10, H - 10); thr.vx = 0; thr.vy = 0; hold = 1.5; },
+    frame(dt, t) {
+      stage();
+      const a = noise(t * 0.3 + 9) * Math.PI * 1.6;    // the vip grazes
+      let nvx = Math.cos(a) * D.vipSpeed, nvy = Math.sin(a) * D.vipSpeed;
+      if (vip.x < W * 0.12) nvx = Math.abs(nvx); if (vip.x > W * 0.88) nvx = -Math.abs(nvx);
+      if (vip.y < H * 0.15) nvy = Math.abs(nvy); if (vip.y > H * 0.85) nvy = -Math.abs(nvy);
+      vip.vx += (nvx - vip.vx) * Math.min(1, 3 * dt); vip.vy += (nvy - vip.vy) * Math.min(1, 3 * dt);
+      vip.x += vip.vx * dt; vip.y += vip.vy * dt;
+      hold -= dt;
+      const tdx = vip.x - thr.x, tdy = vip.y - thr.y, td = len(tdx, tdy) || 1;
+      if (hold <= 0) {                                 // the threat homes on the vip
+        thr.vx += (tdx / td * D.threatSpeed - thr.vx) * Math.min(1, 2 * dt);
+        thr.vy += (tdy / td * D.threatSpeed - thr.vy) * Math.min(1, 2 * dt);
+      }
+      thr.x += thr.vx * dt; thr.y += thr.vy * dt;
+      const vpx = vip.x + vip.vx * D.lead, vpy = vip.y + vip.vy * D.lead;      // both, predicted
+      const tpx = thr.x + thr.vx * D.lead, tpy = thr.y + thr.vy * D.lead;
+      const gx = D.aim === "threat" ? tpx : (vpx + tpx) / 2, gy = D.aim === "threat" ? tpy : (vpy + tpy) / 2;
+      const dx = gx - me.x, dy = gy - me.y, d = len(dx, dy) || 1;
+      const sp = D.maxsp * Math.min(1, d / D.slow);
+      let sx = dx / d * sp - me.vx, sy = dy / d * sp - me.vy;
+      const sl = len(sx, sy);
+      if (sl > D.maxf) { sx = sx / sl * D.maxf; sy = sy / sl * D.maxf; }
+      me.vx += sx * dt; me.vy += sy * dt;
+      me.x = clamp(me.x + me.vx * dt, 8, W - 8); me.y = clamp(me.y + me.vy * dt, 8, H - 8);
+      const md = len(thr.x - me.x, thr.y - me.y);
+      if (md < 16) {                                   // blocked: the threat is bounced far away
+        blocks++; flash = 1;
+        const ang = rand(0, TAU);
+        thr.x = clamp(vip.x + Math.cos(ang) * W * 0.45, 10, W - 10); thr.y = clamp(vip.y + Math.sin(ang) * H * 0.45, 10, H - 10);
+        thr.vx = 0; thr.vy = 0;
+      } else if (td < 14) {                            // the vip was reached: reset the threat, no flash
+        const ang = rand(0, TAU);
+        thr.x = clamp(vip.x + Math.cos(ang) * W * 0.45, 10, W - 10); thr.y = clamp(vip.y + Math.sin(ang) * H * 0.45, 10, H - 10);
+      }
+      flash = Math.max(0, flash - dt * 2);
+      ctx.setLineDash([3, 4]);
+      line(vpx, vpy, tpx, tpy, "rgba(245,193,105,0.4)");
+      ctx.setLineDash([]);
+      arrow(vip.x, vip.y, vpx, vpy, "rgba(155,226,138,0.5)");
+      arrow(thr.x, thr.y, tpx, tpy, "rgba(245,138,138,0.5)");
+      ring(gx, gy, 7, TARGET, 1.5);
+      if (flash > 0) ring(me.x, me.y, 12 + (1 - flash) * 26, "rgba(245,193,105," + flash * 0.8 + ")", 2);
+      mote(vip.x, vip.y, Math.atan2(vip.vy, vip.vx), GOOD, 7);
+      mote(thr.x, thr.y, Math.atan2(thr.vy, thr.vx), HOT, 7);
+      mote(me.x, me.y, Math.atan2(me.vy, me.vx), MOVER, 8);
+      label("aim: " + D.aim + " · lead " + D.lead + " s · blocked ×" + blocks, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Interpose", "Interceptor", "no midpoint: it Arrives at the threat's own predicted position, faster and further ahead — a guard that goes out to meet trouble", { aim: "threat", lead: 1.1, maxsp: 240 });
+
+def("H", "Hide", "squads", "for each rock, the spot on its FAR SIDE from the hunter; Arrive at the nearest one and the line of sight (Ghost's) breaks — press to move the hunter", function (u) {
+  var D = { count: 3,           // rocks
+            radius: 0.09,       // rock size, × H
+            dist: 14,           // how far behind the rock's rim the hiding spot sits, px
+            seed: 5,            // the rock layout
+            maxsp: 160, maxf: 520, slow: 30,   // Arrive
+            hunterSpeed: 40,    // px/s, on noise
+            label: "spot = rock + norm(rock − hunter) · (r + dist)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, mote, label, rng, len, clamp, noise, MOVER, HOT, GOOD, TARGET, BONE, DIM } = u;
+  // HIDE. every obstacle offers one hiding place: continue the line from
+  // the hunter through the rock's centre and step just past its far rim.
+  // pick the nearest such spot and Arrive at it — no map, no search, one
+  // subtraction per rock. the line from hunter to mote is the LINE OF
+  // SIGHT; it is tested against each rock (Obstacle's projection: the
+  // closest point on the segment to the centre) and turns green when a
+  // rock breaks it. the hunter drifts, and every spot drifts with it.
+  const rnd = rng(D.seed);
+  const rocks = [];
+  for (let i = 0; i < D.count; i++)
+    rocks.push({ x: W * (0.18 + rnd() * 0.64), y: H * (0.18 + rnd() * 0.6), r: H * D.radius * (0.75 + rnd() * 0.5) });
+  const spots = [];
+  for (let i = 0; i < D.count; i++) spots.push({ x: 0, y: 0 });
+  const me = { x: W * 0.5, y: H * 0.85, vx: 0, vy: 0 };
+  let hx = W * 0.1, hy = H * 0.15, hold = 0, hidden = 0;
+  return {
+    press(px, py) { hx = clamp(px, 8, W - 8); hy = clamp(py, 8, H - 8); hold = 4; },
+    frame(dt, t) {
+      stage();
+      hold -= dt;
+      if (hold <= 0) {                                 // the hunter drifts, on noise, staying off the rocks
+        const a = noise(t * 0.22 + 17) * Math.PI * 1.7;
+        hx = clamp(hx + Math.cos(a) * D.hunterSpeed * dt, 10, W - 10);
+        hy = clamp(hy + Math.sin(a) * D.hunterSpeed * dt, 10, H - 10);
+      }
+      for (const r of rocks) {
+        const dx = hx - r.x, dy = hy - r.y, d = len(dx, dy) || 1;
+        if (d < r.r + 10) { hx = r.x + dx / d * (r.r + 10); hy = r.y + dy / d * (r.r + 10); }
+      }
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < D.count; i++) {              // one spot per rock, on the far side
+        const r = rocks[i], dx = r.x - hx, dy = r.y - hy, d = len(dx, dy) || 1;
+        spots[i].x = r.x + dx / d * (r.r + D.dist); spots[i].y = r.y + dy / d * (r.r + D.dist);
+        const md = len(spots[i].x - me.x, spots[i].y - me.y);
+        if (md < bd) { bd = md; best = i; }
+      }
+      const g = spots[best];
+      const dx = g.x - me.x, dy = g.y - me.y, d = len(dx, dy) || 1;
+      const sp = D.maxsp * Math.min(1, d / D.slow);
+      let sx = dx / d * sp - me.vx, sy = dy / d * sp - me.vy;
+      const sl = len(sx, sy);
+      if (sl > D.maxf) { sx = sx / sl * D.maxf; sy = sy / sl * D.maxf; }
+      me.vx += sx * dt; me.vy += sy * dt;
+      me.x += me.vx * dt; me.y += me.vy * dt;
+      for (const r of rocks) {                         // never inside a rock
+        const rx = me.x - r.x, ry = me.y - r.y, rd = len(rx, ry) || 1;
+        if (rd < r.r + 7) { me.x = r.x + rx / rd * (r.r + 7); me.y = r.y + ry / rd * (r.r + 7); }
+      }
+      me.x = clamp(me.x, 8, W - 8); me.y = clamp(me.y, 8, H - 8);
+      let seen = true, qx = 0, qy = 0;                 // the line of sight vs every rock
+      const lx = me.x - hx, ly = me.y - hy, L = len(lx, ly) || 1, ux = lx / L, uy = ly / L;
+      for (const r of rocks) {
+        const along = clamp((r.x - hx) * ux + (r.y - hy) * uy, 0, L);
+        const px = hx + ux * along, py = hy + uy * along;
+        if (len(px - r.x, py - r.y) < r.r) { seen = false; qx = px; qy = py; break; }
+      }
+      if (!seen) hidden += dt;
+      for (const r of rocks) { dot(r.x, r.y, r.r, "rgba(201,196,228,0.12)"); ring(r.x, r.y, r.r, "rgba(201,196,228,0.5)"); }
+      for (let i = 0; i < D.count; i++) {
+        const s = spots[i];
+        ctx.setLineDash([2, 3]);
+        line(hx, hy, s.x, s.y, "rgba(232,229,244,0.1)");
+        ctx.setLineDash([]);
+        ring(s.x, s.y, i === best ? 7 : 4, i === best ? TARGET : "rgba(245,193,105,0.35)", i === best ? 1.5 : 1);
+      }
+      if (seen) line(hx, hy, me.x, me.y, "rgba(245,138,138,0.7)", 1.5);
+      else { line(hx, hy, qx, qy, "rgba(155,226,138,0.7)", 1.5); ctx.setLineDash([2, 4]); line(qx, qy, me.x, me.y, "rgba(155,226,138,0.3)"); ctx.setLineDash([]); dot(qx, qy, 3, GOOD); }
+      mote(hx, hy, Math.atan2(me.y - hy, me.x - hx), HOT, 7);
+      mote(me.x, me.y, Math.atan2(me.vy, me.vx), MOVER, 8);
+      label(seen ? "seen" : "hidden", me.x, me.y - 14, seen ? HOT : GOOD, "center");
+      label("hidden " + hidden.toFixed(1) + " s", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Hide", "Hermit", "six smaller rocks, a spot set well back from each rim, a slower hunter — a garden of hiding places, never in the open for long", { count: 6, radius: 0.06, dist: 26 });
+
+def("H", "Hug", "squads", "wall-following: a side feeler keeps a set gap from the wall while a nose feeler REFLECTS the velocity to stay inside (Obstacle's feelers) — press to shove it", function (u) {
+  var D = { mode: "hug",        // "hug" follows the wall at a gap; "contain" only bounces off it
+            room: "box",        // "box" or "bowl" — the shape of the boundary
+            gap: 0.09,          // wanted distance from the wall, × min(W, H)
+            speed: 95,          // cruise, px/s
+            feel: 0.12,         // nose feeler length, × min(W, H)
+            gain: 3,            // how hard the side feeler corrects the gap
+            shove: 260,         // a press's impulse, px/s
+            label: "v′ = v − 2(v·n)n · side: err = gap − dist" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, len, clamp, noise, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // two habits, both from feelers. CONTAINMENT: a NOSE feeler pokes ahead;
+  // if its tip would be outside the boundary, the velocity is REFLECTED
+  // about the wall's normal (v − 2(v·n)n, the mirror formula) — that is
+  // the whole of "stay in the room". WALL-FOLLOWING: a SIDE feeler measures
+  // the distance to the wall on the mote's right; the error against the
+  // wanted gap steers it in or out, and the cruise runs along the wall's
+  // tangent. one signed-distance function serves a box and a bowl alike.
+  const M = Math.min(W, H), GAP = M * D.gap, FEEL = M * D.feel;
+  const bx0 = W * 0.08, by0 = H * 0.08, bx1 = W * 0.92, by1 = H * 0.9;
+  const bcx = W / 2, bcy = H * 0.49, BR = Math.min(W * 0.42, H * 0.41);
+  const me = { x: W * 0.5, y: H * 0.5, vx: 60, vy: 20 };
+  const sd = { d: 0, nx: 0, ny: -1 };
+  function sdf(x, y) {                                 // signed distance to the wall (positive inside) and its inward normal
+    if (D.room === "bowl") {
+      const dx = x - bcx, dy = y - bcy, d = len(dx, dy) || 0.001;
+      sd.d = BR - d; sd.nx = -dx / d; sd.ny = -dy / d;
+      return;
+    }
+    const dl = x - bx0, dr = bx1 - x, dtp = y - by0, db = by1 - y;
+    let m = dl; sd.nx = 1; sd.ny = 0;
+    if (dr < m) { m = dr; sd.nx = -1; sd.ny = 0; }
+    if (dtp < m) { m = dtp; sd.nx = 0; sd.ny = 1; }
+    if (db < m) { m = db; sd.nx = 0; sd.ny = -1; }
+    sd.d = m;
+  }
+  let reflectT = 0, rx = 0, ry = 0, rnx = 0, rny = 0, wanderA = 0;
+  return {
+    press(px, py) {
+      const dx = px - me.x, dy = py - me.y, d = len(dx, dy) || 1;
+      me.vx = dx / d * D.shove; me.vy = dy / d * D.shove;
+    },
+    frame(dt, t) {
+      stage();
+      const v = len(me.vx, me.vy) || 1;
+      let hx = me.vx / v, hy = me.vy / v;
+      let desx, desy;
+      let sideX = 0, sideY = 0, sideHit = false;
+      if (D.mode === "hug") {
+        const px = -hy, py = hx;                       // the mote's right-hand side
+        sideX = me.x + px * GAP * 2; sideY = me.y + py * GAP * 2;
+        sdf(sideX, sideY);
+        sideHit = sd.d < GAP * 1.5;                    // a wall is near on the right
+        sdf(me.x, me.y);
+        if (sd.d < GAP * 2.5) {                        // near a wall: cruise along it, correct the gap
+          const tx = -sd.ny, ty = sd.nx;               // the tangent that keeps the wall on the right
+          const err = GAP - sd.d;
+          desx = tx * D.speed + sd.nx * err * D.gain * 6;
+          desy = ty * D.speed + sd.ny * err * D.gain * 6;
+        } else {                                       // far from any wall: seek the nearest one
+          desx = -sd.nx * D.speed; desy = -sd.ny * D.speed;
+        }
+      } else {                                         // contain: a wander, bounced
+        wanderA += noise(t * 0.7 + 3) * 2.2 * dt;
+        desx = Math.cos(wanderA) * D.speed; desy = Math.sin(wanderA) * D.speed;
+      }
+      me.vx += (desx - me.vx) * Math.min(1, 4 * dt);
+      me.vy += (desy - me.vy) * Math.min(1, 4 * dt);
+      const v2 = len(me.vx, me.vy) || 1;
+      if (v2 > D.speed * 1.6 || (D.mode !== "hug" && v2 < D.speed * 0.8)) { me.vx *= D.speed / v2; me.vy *= D.speed / v2; }
+      const v3 = len(me.vx, me.vy) || 1;
+      hx = me.vx / v3; hy = me.vy / v3;
+      const nx = me.x + hx * FEEL, ny = me.y + hy * FEEL;   // the nose feeler
+      sdf(nx, ny);
+      if (sd.d < 0) {                                  // the tip is outside: reflect
+        const dotp = me.vx * sd.nx + me.vy * sd.ny;
+        if (dotp < 0) {
+          me.vx -= 2 * dotp * sd.nx; me.vy -= 2 * dotp * sd.ny;
+          reflectT = 0.5; rx = nx - sd.nx * sd.d; ry = ny - sd.ny * sd.d; rnx = sd.nx; rny = sd.ny;
+          if (D.mode !== "hug") wanderA = Math.atan2(me.vy, me.vx);
+        }
+      }
+      me.x += me.vx * dt; me.y += me.vy * dt;
+      sdf(me.x, me.y);
+      if (sd.d < 6) { me.x += sd.nx * (6 - sd.d); me.y += sd.ny * (6 - sd.d); }   // never through the wall
+      reflectT = Math.max(0, reflectT - dt);
+      if (D.room === "bowl") ring(bcx, bcy, BR, BONE, 1.5);
+      else { ctx.strokeStyle = BONE; ctx.lineWidth = 1.5; ctx.strokeRect(bx0, by0, bx1 - bx0, by1 - by0); }
+      if (D.mode === "hug") {                          // the gap band, faint
+        ctx.setLineDash([2, 4]);
+        if (D.room === "bowl") ring(bcx, bcy, BR - GAP, "rgba(245,193,105,0.3)");
+        else { ctx.strokeStyle = "rgba(245,193,105,0.3)"; ctx.lineWidth = 1; ctx.strokeRect(bx0 + GAP, by0 + GAP, bx1 - bx0 - 2 * GAP, by1 - by0 - 2 * GAP); }
+        ctx.setLineDash([]);
+        line(me.x, me.y, sideX, sideY, sideHit ? TARGET : DIM, sideHit ? 1.5 : 1);
+        dot(sideX, sideY, 2.5, sideHit ? TARGET : DIM);
+      }
+      line(me.x, me.y, nx, ny, reflectT > 0 ? HOT : DIM, reflectT > 0 ? 1.5 : 1);
+      if (reflectT > 0) { arrow(rx, ry, rx + rnx * 22, ry + rny * 22, HOT); label("reflect", rx + rnx * 26, ry + rny * 26 + 4, HOT, "center"); }
+      mote(me.x, me.y, Math.atan2(me.vy, me.vx));
+      label(D.mode + " · " + D.room + " · gap " + Math.round(GAP) + " px", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Hug", "Halfpipe", "containment only, in a round bowl, half again as fast — a puck that wanders until the nose feeler mirrors it off the rim", { mode: "contain", room: "bowl", speed: 140 });
+
+def("J", "Judge", "squads", "context steering: an INTEREST map and a DANGER map, one score per direction (drawn as spokes), pick the best and blend — press to move the goal", function (u) {
+  var D = { dirs: 16,           // directions considered
+            range: 0.28,        // how far an obstacle is felt, × min(W, H)
+            weight: 1.4,        // danger's pull against interest
+            smoothRate: 5,      // how fast the chosen heading is blended (1/s) — huge = raw
+            speed: 90,          // px/s
+            count: 4, radius: 0.08, seed: 3,   // rocks: how many, size (× H), layout
+            label: "score[i] = interest[i] − danger[i] · w → argmax" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, arrow, mote, label, rng, rand, len, clamp, smooth, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // CONTEXT STEERING never adds forces. it keeps two arrays, one slot per
+  // compass direction: INTEREST (how much each direction points at the
+  // goal — a dot product, clamped at zero) and DANGER (how much it points
+  // at a nearby rock, stronger when closer). subtract, take the best slot,
+  // and BLEND the heading toward it so the choice never flickers. the green
+  // spokes are interest, the red ones danger, the amber spoke the winner.
+  // it borrows Obstacle's rocks and Wander's patience.
+  const M = Math.min(W, H), RANGE = M * D.range, n = D.dirs;
+  const rnd = rng(D.seed);
+  const rocks = [];
+  for (let i = 0; i < D.count; i++) rocks.push({ x: W * (0.15 + rnd() * 0.7), y: H * (0.15 + rnd() * 0.65), r: H * D.radius * (0.7 + rnd() * 0.6) });
+  const interest = [], danger = [], cx = [], cy = [];
+  for (let i = 0; i < n; i++) { interest.push(0); danger.push(0); cx.push(Math.cos(i / n * TAU)); cy.push(Math.sin(i / n * TAU)); }
+  function clear(px, py) { for (const r of rocks) if (len(px - r.x, py - r.y) < r.r + 14) return false; return true; }
+  function pick() { for (let i = 0; i < 16; i++) { const px = rand(W * 0.08, W * 0.92), py = rand(H * 0.1, H * 0.88); if (clear(px, py)) return [px, py]; } return [W * 0.5, H * 0.9]; }
+  let x = W * 0.1, y = H * 0.8, h = 0, goal = pick(), timer = 0, best = 0;
+  return {
+    press(px, py) { goal = [clamp(px, 8, W - 8), clamp(py, 8, H - 8)]; timer = -6; },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      const gdx = goal[0] - x, gdy = goal[1] - y, gd = len(gdx, gdy) || 1;
+      if (gd < 10 || timer > 8) { goal = pick(); timer = 0; }
+      for (let i = 0; i < n; i++) {                    // the two maps
+        interest[i] = Math.max(0, (cx[i] * gdx + cy[i] * gdy) / gd);
+        danger[i] = 0;
+      }
+      for (const r of rocks) {
+        const dx = r.x - x, dy = r.y - y, d = len(dx, dy) || 1;
+        const near = clamp(1 - (d - r.r) / RANGE, 0, 1);
+        if (near <= 0) continue;
+        for (let i = 0; i < n; i++) {
+          const dp = (cx[i] * dx + cy[i] * dy) / d;
+          if (dp > 0) danger[i] = Math.max(danger[i], dp * dp * near);
+        }
+      }
+      let bs = -Infinity;
+      for (let i = 0; i < n; i++) { const s = interest[i] - danger[i] * D.weight; if (s > bs) { bs = s; best = i; } }
+      const want = best / n * TAU;
+      let da = want - h;                               // blend the heading, the short way round
+      while (da > Math.PI) da -= TAU; while (da < -Math.PI) da += TAU;
+      h += da * smooth(D.smoothRate, dt);
+      const sp = D.speed * Math.min(1, gd / 30);
+      x += Math.cos(h) * sp * dt; y += Math.sin(h) * sp * dt;
+      for (const r of rocks) { const rx = x - r.x, ry = y - r.y, rd = len(rx, ry) || 1; if (rd < r.r + 8) { x = r.x + rx / rd * (r.r + 8); y = r.y + ry / rd * (r.r + 8); } }
+      x = clamp(x, 8, W - 8); y = clamp(y, 8, H - 8);
+      for (const r of rocks) { dot(r.x, r.y, r.r, "rgba(201,196,228,0.12)"); ring(r.x, r.y, r.r, "rgba(201,196,228,0.5)"); ring(r.x, r.y, r.r + RANGE, "rgba(245,138,138,0.08)"); }
+      const R0 = 12, RS = M * 0.11;                    // the spokes: interest out, danger over it
+      for (let i = 0; i < n; i++) {
+        line(x + cx[i] * R0, y + cy[i] * R0, x + cx[i] * (R0 + interest[i] * RS), y + cy[i] * (R0 + interest[i] * RS), "rgba(155,226,138,0.6)", 2);
+        if (danger[i] > 0.01) line(x + cx[i] * R0, y + cy[i] * R0, x + cx[i] * (R0 + danger[i] * RS), y + cy[i] * (R0 + danger[i] * RS), "rgba(245,138,138,0.75)", 3);
+      }
+      ring(x, y, R0, DIM);
+      line(x, y, x + cx[best] * (R0 + RS * 1.05), y + cy[best] * (R0 + RS * 1.05), TARGET, 1.5);
+      ring(goal[0], goal[1], 7, TARGET, 1.5); dot(goal[0], goal[1], 2.5, TARGET);
+      mote(x, y, h);
+      label(n + " directions · blend " + D.smoothRate + "/s", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Judge", "Jumpy", "eight directions and no blending at all — the same two maps, but every decision snaps: the twitchy raw version", { dirs: 8, smoothRate: 200, speed: 110 });
+
+def("F", "Flowfield", "squads", "one breadth-first flood from the goal writes a distance into every cell; every unit just steps to its smallest neighbour (Astar's grid, Vectorfield's crowd) — press to move the goal", function (u) {
+  var D = { cols: 18, rows: 12, // the grid
+            units: 16,          // walkers sharing the one field
+            speed: 2.6,         // cells per second
+            wallChance: 0.18, seed: 21,   // the walls
+            retarget: 7,        // seconds before the goal moves on its own
+            label: "BFS from the goal: dist[n] = dist[c] + 1 · walk to min(dist)" };
+  const { ctx, W, H, stage, dot, rect, ring, line, arrow, mote, label, rng, rand, clamp, len, MOVER, TARGET, DIM } = u;
+  // A* answers one question — how does THIS unit reach the goal — and must
+  // be asked again for every unit. a FLOW FIELD answers it for every cell
+  // at once: flood outward from the goal breadth-first, writing into each
+  // cell how many steps it is from the goal (the numbers). after that no
+  // unit searches anything: it reads its neighbours and steps to the
+  // smallest number. forty units cost the same as one. the field is only
+  // rebuilt when the goal moves — the walk between is pure lookup.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const cw = W / cols, ch = (H - 18) / rows;
+  const walls = [], dist = [], queue = [];
+  const rnd = rng(D.seed);
+  for (let i = 0; i < N; i++) { walls.push(rnd() < D.wallChance); dist.push(-1); }
+  let goal = 0, maxd = 1, timer = 0;
+  function flood() {                                   // breadth-first: a queue, one ring at a time
+    for (let i = 0; i < N; i++) dist[i] = -1;
+    queue.length = 0;
+    dist[goal] = 0; queue.push(goal);
+    let head = 0; maxd = 1;
+    while (head < queue.length) {
+      const c = queue[head++], cx = c % cols, cy = (c - cx) / cols;
+      const nb = [c - 1, c + 1, c - cols, c + cols];
+      for (let k = 0; k < 4; k++) {
+        const n = nb[k];
+        if (n < 0 || n >= N) continue;
+        if (k === 0 && cx === 0) continue;
+        if (k === 1 && cx === cols - 1) continue;
+        if (walls[n] || dist[n] >= 0) continue;
+        dist[n] = dist[c] + 1; if (dist[n] > maxd) maxd = dist[n];
+        queue.push(n);
+      }
+    }
+  }
+  function openCell() {                                // a random reachable cell
+    for (let i = 0; i < 40; i++) { const c = Math.floor(rand(0, N)); if (!walls[c] && dist[c] > 2) return c; }
+    return goal;
+  }
+  goal = Math.floor(rows / 2) * cols + Math.floor(cols * 0.75);
+  walls[goal] = false;
+  flood();
+  const units = [];
+  for (let i = 0; i < D.units; i++) { const c = openCell(); units.push({ x: c % cols + 0.5, y: Math.floor(c / cols) + 0.5, tx: 0, ty: 0 }); }
+  function nextOf(cxi, cyi) {                          // the smallest neighbour, diagonals only when both sides are open
+    let best = cyi * cols + cxi, bd = dist[best];
+    if (bd < 0) bd = 1e9;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cxi + dx, ny = cyi + dy;
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const n = ny * cols + nx;
+      if (walls[n] || dist[n] < 0) continue;
+      if (dx && dy && (walls[cyi * cols + nx] || walls[ny * cols + cxi])) continue;
+      const dd = dist[n] + (dx && dy ? 0.4 : 0);       // a diagonal is a little longer
+      if (dd < bd) { bd = dd; best = n; }
+    }
+    return best;
+  }
+  return {
+    press(px, py) {
+      const c = clamp(Math.floor(py / ch), 0, rows - 1) * cols + clamp(Math.floor(px / cw), 0, cols - 1);
+      if (walls[c]) walls[c] = false;
+      goal = c; timer = -4; flood();
+    },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.retarget) { timer = 0; goal = openCell(); flood(); }
+      for (let i = 0; i < N; i++) {                    // the field: a heat of distance, and the number
+        const x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
+        if (walls[i]) { rect(x + 1, y + 1, cw - 2, ch - 2, "rgba(201,196,228,0.32)"); continue; }
+        if (dist[i] < 0) { rect(x + 1, y + 1, cw - 2, ch - 2, "rgba(0,0,0,0.25)"); continue; }
+        rect(x + 1, y + 1, cw - 2, ch - 2, "rgba(245,193,105," + (0.28 * (1 - dist[i] / maxd)).toFixed(3) + ")");
+      }
+      ctx.fillStyle = "rgba(232,229,244,0.4)";
+      ctx.font = Math.max(7, Math.min(10, ch * 0.55)) + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      for (let i = 0; i < N; i++) if (!walls[i] && dist[i] >= 0) ctx.fillText(String(dist[i]), (i % cols + 0.5) * cw, Math.floor(i / cols) * ch + ch * 0.5 + 3);
+      ctx.textAlign = "left";
+      const gx = (goal % cols + 0.5) * cw, gy = (Math.floor(goal / cols) + 0.5) * ch;
+      ring(gx, gy, Math.min(cw, ch) * 0.4, TARGET, 1.5);
+      for (const un of units) {                        // read, then step
+        const cxi = clamp(Math.floor(un.x), 0, cols - 1), cyi = clamp(Math.floor(un.y), 0, rows - 1);
+        const here = cyi * cols + cxi;
+        if (here === goal || dist[here] < 0) { const c = openCell(); un.x = c % cols + 0.5; un.y = Math.floor(c / cols) + 0.5; continue; }
+        const n = nextOf(cxi, cyi);
+        un.tx = n % cols + 0.5; un.ty = Math.floor(n / cols) + 0.5;
+        const dx = un.tx - un.x, dy = un.ty - un.y, d = len(dx, dy) || 1;
+        const step = Math.min(d, D.speed * dt);
+        un.x += dx / d * step; un.y += dy / d * step;
+        const sx = un.x * cw, sy = un.y * ch;
+        line(sx, sy, sx + dx / d * cw * 0.4, sy + dy / d * ch * 0.4, "rgba(138,217,245,0.45)");
+        dot(sx, sy, Math.max(2, Math.min(cw, ch) * 0.2), MOVER);
+      }
+      label(D.units + " units · one field · max " + maxd, W - 4, 11, DIM, "right");
+      label(D.label, W / 2, H - 6, null, "center");
+    }
+  };
+});
+rhymeOf("Flowfield", "Floodgate", "twice the walls and forty units pouring through the gaps — the field does not care how many read it", { wallChance: 0.3, units: 40, speed: 3.2 });
+
+def("D", "Dijkstra", "squads", "a Dijkstra map: flood from several goals at once; monsters step DOWNHILL to hunt, and fleeing is the same map walked UPHILL (Astar, Flee) — press to place a goal", function (u) {
+  var D = { cols: 16, rows: 11, // the dungeon grid
+            goals: 1,           // how many goal cells the flood starts from (all at distance 0)
+            mode: "seek",       // "seek" walks downhill, "flee" walks uphill
+            monsters: 4,
+            speed: 2.2,         // cells per second
+            wallChance: 0.2, seed: 33,
+            wander: 5,          // seconds before a goal moves on its own
+            label: "seek: step to min(dist) · flee: step to max(dist)" };
+  const { ctx, W, H, stage, dot, rect, ring, line, mote, label, rng, rand, clamp, len, MOVER, TARGET, HOT, GOOD, DIM } = u;
+  // the roguelike's favourite trick. a DIJKSTRA MAP is Flowfield's flood
+  // with a twist: seed the queue with SEVERAL goals at distance 0 and the
+  // map reads "steps to the NEAREST goal" for free — one flood, any number
+  // of players, doors, or smells. a monster hunts by stepping to its
+  // smallest neighbour. to FLEE, walk the same map the other way: step to
+  // the largest neighbour, and it retreats into the corridors furthest
+  // from every goal — no second search, no flee vector, just a sign flip.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const cw = W / cols, ch = (H - 18) / rows;
+  const walls = [], dist = [], queue = [], goals = [];
+  const rnd = rng(D.seed);
+  for (let i = 0; i < N; i++) { walls.push(rnd() < D.wallChance); dist.push(-1); }
+  let maxd = 1, timer = 0;
+  function flood() {
+    for (let i = 0; i < N; i++) dist[i] = -1;
+    queue.length = 0;
+    for (const g of goals) { walls[g] = false; if (dist[g] < 0) { dist[g] = 0; queue.push(g); } }
+    let head = 0; maxd = 1;
+    while (head < queue.length) {
+      const c = queue[head++], cx = c % cols;
+      const nb = [c - 1, c + 1, c - cols, c + cols];
+      for (let k = 0; k < 4; k++) {
+        const n = nb[k];
+        if (n < 0 || n >= N) continue;
+        if (k === 0 && cx === 0) continue;
+        if (k === 1 && cx === cols - 1) continue;
+        if (walls[n] || dist[n] >= 0) continue;
+        dist[n] = dist[c] + 1; if (dist[n] > maxd) maxd = dist[n];
+        queue.push(n);
+      }
+    }
+  }
+  function openCell(minD) {
+    for (let i = 0; i < 40; i++) { const c = Math.floor(rand(0, N)); if (!walls[c] && dist[c] >= minD) return c; }
+    return goals[0];
+  }
+  for (let i = 0; i < D.goals; i++) goals.push(Math.floor(rows * (0.3 + 0.4 * i)) * cols + Math.floor(cols * (0.7 - 0.4 * i)));
+  flood();
+  const mons = [];
+  for (let i = 0; i < D.monsters; i++) { const c = openCell(3); mons.push({ x: c % cols + 0.5, y: Math.floor(c / cols) + 0.5, stuck: 0 }); }
+  function nextOf(cxi, cyi, uphill) {
+    let best = cyi * cols + cxi, bd = dist[best];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = cxi + dx, ny = cyi + dy;
+      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      const n = ny * cols + nx;
+      if (walls[n] || dist[n] < 0) continue;
+      if (dx && dy && (walls[cyi * cols + nx] || walls[ny * cols + cxi])) continue;
+      const dd = dist[n] + (dx && dy ? (uphill ? -0.4 : 0.4) : 0);
+      if (uphill ? dd > bd : dd < bd) { bd = dd; best = n; }
+    }
+    return best;
+  }
+  return {
+    press(px, py) {
+      const c = clamp(Math.floor(py / ch), 0, rows - 1) * cols + clamp(Math.floor(px / cw), 0, cols - 1);
+      goals.shift(); goals.push(c);                    // the oldest goal is replaced
+      timer = -3; flood();
+    },
+    frame(dt, t) {
+      stage();
+      timer += dt;
+      if (timer > D.wander) { timer = 0; goals.shift(); goals.push(openCell(2)); flood(); }
+      const flee = D.mode === "flee";
+      for (let i = 0; i < N; i++) {
+        const x = (i % cols) * cw, y = Math.floor(i / cols) * ch;
+        if (walls[i]) { rect(x + 1, y + 1, cw - 2, ch - 2, "rgba(201,196,228,0.32)"); continue; }
+        if (dist[i] < 0) { rect(x + 1, y + 1, cw - 2, ch - 2, "rgba(0,0,0,0.25)"); continue; }
+        const k = dist[i] / maxd;
+        rect(x + 1, y + 1, cw - 2, ch - 2, flee ? "rgba(155,226,138," + (0.3 * k).toFixed(3) + ")" : "rgba(245,193,105," + (0.28 * (1 - k)).toFixed(3) + ")");
+      }
+      ctx.fillStyle = "rgba(232,229,244,0.4)";
+      ctx.font = Math.max(7, Math.min(10, ch * 0.55)) + "px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      for (let i = 0; i < N; i++) if (!walls[i] && dist[i] >= 0) ctx.fillText(String(dist[i]), (i % cols + 0.5) * cw, Math.floor(i / cols) * ch + ch * 0.5 + 3);
+      ctx.textAlign = "left";
+      for (const g of goals) { const gx = (g % cols + 0.5) * cw, gy = (Math.floor(g / cols) + 0.5) * ch; ring(gx, gy, Math.min(cw, ch) * 0.4, TARGET, 1.5); dot(gx, gy, 3, TARGET); }
+      for (const m of mons) {
+        const cxi = clamp(Math.floor(m.x), 0, cols - 1), cyi = clamp(Math.floor(m.y), 0, rows - 1);
+        const here = cyi * cols + cxi;
+        if (dist[here] < 0) { const c = openCell(1); m.x = c % cols + 0.5; m.y = Math.floor(c / cols) + 0.5; continue; }
+        if (!flee && dist[here] === 0) { const c = openCell(4); m.x = c % cols + 0.5; m.y = Math.floor(c / cols) + 0.5; continue; }   // caught: it respawns far off
+        const n = nextOf(cxi, cyi, flee);
+        const tx = n % cols + 0.5, ty = Math.floor(n / cols) + 0.5;
+        const dx = tx - m.x, dy = ty - m.y, d = len(dx, dy) || 1;
+        const step = Math.min(d, D.speed * dt);
+        m.x += dx / d * step; m.y += dy / d * step;
+        const sx = m.x * cw, sy = m.y * ch;
+        if (d > 0.05) line(sx, sy, sx + dx / d * cw * 0.45, sy + dy / d * ch * 0.45, "rgba(245,138,138,0.5)");
+        else label("stuck", sx, sy - 8, "rgba(245,138,138,0.6)", "center");   // a local peak: nowhere higher to go
+        mote(sx, sy, Math.atan2(dy, dx), HOT, Math.max(3, Math.min(cw, ch) * 0.24));
+      }
+      label(D.mode + " · " + goals.length + " goal" + (goals.length > 1 ? "s" : "") + " · one flood", W - 4, 11, DIM, "right");
+      label(D.label, W / 2, H - 6, null, "center");
+    }
+  };
+});
+rhymeOf("Dijkstra", "Dread", "two players on one map and the monsters flee it uphill — they pile into the far corridors, and the numbers show why", { mode: "flee", goals: 2, monsters: 5 });
+
+def("I", "Influence", "squads", "an influence map: every threat paints a falloff onto the grid, and the AI reads the sum to pick safe ground — or, bold, the hottest (Magnet's fields, on a grid) — press to drop a threat", function (u) {
+  var D = { cols: 20, rows: 13, // the grid
+            threats: 3,         // red wanderers painting the map
+            radius: 0.22,       // a threat's reach, × min(W, H)
+            bold: 0,            // 0 = seek the safest cell around, 1 = seek the most threatened
+            think: 0.35,        // seconds between decisions
+            speed: 3,           // cells per second
+            threatSpeed: 30,    // px/s
+            maxThreats: 7,
+            label: "threat[c] = Σ (1 − d/R)² · step to argmin (bold: argmax)" };
+  const { ctx, W, H, TAU, stage, dot, rect, ring, line, mote, label, rand, clamp, len, noise, MOVER, TARGET, HOT, GOOD, DIM } = u;
+  // an INFLUENCE MAP is Magnet's field frozen onto a grid. each threat
+  // PAINTS: every cell within its radius gets (1 − d/R)², and the paints
+  // ADD, so two weak enemies make one hot patch. the mote never looks at
+  // the enemies — it reads the nine cells around it and steps to the
+  // coolest (or, with bold turned up, the hottest: it goes where the fight
+  // is). the same map, read differently, is a coward or a berserker; that
+  // is why strategy games keep several maps and blend them.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const cw = W / cols, ch = (H - 18) / rows, R = Math.min(W, H) * D.radius;
+  const map = [];
+  for (let i = 0; i < N; i++) map.push(0);
+  const thr = [];
+  for (let i = 0; i < D.threats; i++) thr.push({ x: rand(W * 0.1, W * 0.9), y: rand(H * 0.1, H * 0.75), a: rand(0, TAU), s: rand(0, 100) });
+  const me = { x: cols * 0.5, y: rows * 0.5, tx: cols * 0.5, ty: rows * 0.5 };
+  let thinkT = 0, choice = -1;
+  return {
+    press(px, py) {
+      if (thr.length >= D.maxThreats) thr.shift();
+      thr.push({ x: clamp(px, 4, W - 4), y: clamp(py, 4, H - 22), a: rand(0, TAU), s: rand(0, 100) });
+    },
+    frame(dt, t) {
+      stage();
+      for (const th of thr) {                          // the threats wander on noise
+        th.a += noise(t * 0.5 + th.s) * 1.8 * dt;
+        th.x += Math.cos(th.a) * D.threatSpeed * dt; th.y += Math.sin(th.a) * D.threatSpeed * dt;
+        if (th.x < 6 || th.x > W - 6 || th.y < 6 || th.y > H - 24) { th.a += Math.PI; th.x = clamp(th.x, 6, W - 6); th.y = clamp(th.y, 6, H - 24); }
+      }
+      for (let i = 0; i < N; i++) map[i] = 0;          // paint
+      for (const th of thr) {
+        const c0 = clamp(Math.floor((th.x - R) / cw), 0, cols - 1), c1 = clamp(Math.floor((th.x + R) / cw), 0, cols - 1);
+        const r0 = clamp(Math.floor((th.y - R) / ch), 0, rows - 1), r1 = clamp(Math.floor((th.y + R) / ch), 0, rows - 1);
+        for (let cy = r0; cy <= r1; cy++) for (let cx = c0; cx <= c1; cx++) {
+          const d = len((cx + 0.5) * cw - th.x, (cy + 0.5) * ch - th.y);
+          if (d < R) { const k = 1 - d / R; map[cy * cols + cx] += k * k; }
+        }
+      }
+      let peak = 0.001;
+      for (let i = 0; i < N; i++) if (map[i] > peak) peak = map[i];
+      for (let i = 0; i < N; i++) {                    // the heat map
+        if (map[i] <= 0.001) continue;
+        rect((i % cols) * cw + 0.5, Math.floor(i / cols) * ch + 0.5, cw - 1, ch - 1, "rgba(245,138,138," + (0.55 * Math.min(1, map[i] / Math.max(1, peak))).toFixed(3) + ")");
+      }
+      thinkT -= dt;
+      const cxi = clamp(Math.floor(me.x), 0, cols - 1), cyi = clamp(Math.floor(me.y), 0, rows - 1);
+      if (thinkT <= 0) {                               // read the nine cells, pick one
+        thinkT = D.think;
+        let best = cyi * cols + cxi, bs = -Infinity;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          const nx = cxi + dx, ny = cyi + dy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          const n = ny * cols + nx;
+          const s = (D.bold * 2 - 1) * map[n] - 0.002 * len(nx + 0.5 - cols / 2, ny + 0.5 - rows / 2) + rand(0, 0.0005);   // a whisper toward the centre breaks ties
+          if (s > bs) { bs = s; best = n; }
+        }
+        choice = best; me.tx = best % cols + 0.5; me.ty = Math.floor(best / cols) + 0.5;
+      }
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {   // the cells being read
+        const nx = cxi + dx, ny = cyi + dy;
+        if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+        ctx.strokeStyle = (ny * cols + nx) === choice ? TARGET : "rgba(232,229,244,0.25)";
+        ctx.lineWidth = (ny * cols + nx) === choice ? 1.5 : 1;
+        ctx.strokeRect(nx * cw + 1, ny * ch + 1, cw - 2, ch - 2);
+      }
+      const dx = me.tx - me.x, dy = me.ty - me.y, d = len(dx, dy) || 1;
+      const step = Math.min(d, D.speed * dt);
+      me.x += dx / d * step; me.y += dy / d * step;
+      for (const th of thr) { ring(th.x, th.y, R, "rgba(245,138,138,0.12)"); mote(th.x, th.y, th.a, HOT, 5); }
+      const here = map[cyi * cols + cxi];
+      mote(me.x * cw, me.y * ch, Math.atan2(dy, dx), D.bold > 0.5 ? TARGET : MOVER, 7);
+      label("here " + here.toFixed(2), me.x * cw, me.y * ch - 12, here > 0.05 ? HOT : GOOD, "center");
+      label("bold " + D.bold + " · " + thr.length + " threats · R " + Math.round(R) + " px", W - 4, 11, DIM, "right");
+      label(D.label, W / 2, H - 6, null, "center");
+    }
+  };
+});
+rhymeOf("Influence", "Incursion", "bold turned all the way up and a wider falloff — it reads the same map and marches into the hottest cell it can find", { bold: 1, radius: 0.32, threats: 4 });
+
+def("N", "Nodes", "squads", "a behaviour tree: a SELECTOR tries branches in order, a SEQUENCE runs steps until one fails — Zones' brain, redrawn as a tree lit each tick — press to move the player", function (u) {
+  var D = { order: ["chase", "flee", "patrol"],   // the selector's children, first wins
+            sense: 0.3,         // the "near?" radius, × W
+            panic: 0.12,        // the "too close?" radius, × W
+            alert: 0.6,         // seconds the notice step runs before it succeeds
+            patrol: 50, chase: 105, flee: 130,   // px/s per branch
+            drift: 0.3,         // how briskly the player wanders
+            label: "? = first child not failing · → = every child succeeding" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, mote, label, rand, len, clamp, wrapAngle, noise, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, DIM } = u;
+  // a BEHAVIOUR TREE is Zones' state machine with the transitions deleted.
+  // every frame the root is TICKED and each node answers success, failure
+  // or running. a SELECTOR (?) asks its children in order and stops at the
+  // first that is not a failure; a SEQUENCE (→) runs its children in order
+  // and stops at the first that is not a success. leaves are conditions
+  // ("near?") or actions ("chase"). the mood is never stored — it is
+  // re-derived from scratch each tick, which is why reordering the branches
+  // (the rhyme) changes the personality without touching a line of the brain.
+  const posts = [[W * 0.1, H * 0.25], [W * 0.42, H * 0.82]];
+  let x = posts[0][0], y = posts[0][1], h = 0, post = 1;
+  let px = W * 0.4, py = H * 0.5, hold = 0, noticeT = 0, caught = 0, flash = 0;
+  const S = 1, F = 2, R = 3;
+  const status = {};                                  // node id → status this tick
+  let d = 0, dt0 = 1 / 60;
+  function walk(tx, ty, speed) {
+    const dx = tx - x, dy = ty - y, dd = len(dx, dy) || 1;
+    if (dd < 4) return true;
+    h += wrapAngle(Math.atan2(dy, dx) - h) * Math.min(1, 8 * dt0);
+    const step = Math.min(dd, speed * dt0);
+    x += dx / dd * step; y += dy / dd * step;
+    return false;
+  }
+  const leaves = {
+    "near?": () => d < W * D.sense ? S : F,
+    "notice": () => { noticeT += dt0; return noticeT >= D.alert ? S : R; },
+    "chase": () => { walk(px, py, D.chase); return R; },
+    "close?": () => d < W * D.panic ? S : F,
+    "flee": () => { const dx = x - px, dy = y - py, dd = len(dx, dy) || 1; walk(clamp(x + dx / dd * 60, 10, W * 0.55), clamp(y + dy / dd * 60, 10, H - 10), D.flee); return R; },
+    "patrol": () => { if (walk(posts[post][0], posts[post][1], D.patrol)) post = 1 - post; return R; }
+  };
+  const branches = {                                  // name → the sequence's leaves
+    chase: ["near?", "notice", "chase"],
+    flee: ["close?", "flee"],
+    patrol: ["patrol"]
+  };
+  function tickSeq(name) {
+    const kids = branches[name] || branches.patrol;
+    for (const k of kids) {
+      const s = leaves[k]();
+      status[name + "/" + k] = s;
+      if (s !== S) { status[name] = s; return s; }
+    }
+    status[name] = S; return S;
+  }
+  return {
+    press(cx, cy) { px = clamp(cx, 10, W * 0.55); py = clamp(cy, 10, H - 10); hold = 4; },
+    frame(dt, t) {
+      stage();
+      dt0 = dt;
+      hold -= dt;
+      if (hold <= 0) {                                 // the player drifts on noise inside the scene half
+        const a = noise(t * D.drift + 5) * Math.PI * 1.5;
+        px = clamp(px + Math.cos(a) * 34 * dt, 12, W * 0.55); py = clamp(py + Math.sin(a) * 34 * dt, 12, H - 12);
+      }
+      d = len(px - x, py - y);
+      for (const k in status) status[k] = 0;
+      let ticked = false, root = F, active = "";
+      for (const name of D.order) {                    // the selector
+        const s = tickSeq(name);
+        if (s !== F) { root = s; active = name; break; }
+      }
+      status.root = root;
+      if (active !== "chase") noticeT = Math.max(0, noticeT - dt * 2);   // the notice timer cools when not ticked
+      if (d < 12) { caught++; flash = 1; px = x < W * 0.28 ? W * 0.5 : W * 0.08; py = rand(H * 0.15, H * 0.85); hold = 1; noticeT = 0; }
+      flash = Math.max(0, flash - dt * 2);
+      x = clamp(x, 8, W * 0.58); y = clamp(y, 8, H - 8);
+      // the scene, left
+      ctx.setLineDash([3, 5]); line(posts[0][0], posts[0][1], posts[1][0], posts[1][1], "rgba(201,196,228,0.3)"); ctx.setLineDash([]);
+      for (const p of posts) ring(p[0], p[1], 4, "rgba(201,196,228,0.5)");
+      line(W * 0.6, 8, W * 0.6, H - 20, "rgba(201,196,228,0.15)");
+      ring(x, y, W * D.sense, active === "chase" ? "rgba(245,193,105,0.35)" : "rgba(245,193,105,0.12)");
+      ring(x, y, W * D.panic, active === "flee" ? "rgba(245,138,138,0.45)" : "rgba(245,138,138,0.12)");
+      if (flash > 0) ring(x, y, 14 + (1 - flash) * 26, "rgba(245,138,138," + flash * 0.8 + ")", 2);
+      ring(px, py, 8, "rgba(245,193,105,0.5)"); dot(px, py, 4, TARGET);
+      mote(x, y, h);
+      label(active, x, y - 15, active === "chase" ? HOT : (active === "flee" ? MAGIC : GOOD), "center");
+      // the tree, right
+      const tx0 = W * 0.62, tw = W * 0.36, ty0 = H * 0.12, rowH = (H - 40) * 0.3;
+      const col = s => s === S ? GOOD : (s === F ? HOT : (s === R ? TARGET : "rgba(201,196,228,0.35)"));
+      const box = (bx, by, txt, s, wide) => {
+        const bw = wide || 22, bh = 12;
+        ctx.strokeStyle = col(s); ctx.lineWidth = s ? 1.5 : 1;
+        ctx.strokeRect(bx - bw / 2, by - bh / 2, bw, bh);
+        if (s) rect(bx - bw / 2, by - bh / 2, bw, bh, "rgba(232,229,244,0.06)");
+        label(txt, bx, by + 3.5, s ? col(s) : DIM, "center");
+      };
+      const rx = tx0 + tw / 2, ry = ty0;
+      const n = D.order.length;
+      for (let i = 0; i < n; i++) {
+        const bx = tx0 + tw * (i + 0.5) / n, by = ry + rowH;
+        const st = status[D.order[i]] || 0;
+        line(rx, ry + 6, bx, by - 6, st ? col(st) : "rgba(201,196,228,0.25)", st ? 1.5 : 1);
+        const kids = branches[D.order[i]] || branches.patrol;
+        for (let k = 0; k < kids.length; k++) {
+          const lx = bx, ly = by + rowH * 0.62 * (k + 1);
+          const ls = status[D.order[i] + "/" + kids[k]] || 0;
+          line(bx, by + 6, lx, ly - 6, ls ? col(ls) : "rgba(201,196,228,0.25)", ls ? 1.5 : 1);
+          box(lx, ly, kids[k], ls, Math.min(tw / n - 2, 40));
+        }
+        box(bx, by, "→", st, 22);
+      }
+      box(rx, ry, "?", status.root, 22);
+      label("S", tx0, H - 26, GOOD); label("F", tx0 + 14, H - 26, HOT); label("R", tx0 + 28, H - 26, TARGET); label("tagged ×" + caught, tx0 + tw, H - 26, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Nodes", "Nervous", "the flee branch is asked first and its ring is wide — the same tree, now a coward that closes in and bolts, closes in and bolts", { order: ["flee", "chase", "patrol"], panic: 0.24, flee: 150 });
+
+def("U", "Utility", "squads", "utility AI: every action scores need^k through its own response curve (the little graphs), the highest wins; the curves are the personality — press to drop food", function (u) {
+  var D = { w: [1, 1, 1, 0],   // weights per action: eat, sleep, play, hunt (0 switches an action off)
+            k: [2.2, 3, 1.4, 1],   // curve exponents: score = need^k — steep = ignores the need until it is urgent
+            rise: [0.07, 0.045, 0.09],   // how fast hunger, tiredness and boredom grow, per second
+            think: 0.4,         // seconds between decisions
+            stick: 0.08,        // a bonus for the current action, so it does not dither
+            speed: 85,          // px/s
+            label: "score = w · need^k · context → argmax" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, mote, label, rand, len, clamp, noise, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, DIM } = u;
+  // UTILITY AI has no tree and no states: every action is given a SCORE
+  // each think, and the best one runs. the score is a need pushed through
+  // a RESPONSE CURVE — need^k — so k is a personality: a low k acts early
+  // and often, a high k ignores the need until it is desperate. hunting
+  // reads the player's closeness instead of a need. needs rise on their
+  // own and fall while the action runs, so the loop feeds itself: eat,
+  // then play, then sleep, in whatever order the curves decide today.
+  const NAMES = ["eat", "sleep", "play", "hunt"], COLS = [TARGET, MAGIC, GOOD, HOT];
+  const need = [0.3, 0.1, 0.5];
+  const spots = [{ x: W * 0.8, y: H * 0.7 }, { x: W * 0.15, y: H * 0.72 }, { x: W * 0.5, y: H * 0.85 }];
+  const me = { x: W * 0.5, y: H * 0.6, h: 0 };
+  let px = W * 0.3, py = H * 0.45, thinkT = 0, act = 0;
+  const score = [0, 0, 0, 0];
+  return {
+    press(cx, cy) { spots[0].x = clamp(cx, 12, W - 12); spots[0].y = clamp(cy, H * 0.3, H - 22); },
+    frame(dt, t) {
+      stage();
+      for (let i = 0; i < 3; i++) need[i] = clamp(need[i] + D.rise[i] * dt, 0, 1);
+      const a = noise(t * 0.25 + 11) * Math.PI * 1.6;  // the player drifts
+      px = clamp(px + Math.cos(a) * 30 * dt, 12, W - 12); py = clamp(py + Math.sin(a) * 30 * dt, H * 0.3, H - 22);
+      const close = clamp(1 - len(px - me.x, py - me.y) / (W * 0.6), 0, 1);
+      thinkT -= dt;
+      if (thinkT <= 0) {
+        thinkT = D.think;
+        for (let i = 0; i < 3; i++) score[i] = D.w[i] * Math.pow(need[i], D.k[i]);
+        score[3] = D.w[3] * Math.pow(0.4 + 0.6 * close, D.k[3]);
+        let best = act, bs = -1;
+        for (let i = 0; i < 4; i++) { const s = score[i] + (i === act ? D.stick : 0); if (s > bs) { bs = s; best = i; } }
+        act = best;
+      }
+      const goal = act === 3 ? { x: px, y: py } : spots[act];
+      const dx = goal.x - me.x, dy = goal.y - me.y, d = len(dx, dy) || 1;
+      if (d > 10) {
+        me.h = Math.atan2(dy, dx);
+        const step = Math.min(d, D.speed * dt);
+        me.x += dx / d * step; me.y += dy / d * step;
+      } else if (act < 3) need[act] = clamp(need[act] - dt * 0.35, 0, 1);   // doing it: the need drains
+      else if (D.w[3] > 0) { px = rand(W * 0.1, W * 0.9); py = rand(H * 0.35, H * 0.8); }   // caught: the player reappears
+      // the graphs: one per action, curve y = x^k and the current need on it, the score bar under
+      const gw = Math.min(46, W / 4 - 8), gh = gw * 0.55, gy0 = 16;
+      for (let i = 0; i < 4; i++) {
+        const gx0 = W / 4 * (i + 0.5) - gw / 2;
+        ctx.strokeStyle = act === i ? COLS[i] : "rgba(201,196,228,0.3)"; ctx.lineWidth = act === i ? 1.5 : 1;
+        ctx.strokeRect(gx0, gy0, gw, gh);
+        ctx.strokeStyle = D.w[i] > 0 ? COLS[i] : "rgba(201,196,228,0.2)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let s = 0; s <= 12; s++) { const xx = s / 12, yy = Math.pow(xx, D.k[i]); if (s === 0) ctx.moveTo(gx0 + xx * gw, gy0 + gh - yy * gh); else ctx.lineTo(gx0 + xx * gw, gy0 + gh - yy * gh); }
+        ctx.stroke();
+        const nx = i < 3 ? need[i] : 0.4 + 0.6 * close, ny = Math.pow(nx, D.k[i]);
+        dot(gx0 + nx * gw, gy0 + gh - ny * gh, 2.5, D.w[i] > 0 ? COLS[i] : DIM);
+        rect(gx0, gy0 + gh + 3, gw * clamp(score[i], 0, 1), 3, D.w[i] > 0 ? COLS[i] : "rgba(201,196,228,0.2)");
+        label(NAMES[i] + " k" + D.k[i], gx0 + gw / 2, gy0 + gh + 16, act === i ? COLS[i] : DIM, "center");
+      }
+      for (let i = 0; i < 3; i++) { ring(spots[i].x, spots[i].y, 9, COLS[i], act === i ? 2 : 1); label(NAMES[i][0], spots[i].x, spots[i].y + 3.5, COLS[i], "center"); }
+      ring(px, py, 7, D.w[3] > 0 ? HOT : "rgba(245,138,138,0.35)"); dot(px, py, 3, D.w[3] > 0 ? HOT : DIM);
+      mote(me.x, me.y, me.h, D.w[3] > 0 && D.w[0] === 0 ? GOOD : MOVER);   // a hunter with no appetite: zombie green
+      label(NAMES[act], me.x, me.y - 14, COLS[act], "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Utility", "Undead", "only hunt is weighted; nothing else scores, no need ever rises — a zombie's flat curves, shuffling toward whoever is closest", { w: [0, 0, 0, 1], rise: [0, 0, 0], speed: 45 });
+
+def("E", "Edge", "squads", "the Goomba rule: a ray ahead of the feet points DOWN; no ground under it → turn around (Xmarks' ray, Zigzag's patrol) — press to cut a gap", function (u) {
+  var D = { rows: [0.3, 0.55, 0.78],   // platform heights, × H
+            speed: 55,          // px/s
+            ahead: 12,          // the probe's lead ahead of the feet, px
+            probe: 14,          // the ray's length, px
+            gapW: 0.12,         // a cut gap's width, × W
+            autoGap: 4.5,       // seconds between the idle finger's cuts
+            walls: 0,           // posts on the platforms; 0 = none — the ray only looks down
+            gapMax: 0,          // gaps up to this width (× W) are JUMPED; 0 = never
+            g: 2.2,             // gravity for the jump, × H
+            seed: 4,
+            label: "hit = ray(feet + dir · ahead, down, probe) · none → dir = −dir" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, arrow, mote, label, rng, rand, clamp, len, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // the CLIFF SENSOR. a patroller does not know its platform's length; it
+  // casts one short RAY, a little ahead of its feet, straight DOWN. ground
+  // found → keep walking; nothing found → turn around. that single test is
+  // every Goomba, every Koopa, every sentry on a ledge. the explorer rhyme
+  // adds two more reads of the same ray: a forward probe for walls, and,
+  // when the drop ahead is a gap it could clear, a jump instead of a turn.
+  const rnd = rng(D.seed);
+  const rows = D.rows.map(f => ({ y: H * f, gaps: [], walls: [] }));
+  for (const r of rows) for (let i = 0; i < D.walls; i++) r.walls.push(0.15 + rnd() * 0.7);
+  const bots = rows.map((r, i) => ({ row: i, x: W * (0.2 + i * 0.25), dir: i % 2 ? -1 : 1, vy: 0, y: r.y, air: false, flash: 0 }));
+  let gapT = 2;
+  function groundAt(row, x) {                          // is there platform under this x on this row?
+    if (x < W * 0.04 || x > W * 0.96) return false;
+    for (const g of rows[row].gaps) if (x > g[0] && x < g[1]) return false;
+    return true;
+  }
+  function gapWidth(row, x, dir) {                     // from x, how far to the next ground in dir
+    for (let s = 0; s < 400; s += 2) { const xx = x + dir * s; if (xx < 0 || xx > W) return 1e9; if (groundAt(row, xx)) return s; }
+    return 1e9;
+  }
+  function cut(row, cx) {
+    const r = rows[row], w = W * D.gapW;
+    r.gaps.push([cx - w / 2, cx + w / 2]);
+    if (r.gaps.length > 2) r.gaps.shift();
+  }
+  return {
+    press(px, py) {
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < rows.length; i++) { const dd = Math.abs(rows[i].y - py); if (dd < bd) { bd = dd; best = i; } }
+      cut(best, clamp(px, W * 0.12, W * 0.88)); gapT = -1;
+    },
+    frame(dt, t) {
+      stage();
+      gapT += dt;
+      if (gapT > D.autoGap) { gapT = 0; cut(Math.floor(rand(0, rows.length)), rand(W * 0.15, W * 0.85)); }
+      for (let i = 0; i < rows.length; i++) {          // the platforms, as what is left after the gaps
+        const r = rows[i];
+        let segs = [[W * 0.04, W * 0.96]];
+        for (const g of r.gaps) {
+          const out = [];
+          for (const s of segs) { if (g[1] <= s[0] || g[0] >= s[1]) out.push(s); else { if (g[0] > s[0]) out.push([s[0], g[0]]); if (g[1] < s[1]) out.push([g[1], s[1]]); } }
+          segs = out;
+        }
+        for (const s of segs) { line(s[0], r.y, s[1], r.y, "rgba(201,196,228,0.6)", 2); for (let xx = s[0] + 4; xx < s[1]; xx += 10) line(xx, r.y + 2, xx - 4, r.y + 7, "rgba(201,196,228,0.16)"); }
+        for (const wf of r.walls) rect(W * wf - 2, r.y - 14, 4, 14, BONE);
+      }
+      for (const b of bots) {
+        const r = rows[b.row];
+        b.flash = Math.max(0, b.flash - dt);
+        if (b.air) {                                   // mid-jump
+          b.vy += H * D.g * dt; b.x += b.dir * D.speed * 1.3 * dt; b.y += b.vy * dt;
+          if (b.vy > 0 && b.y >= r.y - 8) {
+            if (groundAt(b.row, b.x)) { b.y = r.y - 8; b.air = false; b.vy = 0; }
+            else if (b.y > H + 20) { b.x = W * 0.5; b.y = r.y - 8; b.air = false; b.vy = 0; while (!groundAt(b.row, b.x)) b.x += 6; }   // missed: respawn
+          }
+          mote(b.x, b.y, b.dir > 0 ? -0.5 : Math.PI + 0.5, MOVER, 7);
+          continue;
+        }
+        const fx = b.x + b.dir * D.ahead;              // the probe: ahead of the feet, pointing down
+        const hit = groundAt(b.row, fx);
+        let wall = false;
+        if (D.walls > 0) for (const wf of r.walls) if (Math.abs(W * wf - (b.x + b.dir * 10)) < 4) wall = true;
+        line(fx, r.y - 8, fx, r.y - 8 + D.probe, hit ? GOOD : HOT, 1.5);
+        dot(fx, hit ? r.y : r.y - 8 + D.probe, 2.5, hit ? GOOD : HOT);
+        if (D.walls > 0) line(b.x, r.y - 10, b.x + b.dir * 10, r.y - 10, wall ? HOT : DIM);
+        if (wall) { b.dir = -b.dir; b.flash = 0.4; }
+        else if (!hit) {
+          const gw = D.gapMax > 0 ? gapWidth(b.row, fx, b.dir) : 1e9;
+          if (gw + D.ahead <= W * D.gapMax) {          // a jump it can clear: v₀ from the time to cross
+            const T = (gw + D.ahead + 8) / (D.speed * 1.3);
+            b.vy = -H * D.g * T / 2; b.air = true; b.flash = 0.4;
+          } else { b.dir = -b.dir; b.flash = 0.4; }
+        } else b.x += b.dir * D.speed * dt;
+        b.y = r.y - 8;
+        if (b.flash > 0) label(b.air ? "jump" : "turn", b.x, b.y - 14, b.air ? TARGET : HOT, "center");
+        mote(b.x, b.y, b.dir > 0 ? 0 : Math.PI, MOVER, 7);
+      }
+      label((D.gapMax > 0 ? "jumps gaps ≤ " + Math.round(W * D.gapMax) + " px · " : "") + (D.walls > 0 ? "walls read · " : "") + "probe " + D.probe + " px", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Edge", "Explorer", "the same ray also reads walls, and a gap it can clear is jumped instead of refused — a patroller that gets around", { walls: 2, gapMax: 0.18, speed: 70 });
+
+def("V", "Villager", "squads", "a daily schedule: the CLOCK picks the destination (home → field → market → tavern) and Astar's search on a tiny grid walks there — press to advance the clock", function (u) {
+  var D = { cols: 14, rows: 9,  // the village grid
+            npcs: 3,
+            dayLen: 24,         // real seconds per 24-hour day
+            sched: [[6, "field"], [12, "market"], [18, "tavern"], [22, "home"]],   // hour → where to be
+            stagger: 0.9,       // hours between one villager's day and the next
+            speed: 2.6,         // cells per second
+            invert: false,      // swap the day and night tint
+            wallChance: 0.12, seed: 9,
+            label: "place = sched[latest hour ≤ clock] · A* → path" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, mote, label, rng, clamp, len, ease, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, DIM } = u;
+  // a DAILY SCHEDULE is a lookup table keyed by the clock: the latest
+  // entry whose hour has passed names the place to be. when the place
+  // changes, Astar's search (f = g + h, Manhattan h) plans a route across
+  // the village, and the villager walks it cell by cell. that is the whole
+  // of a Stardew townsperson: no goals, no needs, a table and a
+  // pathfinder. each villager's clock is staggered a little, so the
+  // street never empties all at once. the tint is the hour, made visible.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const cw = W / cols, ch = (H - 18) / rows;
+  const rnd = rng(D.seed);
+  const walls = [];
+  for (let i = 0; i < N; i++) walls.push(rnd() < D.wallChance);
+  const places = { home: [1, 1], field: [cols - 2, 1], market: [Math.floor(cols / 2), rows - 2], tavern: [1, rows - 2] };
+  const PCOL = { home: MOVER, field: GOOD, market: TARGET, tavern: MAGIC };
+  for (const k in places) { const p = places[k]; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const cx = p[0] + dx, cy = p[1] + dy; if (cx >= 0 && cy >= 0 && cx < cols && cy < rows) walls[cy * cols + cx] = false; } }
+  const g = [], came = [], closed = [];
+  function astar(from, to) {                           // Astar's search, compact
+    for (let i = 0; i < N; i++) { g[i] = Infinity; came[i] = -1; closed[i] = false; }
+    const open = [from]; g[from] = 0;
+    const h = i => Math.abs(i % cols - to % cols) + Math.abs(Math.floor(i / cols) - Math.floor(to / cols));
+    while (open.length) {
+      let bi = 0;
+      for (let i = 1; i < open.length; i++) if (g[open[i]] + h(open[i]) < g[open[bi]] + h(open[bi])) bi = i;
+      const cur = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (cur === to) break;
+      closed[cur] = true;
+      const cx = cur % cols;
+      const nb = [cur - 1, cur + 1, cur - cols, cur + cols];
+      for (let k = 0; k < 4; k++) {
+        const n = nb[k];
+        if (n < 0 || n >= N || (k === 0 && cx === 0) || (k === 1 && cx === cols - 1)) continue;
+        if (walls[n] || closed[n]) continue;
+        if (g[cur] + 1 < g[n]) { g[n] = g[cur] + 1; came[n] = cur; if (open.indexOf(n) < 0) open.push(n); }
+      }
+    }
+    if (came[to] < 0 && to !== from) return null;
+    const p = [];
+    for (let i = to; i >= 0; i = came[i]) { p.push(i); if (p.length > N) break; }
+    return p.reverse();
+  }
+  const npcs = [];
+  for (let i = 0; i < D.npcs; i++) npcs.push({ cell: places.home[1] * cols + places.home[0], path: null, pi: 0, k: 0, place: "", col: [MOVER, GOOD, BONE, TARGET, MAGIC][i % 5] });
+  let advance = 0;
+  function placeAt(hour) {
+    let best = D.sched[D.sched.length - 1][1];         // before the first entry, yesterday's last still holds
+    for (const s of D.sched) if (hour >= s[0]) best = s[1];
+    return best;
+  }
+  return {
+    press() { advance += 3; },
+    frame(dt, t) {
+      stage();
+      const clock = ((t * 24 / D.dayLen + advance) % 24 + 24) % 24;
+      for (let i = 0; i < N; i++) if (walls[i]) rect((i % cols) * cw + 1, Math.floor(i / cols) * ch + 1, cw - 2, ch - 2, "rgba(201,196,228,0.3)");
+      for (const k in places) {
+        const p = places[k], x = (p[0] + 0.5) * cw, y = (p[1] + 0.5) * ch;
+        ring(x, y, Math.min(cw, ch) * 0.42, PCOL[k], 1.5);
+        label(k[0].toUpperCase(), x, y + 3.5, PCOL[k], "center");
+      }
+      for (let i = 0; i < npcs.length; i++) {
+        const v = npcs[i];
+        const want = placeAt(((clock - i * D.stagger) % 24 + 24) % 24);
+        if (want !== v.place) {                        // the clock changed the destination: plan once
+          v.place = want;
+          const dest = places[want][1] * cols + places[want][0];
+          const from = v.path && v.pi + 1 < v.path.length ? v.path[v.pi + 1] : v.cell;
+          v.path = astar(from, dest);
+          if (v.path && v.path[0] !== v.cell) v.path.unshift(v.cell);
+          v.pi = 0; v.k = 0;
+        }
+        let x = (v.cell % cols + 0.5) * cw, y = (Math.floor(v.cell / cols) + 0.5) * ch, ang = 0;
+        if (v.path && v.pi + 1 < v.path.length) {
+          v.k += dt * D.speed;
+          const a = v.path[v.pi], b = v.path[v.pi + 1];
+          const ax = (a % cols + 0.5) * cw, ay = (Math.floor(a / cols) + 0.5) * ch, bx = (b % cols + 0.5) * cw, by = (Math.floor(b / cols) + 0.5) * ch;
+          const kk = ease(Math.min(1, v.k));
+          x = ax + (bx - ax) * kk; y = ay + (by - ay) * kk - Math.sin(Math.min(1, v.k) * Math.PI) * ch * 0.25;
+          ang = Math.atan2(by - ay, bx - ax);
+          if (v.k >= 1) { v.cell = b; v.pi++; v.k = 0; }
+          for (let j = v.pi; j + 1 < v.path.length; j++) {   // the rest of the route, faint
+            const c = v.path[j], d = v.path[j + 1];
+            line((c % cols + 0.5) * cw, (Math.floor(c / cols) + 0.5) * ch, (d % cols + 0.5) * cw, (Math.floor(d / cols) + 0.5) * ch, "rgba(245,193,105,0.3)");
+          }
+        }
+        mote(x, y, ang, v.col, Math.max(3.5, Math.min(cw, ch) * 0.26));
+      }
+      let night = clamp((Math.abs(clock - 12) - 5) / 3, 0, 1);   // 0 by day, 1 by night
+      if (D.invert) night = 1 - night;
+      rect(0, 0, W, H - 18, "rgba(12,10,48," + (0.5 * night).toFixed(3) + ")");
+      const cxk = W - 20, cyk = 20, rk = 12;           // the clock dial: one turn = 24 h
+      ring(cxk, cyk, rk, BONE, 1.5);
+      const ha = clock / 24 * TAU - Math.PI / 2;
+      line(cxk, cyk, cxk + Math.cos(ha) * rk * 0.8, cyk + Math.sin(ha) * rk * 0.8, TARGET, 2);
+      const hh = Math.floor(clock), mm = Math.floor((clock - hh) * 60);
+      label((hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm + " → " + npcs[0].place, cxk - rk - 4, cyk + 4, null, "right");
+      label(D.label, W / 2, H - 6, null, "center");
+    }
+  };
+});
+rhymeOf("Villager", "Vampire", "the schedule runs at night and the tint is inverted — the field at dusk, the market at midnight, home before dawn", { sched: [[20, "field"], [0, "market"], [3, "tavern"], [6, "home"]], invert: true, dayLen: 18 });
+/* ============================== JOINTS, CLOTH & GRAINS ==============================
+   The chain, the lattice, and the grid. A joint is an angle that obeys a
+   limit; a cloth is a rope in two directions; a grain is a cell that asks
+   the cell below whether it is free. This family closes the loop opened by
+   Chains and Bodies: a third IK (CCD — rotate joints from the tip back),
+   quadruped phase tables, jiggle for free, verlet cloth with three kinds of
+   promise, a rope bridge that sags, rigid rotation (τ = r × F), hinges with
+   motors, links that break, grab-and-throw, the artillery formula and the
+   preview that follows its own dots — and two cellular automata: falling
+   sand, and tile water that levels out (or fire that spreads). */
+
+def("R", "Robotarm", "joints", "CCD IK: rotate each joint, tip first, so the tip swings at the target, clamp its ANGLE LIMIT, repeat (Fabrik's cousin) — press to set the target", function (u) {
+  var D = { n: 8,              // joints in the chain
+            bone: 0.085,       // bone length ×H
+            limit: 0.85,       // each joint may bend ±limit radians from its parent
+            baseLimit: 1.3,    // the base may lean ±baseLimit from straight up
+            iters: 3,          // CCD sweeps per frame
+            sticky: 3.5, roamX: 0.36, roamY: 0.26,   // how long a press holds; the idle wander (of W, H)
+            label: "for j = tip−1 … 0: θⱼ += ∠(tip−pⱼ, target−pⱼ) · clamp ±limit" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, label, clamp, len, wrapAngle, BONE, MOVER, TARGET, HOT, DIM } = u;
+  // CYCLIC COORDINATE DESCENT, the third IK. Ik solved two bones exactly;
+  // Fabrik slid points along lines. CCD keeps ANGLES: starting at the joint
+  // nearest the tip, rotate that joint so the tip swings toward the target,
+  // then the next joint down, then the next; one sweep leaves an error, a
+  // few sweeps make it small. because the state is one angle per joint, an
+  // ANGLE LIMIT is a single clamp — the wedge at each joint is that limit,
+  // a joint pinned at its limit glows red, and a target outside the wedges
+  // is honestly not reached (the miss is printed at the top).
+  const n = D.n, L = H * D.bone;
+  const bx = W / 2, by = GY;
+  const ang = [], px = [], py = [];                    // ang[0] is absolute, the rest are vs the parent
+  for (let i = 0; i < n; i++) { ang.push(i ? 0 : -Math.PI / 2); px.push(0); py.push(0); }
+  px.push(0); py.push(0);                              // the tip is point n
+  let tx = W * 0.7, ty = H * 0.3, sticky = 0;
+  function fk() {                                      // forward kinematics: angles → points
+    let a = 0, x = bx, y = by;
+    for (let i = 0; i < n; i++) {
+      a += ang[i];
+      px[i] = x; py[i] = y;
+      x += Math.cos(a) * L; y += Math.sin(a) * L;
+    }
+    px[n] = x; py[n] = y;
+  }
+  return {
+    press(mx, my) { tx = mx; ty = my; sticky = D.sticky; },
+    frame(dt, t) {
+      stage(); ground();
+      sticky -= dt;
+      if (sticky <= 0) {
+        tx = bx + Math.cos(t * 0.5) * W * D.roamX;
+        ty = by - H * 0.3 + Math.sin(t * 0.8) * H * D.roamY;
+      }
+      for (let it = 0; it < D.iters; it++) {
+        for (let j = n - 1; j >= 0; j--) {             // tip first, base last
+          fk();
+          const a1 = Math.atan2(py[n] - py[j], px[n] - px[j]);   // the tip, seen from joint j
+          const a2 = Math.atan2(ty - py[j], tx - px[j]);         // the target, seen from joint j
+          let a = ang[j] + wrapAngle(a2 - a1);
+          if (j === 0) a = -Math.PI / 2 + clamp(wrapAngle(a + Math.PI / 2), -D.baseLimit, D.baseLimit);
+          else a = clamp(wrapAngle(a), -D.limit, D.limit);
+          ang[j] = a;
+        }
+      }
+      fk();
+      ring(bx, by, L * n, "rgba(232,229,244,0.08)");
+      let abs = 0;
+      for (let j = 0; j < n; j++) {                    // the limit wedges, drawn in the parent's frame
+        const parent = abs;
+        abs += ang[j];
+        const hi = j ? D.limit : D.baseLimit, centre = j ? parent : -Math.PI / 2;
+        ctx.fillStyle = "rgba(245,193,105,0.12)";
+        ctx.beginPath(); ctx.moveTo(px[j], py[j]); ctx.arc(px[j], py[j], L * 0.55, centre - hi, centre + hi); ctx.closePath(); ctx.fill();
+        const rel = j ? ang[j] : ang[0] + Math.PI / 2;
+        if (Math.abs(Math.abs(rel) - hi) < 0.01) ring(px[j], py[j], 5.5, HOT, 1.5);   // pinned at its limit
+      }
+      ctx.strokeStyle = BONE; ctx.lineCap = "round";
+      for (let j = 0; j < n; j++) {
+        ctx.lineWidth = Math.max(1.5, 6 - j * 0.6);
+        ctx.beginPath(); ctx.moveTo(px[j], py[j]); ctx.lineTo(px[j + 1], py[j + 1]); ctx.stroke();
+      }
+      ctx.lineWidth = 1; ctx.lineCap = "butt";
+      for (let j = 0; j <= n; j++) dot(px[j], py[j], j ? 3 : 4.5, j ? BONE : MOVER);
+      ctx.setLineDash([3, 4]);
+      line(px[n], py[n], tx, ty, DIM);
+      ctx.setLineDash([]);
+      dot(tx, ty, 3.5, TARGET);
+      label("miss " + Math.round(len(tx - px[n], ty - py[n])) + " px · " + D.iters + " sweeps", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Robotarm", "Rigidarm", "four long bones and half the bend per joint — the same sweeps, now an excavator that cannot curl", { n: 4, bone: 0.17, limit: 0.45 });
+
+def("Q", "Quadruped", "joints", "four legs on a PHASE TABLE over Gait's rules — walk 0/.5/.25/.75, trot in diagonal pairs, gallop — a body on a spring — press to cycle the gait", function (u) {
+  var D = { gait: "walk",                              // the starting gait (a press cycles them)
+            gaits: { walk: [0, 0.5, 0.25, 0.75],       // phase offsets for LF, RF, LH, RH
+                     trot: [0, 0.5, 0.5, 0],           // diagonal pairs swing together
+                     gallop: [0, 0.12, 0.5, 0.62] },   // fronts near-together, hinds near-together
+            duty: 0.6,          // fraction of the cycle a foot spends on the ground
+            cycle: 0.75,        // seconds per stride at full speed
+            stride: 0.09,       // step length ×W at full speed
+            lift: 0.05,         // swing height ×H
+            leg: 0.17,          // thigh = shin ×H
+            body: 0.26,         // hip-to-shoulder ×W
+            maxv: 0.3,          // top speed ×W/s
+            omega: 18,          // the body spring (critically damped)
+            label: "φᵢ = (t/T + offsetᵢ) mod 1 · stance while φᵢ < duty, else swing" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, line, label, clamp, ease, smooth, noise, BONE, MOVER, TARGET, GOOD, DIM } = u;
+  // Gait triggered each step by a THRESHOLD; a quadruped is easier to run
+  // from a PHASE TABLE: one clock per stride, and every leg is that clock
+  // plus an OFFSET. below the duty fraction the foot is planted (it slides
+  // back at ground speed); above it, it swings forward on Gait's sin(kπ)
+  // arc. the whole difference between a walk, a trot and a gallop is four
+  // numbers. the body is a critically damped spring toward the legs' mean
+  // support: fewer feet down, and it sinks and pitches, for free.
+  const names = Object.keys(D.gaits);
+  let gi = Math.max(0, names.indexOf(D.gait));
+  const LEG = H * D.leg, BODY = W * D.body, cx = W * 0.5;
+  const hipX = [BODY / 2, BODY / 2, -BODY / 2, -BODY / 2], near = [1, 0, 1, 0];
+  const legName = ["LF", "RF", "LH", "RH"];
+  const fx = [0, 0, 0, 0], fy = [0, 0, 0, 0], ph = [0, 0, 0, 0];
+  let phase = 0, v = 0, scroll = 0, bodyY = GY - LEG * 1.75, bodyV = 0, pitch = 0, pitchV = 0;
+  function leg(i, hx, hy, dim) {                       // two-bone IK, straight from Gait
+    let dx = fx[i] - hx, dy = fy[i] - hy;
+    const d = clamp(Math.sqrt(dx * dx + dy * dy), 4, LEG * 2 - 2);
+    const bse = Math.atan2(dy, dx);
+    const cosA = clamp(d / (2 * LEG), -1, 1);          // (a² + d² − a²) / 2ad, with a = shin = thigh
+    const s = hipX[i] > 0 ? 1 : -1;                    // front knees point back, hind knees forward
+    const a = bse + Math.acos(cosA) * s;
+    const kx = hx + Math.cos(a) * LEG, ky = hy + Math.sin(a) * LEG;
+    ctx.strokeStyle = dim ? "rgba(201,196,228,0.45)" : BONE;
+    ctx.lineCap = "round"; ctx.lineWidth = 3.5;
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(fx[i], fy[i]); ctx.stroke();
+    ctx.lineWidth = 1; ctx.lineCap = "butt";
+    dot(fx[i], fy[i] - 1.5, 3, dim ? "rgba(201,196,228,0.45)" : BONE);
+  }
+  return {
+    press() { gi = (gi + 1) % names.length; },
+    frame(dt, t) {
+      stage(); ground();
+      const off = D.gaits[names[gi]];
+      const maxv = W * D.maxv;
+      const want = maxv * (0.35 + 0.65 * (noise(t * 0.25) + 1) / 2);   // the autopilot's mood
+      v += (want - v) * smooth(2, dt);
+      const frac = clamp(v / maxv, 0, 1);
+      const T = D.cycle / Math.max(0.25, frac);
+      phase = (phase + dt / T) % 1;
+      scroll = (scroll + v * dt) % 26;
+      const stride = W * D.stride * frac, lift = H * D.lift;
+      let down = 0, frontDown = 0, hindDown = 0;
+      for (let i = 0; i < 4; i++) {
+        ph[i] = (phase + off[i]) % 1;
+        if (ph[i] < D.duty) {                          // STANCE: planted, sliding back at ground speed
+          const k = ph[i] / D.duty;
+          fx[i] = cx + hipX[i] + stride / 2 - k * stride; fy[i] = GY;
+          down++; if (hipX[i] > 0) frontDown++; else hindDown++;
+        } else {                                       // SWING: the arc forward
+          const k = (ph[i] - D.duty) / (1 - D.duty);
+          fx[i] = cx + hipX[i] - stride / 2 + stride * ease(k);
+          fy[i] = GY - Math.sin(k * Math.PI) * lift;
+        }
+      }
+      const w = D.omega;
+      const wantY = GY - LEG * 1.75 + (4 - down) * 2.5;                  // fewer feet: it sinks
+      bodyV += (w * w * (wantY - bodyY) - 2 * w * bodyV) * dt; bodyY += bodyV * dt;
+      const wantP = (hindDown - frontDown) * 0.05;                       // and pitches
+      pitchV += (w * w * (wantP - pitch) - 2 * w * pitchV) * dt; pitch += pitchV * dt;
+      for (let x = scroll - 26; x < W; x += 26) line(x, GY + 3, x - 4, GY + 9, "rgba(201,196,228,0.35)");   // the ground streams past
+      for (let i = 0; i < 4; i++) if (!near[i]) leg(i, cx + hipX[i], bodyY + pitch * hipX[i] + 6, true);
+      ctx.save();
+      ctx.translate(cx, bodyY); ctx.rotate(pitch);
+      ctx.fillStyle = MOVER;
+      ctx.beginPath(); ctx.rect(-BODY / 2 - 6, -9, BODY + 12, 18); ctx.arc(-BODY / 2 - 6, 0, 9, 0, TAU); ctx.arc(BODY / 2 + 6, 0, 9, 0, TAU); ctx.fill();
+      ctx.strokeStyle = MOVER; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(-BODY / 2 - 6, -4); ctx.lineTo(-BODY / 2 - 18, -14 - v / maxv * 4); ctx.stroke();
+      ctx.lineWidth = 1; ctx.lineCap = "butt";
+      ctx.beginPath(); ctx.arc(BODY / 2 + 10, -8, 8, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#131020";
+      ctx.beginPath(); ctx.arc(BODY / 2 + 13, -10, 2, 0, TAU); ctx.fill();
+      ctx.restore();
+      for (let i = 0; i < 4; i++) if (near[i]) leg(i, cx + hipX[i], bodyY + pitch * hipX[i] + 6, false);
+      const bw = W * 0.3, bx0 = W * 0.04, by0 = 14;    // the phase table, the thing this card teaches
+      label(names[gi] + " · T = " + T.toFixed(2) + " s", bx0, by0 - 3, "rgba(245,193,105,0.9)");
+      for (let i = 0; i < 4; i++) {
+        const y = by0 + 6 + i * 9;
+        line(bx0 + 16, y, bx0 + 16 + bw * D.duty, y, "rgba(201,196,228,0.5)", 3);   // stance
+        line(bx0 + 16 + bw * D.duty, y, bx0 + 16 + bw, y, "rgba(155,226,138,0.35)", 3);   // swing
+        dot(bx0 + 16 + bw * ph[i], y, 2.5, ph[i] < D.duty ? BONE : GOOD);
+        label(legName[i], bx0, y + 3, DIM);
+        label(off[i].toFixed(2), bx0 + 20 + bw, y + 3, DIM);
+      }
+      label("v = " + Math.round(frac * 100) + "% · " + down + " feet down", W - 6, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Quadruped", "Quarterhorse", "born galloping on longer legs with a faster stride clock — the same four offsets, now a racehorse", { gait: "gallop", leg: 0.22, cycle: 0.5 });
+
+def("J", "Jangle", "joints", "JIGGLE chains — ears, hair, a tail — hang off a hopping body and lag, overshoot, settle: secondary motion for free (Rope's verlet) — press to shove it", function (u) {
+  var D = { links: 5,          // base points per chain (each chain scales it by len)
+            seg: 0.022,        // link length ×H
+            stiff: 16,         // pull toward the rest pose, per second
+            damp: 0.92,        // velocity kept per 1/60 s
+            g: 0.6,            // gravity on the chains ×H (light: these are hairs)
+            bodyG: 2.4,        // gravity on the body ×H
+            hopV: 0.85,        // hop launch ×H/s
+            hopEvery: 1.4,     // seconds between hops
+            run: 0.22,         // patrol speed ×W/s
+            margin: 0.2,       // the patrol turns back this far ×W from either edge (room for the tail)
+            shove: 0.55,       // press impulse ×H/s
+            chains: [ { ang: -1.25, dir: -1.45, len: 1.2, w: 1.5, c: "#C9A0F5" },    // antennae
+                      { ang: -1.9, dir: -1.7, len: 1.2, w: 1.5, c: "#C9A0F5" },
+                      { ang: -2.45, dir: -2.35, len: 0.7, w: 3.5, c: "#8AD9F5" },    // an ear
+                      { ang: -0.65, dir: -0.95, len: 0.8, w: 2.5, c: "#8AD9F5" },    // hair
+                      { ang: 2.75, dir: 2.55, len: 1.6, w: 2.5, c: "#C9C4E4" } ],    // the tail
+            label: "p += (p − p_last)·damp + (rest − p)·(1 − e^(−k·dt))" };
+  const { ctx, W, H, GY, stage, ground, dot, label, len, clamp, smooth, mote, MOVER, HOT, DIM } = u;
+  // SECONDARY MOTION: nothing here is animated, and everything moves. each
+  // chain point is a verlet particle (Rope) with one extra promise — a
+  // spring toward its REST position, the place it would be if it were glued
+  // to the body. the body hops; the rest poses hop with it instantly; the
+  // points arrive late (the spring), overshoot (the verlet velocity) and
+  // settle (the damping). the faint dots are the rest poses, so the lag is
+  // visible as the gap between dot and hair.
+  const seg = H * D.seg, R = 11;
+  const chains = [];
+  for (const s of D.chains) {
+    const n = Math.max(2, Math.round(D.links * s.len)), pts = [];
+    for (let i = 0; i < n; i++) pts.push({ x: W / 2, y: GY - R, px: W / 2, py: GY - R, rx: 0, ry: 0 });
+    chains.push({ s: s, pts: pts });
+  }
+  let x = W * 0.3, y = GY - R, vx = 0, vy = 0, face = 1, hopT = 0.6, flash = 0, fxp = 0, fyp = 0;
+  return {
+    press(mx, my) {
+      const dx = x - mx, dy = y - my, d = len(dx, dy) || 1;
+      vx += dx / d * H * D.shove; vy += dy / d * H * D.shove - H * 0.2;   // shoved away from the finger
+      flash = 0.4; fxp = mx; fyp = my;
+    },
+    frame(dt, t) {
+      stage(); ground();
+      hopT -= dt; flash -= dt;
+      const onGround = y >= GY - R - 0.5;
+      if (onGround) {
+        vx += (face * W * D.run - vx) * smooth(6, dt);
+        if (hopT <= 0) { vy = -H * D.hopV; hopT = D.hopEvery; }
+      }
+      vy += H * D.bodyG * dt;
+      x += vx * dt; y += vy * dt;
+      if (y > GY - R) { y = GY - R; vy = 0; }
+      if (x < W * D.margin) { x = W * D.margin; face = 1; vx = Math.abs(vx); }
+      if (x > W * (1 - D.margin)) { x = W * (1 - D.margin); face = -1; vx = -Math.abs(vx); }
+      const k = smooth(D.stiff, dt), dmp = Math.pow(D.damp, dt * 60), G = H * D.g;
+      for (const c of chains) {
+        const ang = face > 0 ? c.s.ang : Math.PI - c.s.ang, dir = face > 0 ? c.s.dir : Math.PI - c.s.dir;
+        const ax = x + Math.cos(ang) * R, ay = y + Math.sin(ang) * R;
+        const ux = Math.cos(dir) * seg, uy = Math.sin(dir) * seg;
+        const P = c.pts;
+        for (let i = 0; i < P.length; i++) { P[i].rx = ax + ux * i; P[i].ry = ay + uy * i; }   // the rest pose
+        P[0].x = ax; P[0].y = ay; P[0].px = ax; P[0].py = ay;                                // the root is glued
+        for (let i = 1; i < P.length; i++) {
+          const p = P[i];
+          const mvx = (p.x - p.px) * dmp, mvy = (p.y - p.py) * dmp;
+          p.px = p.x; p.py = p.y;
+          const sx = clamp(mvx + (p.rx - p.x) * k, -seg, seg);          // never more than one link per step
+          const sy = clamp(mvy + (p.ry - p.y) * k + G * dt * dt, -seg, seg);
+          p.x += sx; p.y += sy;
+        }
+        for (let it = 0; it < 8; it++)                 // keep the links their length
+          for (let i = 1; i < P.length; i++) {
+            const a = P[i - 1], b = P[i];
+            const dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy) || 1;
+            const err = (d - seg) / d;
+            if (i === 1) { b.x -= dx * err; b.y -= dy * err; }
+            else { a.x += dx * err / 2; a.y += dy * err / 2; b.x -= dx * err / 2; b.y -= dy * err / 2; }
+          }
+      }
+      for (const c of chains) {
+        const P = c.pts;
+        for (let i = 1; i < P.length; i++) dot(P[i].rx, P[i].ry, 1.2, DIM);   // where it would be, rigid
+        ctx.strokeStyle = c.s.c; ctx.lineWidth = c.s.w; ctx.lineCap = "round"; ctx.lineJoin = "round";
+        ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y);
+        for (let i = 1; i < P.length; i++) ctx.lineTo(P[i].x, P[i].y);
+        ctx.stroke();
+        ctx.lineWidth = 1; ctx.lineCap = "butt"; ctx.lineJoin = "miter";
+      }
+      mote(x, y, face > 0 ? 0 : Math.PI, MOVER, R);
+      if (flash > 0) dot(fxp, fyp, 4 + (0.4 - flash) * 30, "rgba(245,138,138," + flash + ")");
+      label("k = " + D.stiff + "/s · damp " + D.damp + " · rest pose = the faint dots", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Jangle", "Jellyears", "a third of the stiffness, nearly twice the links and barely any damping — everything trails and wobbles for seconds", { stiff: 5, links: 9, damp: 0.97 });
+
+
+def("C", "Cloth", "joints", "a verlet lattice with STRUCTURAL, SHEAR and BEND promises, pinned along the top, in a noise wind (Rope, twice over) — drag to pull any point", function (u) {
+  var D = { cols: 10, rows: 8,  // the lattice
+            spacing: 0.055,     // rest distance ×H
+            rounds: 3,          // solver passes per frame
+            g: 1.6,             // gravity ×H
+            damp: 0.99,         // velocity kept per step
+            wind: 1.4,          // sideways push ×H/s², from noise
+            windRate: 0.9,      // how fast the gust changes
+            shear: 0.5,         // strength of the diagonal promises (1 = as stiff as structural)
+            bend: 0.3,          // strength of the skip-one promises
+            pins: "top",        // "top" = the whole top row pinned, "corners" = two points
+            label: "structural (×1) · shear (×0.5) · bend (×0.3): three promises per point" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, arrow, label, len, clamp, noise, MOVER, TARGET, GOOD, BONE, DIM } = u;
+  // CLOTH is Rope in two directions. every point is verlet; every promise is
+  // a distance constraint (Rope's), but there are three families of them:
+  // STRUCTURAL (to the four neighbours — the weave), SHEAR (to the four
+  // diagonals — without them the squares collapse into diamonds) and BEND
+  // (to the point two away — without them it folds like paper along any
+  // line). shear and bend are solved SOFTER, by a fraction, so the cloth
+  // drapes instead of standing like a board. the highlighted cell shows one
+  // of each family. the wind is one noise() call per point.
+  const cols = D.cols, rows = D.rows, S = H * D.spacing;
+  const x0 = W / 2 - (cols - 1) * S / 2, y0 = H * 0.08;
+  const P = [], pin = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    P.push({ x: x0 + c * S, y: y0 + r * S, px: x0 + c * S, py: y0 + r * S });
+    pin.push(r === 0 && (D.pins === "top" || c === 0 || c === cols - 1));
+  }
+  const C = [];                                        // [a, b, rest, strength]
+  const id = (r, c) => r * cols + c;
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    if (c + 1 < cols) C.push([id(r, c), id(r, c + 1), S, 1]);
+    if (r + 1 < rows) C.push([id(r, c), id(r + 1, c), S, 1]);
+    if (c + 1 < cols && r + 1 < rows) { C.push([id(r, c), id(r + 1, c + 1), S * Math.SQRT2, D.shear]); C.push([id(r, c + 1), id(r + 1, c), S * Math.SQRT2, D.shear]); }
+    if (c + 2 < cols) C.push([id(r, c), id(r, c + 2), S * 2, D.bend]);
+    if (r + 2 < rows) C.push([id(r, c), id(r + 2, c), S * 2, D.bend]);
+  }
+  let held = -1, hx = 0, hy = 0, hold = 0;
+  return {
+    drag: true,
+    press(mx, my) {
+      let best = -1, bd = 1e9;
+      for (let i = 0; i < P.length; i++) if (!pin[i]) { const d = len(P[i].x - mx, P[i].y - my); if (d < bd) { bd = d; best = i; } }
+      held = best; hx = mx; hy = my; hold = 0.12;
+    },
+    frame(dt, t) {
+      stage(); ground();
+      hold -= dt;
+      const cap = H * 0.04, G = H * D.g;
+      for (let i = 0; i < P.length; i++) {
+        if (pin[i]) continue;
+        const p = P[i];
+        const vx = clamp((p.x - p.px) * D.damp, -cap, cap), vy = clamp((p.y - p.py) * D.damp, -cap, cap);
+        p.px = p.x; p.py = p.y;
+        const wind = noise(t * D.windRate + (i % cols) * 0.06 + Math.floor(i / cols) * 0.11) * H * D.wind;
+        p.x += vx + wind * dt * dt;
+        p.y += vy + G * dt * dt;
+      }
+      for (let it = 0; it < D.rounds; it++) {
+        for (let k = 0; k < C.length; k++) {
+          const c = C[k], a = P[c[0]], b = P[c[1]];
+          const dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy) || 1;
+          const err = (d - c[2]) / d * c[3];
+          const pa = pin[c[0]], pb = pin[c[1]];
+          if (pa && pb) continue;
+          if (pa) { b.x -= dx * err; b.y -= dy * err; }
+          else if (pb) { a.x += dx * err; a.y += dy * err; }
+          else { a.x += dx * err / 2; a.y += dy * err / 2; b.x -= dx * err / 2; b.y -= dy * err / 2; }
+        }
+        if (held >= 0 && hold > 0) { const p = P[held]; p.x = hx; p.y = hy; p.px = hx; p.py = hy; }
+        for (let i = 0; i < P.length; i++) {
+          const p = P[i];
+          if (p.y > GY - 2) { p.y = GY - 2; p.x -= (p.x - p.px) * 0.5; }
+          if (p.x < 3) p.x = 3; if (p.x > W - 3) p.x = W - 3;
+        }
+      }
+      const w0 = noise(t * D.windRate) * D.wind;
+      arrow(W * 0.18, H * 0.1, W * 0.18 + w0 * 24, H * 0.1, DIM);
+      label("wind", W * 0.18, H * 0.1 - 6, DIM, "center");
+      ctx.strokeStyle = "rgba(138,217,245,0.55)"; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k < C.length; k++) if (C[k][3] === 1) { ctx.moveTo(P[C[k][0]].x, P[C[k][0]].y); ctx.lineTo(P[C[k][1]].x, P[C[k][1]].y); }
+      ctx.stroke();
+      const hr = Math.floor(rows / 2), hc = Math.floor(cols / 2);   // the teaching cell: one of each promise
+      line(P[id(hr, hc)].x, P[id(hr, hc)].y, P[id(hr, hc + 1)].x, P[id(hr, hc + 1)].y, MOVER, 2.5);
+      line(P[id(hr, hc)].x, P[id(hr, hc)].y, P[id(hr + 1, hc + 1)].x, P[id(hr + 1, hc + 1)].y, TARGET, 2);
+      line(P[id(hr, hc)].x, P[id(hr, hc)].y, P[id(hr + 2 < rows ? hr + 2 : hr - 2, hc)].x, P[id(hr + 2 < rows ? hr + 2 : hr - 2, hc)].y, GOOD, 2);
+      for (let i = 0; i < P.length; i++) if (pin[i]) dot(P[i].x, P[i].y, 3, BONE);
+      if (held >= 0 && hold > 0) ring(hx, hy, 8, "rgba(245,193,105,0.7)", 1.5);
+      label("structural", W - 6, 14, MOVER, "right");
+      label("shear", W - 6, 26, TARGET, "right");
+      label("bend", W - 6, 38, GOOD, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Cloth", "Cape", "pinned at two corners only, heavier, and no wind at all — the same lattice hangs like a cape from two shoulders", { pins: "corners", g: 2.6, wind: 0 });
+
+def("B", "Bridge", "joints", "ROPE BRIDGE: a chain anchored at both ends sags under the walker's mass — Rope's inverse-mass links, a Gait stroll — press to drop a weight", function (u) {
+  var D = { n: 13,             // chain points (planks hang one per point)
+            slack: 1.1,        // chain length ÷ span (1 = taut)
+            rounds: 6,         // solver passes per frame
+            g: 2.2,            // gravity ×H
+            damp: 0.98,        // velocity kept per step
+            walker: 4,         // the walker's mass, in link masses
+            weight: 8,         // a dropped crate's mass, in link masses
+            weightLife: 7,     // seconds a crate stays before it rots away
+            speed: 0.16,       // walking speed ×W/s
+            label: "each link splits its error by inverse mass — the loaded point barely moves" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, rect, line, label, len, clamp, BONE, MOVER, TARGET, HOT, DIM } = u;
+  // Rope with both ends pinned. the trick that makes it SAG under a load is
+  // Rope's inverse-mass weighting: a link point carrying the walker weighs
+  // (1 + walker) link masses, so when a constraint corrects the pair, the
+  // light neighbour does nearly all the moving — and gravity, which pulls
+  // every point equally, wins at the heavy one. the walker rides the chain
+  // (its position is an interpolation along the links) and its weight moves
+  // with it, so the dip follows the feet. a dropped crate is the same rule
+  // with a bigger number.
+  const n = D.n, ax = W * 0.08, bx = W * 0.92, ay = H * 0.42;
+  const rest = (bx - ax) * D.slack / (n - 1);
+  const P = [], inv = [];
+  for (let i = 0; i < n; i++) { const x = ax + (bx - ax) * i / (n - 1); P.push({ x: x, y: ay, px: x, py: ay }); inv.push(1); }
+  const crates = [];
+  let s = 0, dir = 1;                                  // the walker's place along the chain, in points
+  return {
+    press(mx, my) {
+      crates.push({ x: clamp(mx, ax + 6, bx - 6), y: Math.min(my, ay - 10), vy: 0, at: -1, life: D.weightLife });
+      if (crates.length > 4) crates.shift();
+    },
+    frame(dt, t) {
+      stage(); ground();
+      s += dir * W * D.speed / rest * dt;
+      if (s > n - 1) { s = n - 1; dir = -1; }
+      if (s < 0) { s = 0; dir = 1; }
+      for (let i = 0; i < n; i++) inv[i] = 1;          // rebuild the masses: walker, then crates
+      const i0 = Math.floor(s), f = s - i0, i1 = Math.min(n - 1, i0 + 1);
+      inv[i0] = 1 / (1 + D.walker * (1 - f)); inv[i1] = 1 / (1 + D.walker * f);
+      for (const c of crates) {
+        c.life -= dt;
+        if (c.at < 0) {                                // falling
+          c.vy += H * D.g * dt; c.y += c.vy * dt;
+          let k = 0; for (let i = 1; i < n; i++) if (Math.abs(P[i].x - c.x) < Math.abs(P[k].x - c.x)) k = i;
+          if (c.y >= P[k].y - 6) { c.at = k; c.vy = 0; }
+        } else inv[c.at] = 1 / (1 / inv[c.at] + D.weight);
+      }
+      for (let i = crates.length - 1; i >= 0; i--) if (crates[i].life <= 0) crates.splice(i, 1);
+      inv[0] = 0; inv[n - 1] = 0;                      // the anchors never move
+      const cap = H * 0.04, G = H * D.g;
+      for (let i = 1; i < n - 1; i++) {
+        const p = P[i];
+        const vx = clamp((p.x - p.px) * D.damp, -cap, cap), vy = clamp((p.y - p.py) * D.damp, -cap, cap);
+        p.px = p.x; p.py = p.y;
+        p.x += vx; p.y += vy + G * dt * dt;
+      }
+      for (let it = 0; it < D.rounds; it++)
+        for (let i = 0; i < n - 1; i++) {
+          const a = P[i], b = P[i + 1];
+          const dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy) || 1;
+          const err = (d - rest) / d, wsum = inv[i] + inv[i + 1] || 1;
+          a.x += dx * err * inv[i] / wsum; a.y += dy * err * inv[i] / wsum;
+          b.x -= dx * err * inv[i + 1] / wsum; b.y -= dy * err * inv[i + 1] / wsum;
+        }
+      for (let i = 1; i < n - 1; i++) if (P[i].y > GY - 4) P[i].y = GY - 4;
+      line(ax, ay, ax, GY, BONE, 3); line(bx, ay, bx, GY, BONE, 3);   // the posts
+      ctx.strokeStyle = "rgba(201,196,228,0.35)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y - 16);              // the handrail rides the same points
+      for (let i = 1; i < n; i++) ctx.lineTo(P[i].x, P[i].y - 16);
+      ctx.stroke();
+      ctx.strokeStyle = BONE; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(P[0].x, P[0].y);
+      for (let i = 1; i < n; i++) ctx.lineTo(P[i].x, P[i].y);
+      ctx.stroke();
+      ctx.lineWidth = 1;
+      for (let i = 1; i < n - 1; i++) {                // planks, and the heavy points glow
+        const m = 1 / inv[i];
+        line(P[i].x - 4, P[i].y + 1, P[i].x + 4, P[i].y + 1, m > 1 ? TARGET : "rgba(201,196,228,0.6)", 3);
+        line(P[i].x, P[i].y, P[i].x, P[i].y - 16, "rgba(201,196,228,0.25)");
+        if (m > 1.05) label("×" + m.toFixed(1), P[i].x, P[i].y + 14, "rgba(245,193,105,0.8)", "center");
+      }
+      for (const c of crates) {
+        const y = c.at < 0 ? c.y : P[c.at].y - 6, x = c.at < 0 ? c.x : P[c.at].x;
+        ctx.globalAlpha = clamp(c.life, 0, 1);
+        rect(x - 6, y - 6, 12, 12, HOT);
+        ctx.globalAlpha = 1;
+      }
+      const wx = P[i0].x + (P[i1].x - P[i0].x) * f, wy = P[i0].y + (P[i1].y - P[i0].y) * f;
+      const bob = Math.abs(Math.sin(t * 9)) * 3;
+      line(wx - 4, wy, wx - 2 + Math.sin(t * 9) * 4, wy - 9, BONE, 2.5);   // two stick legs on Gait's clock
+      line(wx + 4, wy, wx + 2 - Math.sin(t * 9) * 4, wy - 9, BONE, 2.5);
+      ctx.fillStyle = MOVER;
+      ctx.beginPath(); ctx.arc(wx, wy - 15 - bob, 8, 0, TAU); ctx.fill();
+      ctx.fillStyle = "#131020";
+      ctx.beginPath(); ctx.arc(wx + dir * 3, wy - 17 - bob, 2, 0, TAU); ctx.fill();
+      label("walker ×" + D.walker + " · crate ×" + D.weight + " · slack " + D.slack, W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Bridge", "Boardwalk", "twenty-one planks on a nearly taut chain under a walker three times as heavy — the sag is a shallow, moving dent", { n: 21, slack: 1.03, walker: 12 });
+
+def("T", "Torque", "joints", "RIGID ROTATION: an off-centre shove spins a crate — τ = r × F, α = τ/I; corners bounce and rub on the floor (Knock with a lever arm) — press to shove", function (u) {
+  var D = { size: 0.13,        // the crate's height ×H
+            aspect: 1,         // width ÷ height
+            mass: 1,
+            e: 0.35,           // restitution at a corner
+            mu: 0.4,           // friction at a corner
+            g: 2.0,            // gravity ×H
+            shove: 0.8,        // the impulse ×H·mass/s
+            shoveEvery: 2.6,   // the idle poker's timer
+            label: "τ = r × F · α = τ / I · I = m(w² + h²)/12" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, line, arrow, label, len, clamp, rand, MOVER, TARGET, HOT, BONE, DIM } = u;
+  // a rigid body remembers an ANGLE and an ANGULAR VELOCITY next to its
+  // position and velocity. a push at the centre only moves it; a push off
+  // centre also spins it, by the TORQUE τ = r × F — the lever arm r (from
+  // the centre to where you pushed) crossed with the force. τ/I is the
+  // angular acceleration, and I, the moment of inertia, is how the mass is
+  // spread: a long plank is hard to spin. a corner meeting the floor is
+  // Knock's impulse again, but applied AT the corner, so it both bounces
+  // the body and spins it — that is what makes a tumbling crate tumble.
+  const h = H * D.size, w = h * D.aspect, m = D.mass;
+  const I = m * (w * w + h * h) / 12;
+  let x = W / 2, y = GY - h, vx = 0, vy = 0, ang = 0.3, av = 0, pokeT = 1.2;
+  let fr = [0, 0, 0, 0, 0], flash = 0;                 // the last shove: contact, force, τ
+  const corner = [0, 0];
+  function cornerAt(k) {                               // k = 0..3, into corner[]
+    const sx = k === 1 || k === 2 ? 1 : -1, sy = k >= 2 ? 1 : -1;
+    const c = Math.cos(ang), s = Math.sin(ang);
+    corner[0] = x + (sx * w / 2) * c - (sy * h / 2) * s;
+    corner[1] = y + (sx * w / 2) * s + (sy * h / 2) * c;
+  }
+  function impulseAt(px, py, jx, jy) {                 // an impulse J applied at a world point
+    vx += jx / m; vy += jy / m;
+    av += ((px - x) * jy - (py - y) * jx) / I;          // τ = r × J
+  }
+  function contact(px, py, nx, ny, pen) {              // a corner pressed pen px into a plane
+    x += nx * pen; y += ny * pen;                      // push out
+    const rx = px - x, ry = py - y;
+    const cvx = vx - av * ry, cvy = vy + av * rx;       // the corner's own velocity: v + ω × r
+    const vn = cvx * nx + cvy * ny;
+    if (vn >= 0) return;
+    const rn = rx * ny - ry * nx;
+    const e = -vn > H * 0.15 ? D.e : 0;                // no bounce from a resting creep
+    const j = -(1 + e) * vn / (1 / m + rn * rn / I);
+    impulseAt(px, py, nx * j, ny * j);
+    const tx = -ny, ty = nx;                           // and friction, along the plane
+    const cvx2 = vx - av * ry, cvy2 = vy + av * rx;
+    const vt = cvx2 * tx + cvy2 * ty, rt = rx * ty - ry * tx;
+    const jt = clamp(-vt / (1 / m + rt * rt / I), -D.mu * j, D.mu * j);
+    impulseAt(px, py, tx * jt, ty * jt);
+  }
+  function shove(mx, my) {
+    let best = 0, bd = 1e9;                            // the corner nearest the finger takes the push
+    for (let k = 0; k < 4; k++) { cornerAt(k); const d = len(corner[0] - mx, corner[1] - my); if (d < bd) { bd = d; best = k; } }
+    cornerAt(best);
+    const px = (corner[0] + x) / 2, py = (corner[1] + y) / 2;   // halfway out along that diagonal
+    const dx = px - mx, dy = py - my, d = len(dx, dy) || 1;
+    const J = H * D.shove * m;
+    impulseAt(px, py, dx / d * J, dy / d * J);
+    fr[0] = px; fr[1] = py; fr[2] = dx / d * J; fr[3] = dy / d * J;
+    fr[4] = (px - x) * fr[3] - (py - y) * fr[2];
+    flash = 1.2;
+  }
+  return {
+    press(mx, my) { shove(mx, my); },
+    frame(dt, t) {
+      stage(); ground();
+      pokeT -= dt; flash -= dt;
+      if (pokeT <= 0) { pokeT = D.shoveEvery; const a = rand(-Math.PI, 0); shove(x + Math.cos(a) * w, y + Math.sin(a) * h); }
+      vy += H * D.g * dt;
+      x += vx * dt; y += vy * dt; ang += av * dt;
+      av *= Math.pow(0.995, dt * 60);
+      for (let it = 0; it < 2; it++)
+        for (let k = 0; k < 4; k++) {
+          cornerAt(k);
+          if (corner[1] > GY) contact(corner[0], corner[1], 0, -1, corner[1] - GY);
+          cornerAt(k);
+          if (corner[0] < 0) contact(corner[0], corner[1], 1, 0, -corner[0]);
+          cornerAt(k);
+          if (corner[0] > W) contact(corner[0], corner[1], -1, 0, corner[0] - W);
+          cornerAt(k);
+          if (corner[1] < 0) contact(corner[0], corner[1], 0, 1, -corner[1]);
+        }
+      ctx.save();
+      ctx.translate(x, y); ctx.rotate(ang);
+      ctx.fillStyle = "rgba(201,196,228,0.22)"; ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.strokeStyle = BONE; ctx.lineWidth = 2; ctx.strokeRect(-w / 2, -h / 2, w, h);
+      ctx.lineWidth = 1;
+      line(-w / 2, -h / 2, w / 2, h / 2, "rgba(201,196,228,0.35)"); line(-w / 2, h / 2, w / 2, -h / 2, "rgba(201,196,228,0.35)");
+      ctx.restore();
+      dot(x, y, 3, MOVER);
+      const r = Math.min(w, h) * 0.35;                 // the ω dial: an arc whose length is the spin
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, r, ang, ang + clamp(av * 0.25, -TAU * 0.9, TAU * 0.9), av < 0); ctx.stroke();
+      ctx.lineWidth = 1;
+      if (flash > 0) {
+        ctx.globalAlpha = clamp(flash, 0, 1);
+        line(x, y, fr[0], fr[1], BONE, 2);              // the lever arm r
+        label("r", (x + fr[0]) / 2 + 6, (y + fr[1]) / 2 - 4, BONE);
+        arrow(fr[0] - fr[2] * 0.08, fr[1] - fr[3] * 0.08, fr[0], fr[1], HOT);   // the force F
+        label("F", fr[0] - fr[2] * 0.09, fr[1] - fr[3] * 0.09 - 6, HOT, "center");
+        label("τ = " + (fr[4] / H).toFixed(1) + " → α = τ/I", W / 2, 14, HOT, "center");
+        ctx.globalAlpha = 1;
+      } else label("ω = " + av.toFixed(2) + " rad/s · I = " + Math.round(I), W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Torque", "Tumbler", "a plank three times as wide as it is tall on a slick floor — a big I resists the spin, and the corners skate instead of catching", { aspect: 3, mu: 0.05, e: 0.5 });
+
+
+def("H", "Hinge", "joints", "HINGE: a body that may only PIVOT about a point; add a MOTOR for a door, a windmill, a drawbridge (Pendulum's θ, driven by τ) — press to push the door", function (u) {
+  var D = { mode: "trio",      // "trio" = door + windmill + drawbridge · "wheel" = one wheel the mote runs inside
+            doorK: 7,          // the door closer: a spring toward shut
+            doorC: 1.4,        // its damping
+            doorLimit: 1.5,    // the frame stops the door here, radians either way
+            motorW: 1.8,       // the windmill's wanted speed, rad/s
+            motorK: 3,         // how hard its motor chases that speed
+            bridgeK: 30,       // the drawbridge winch: a position motor toward the target angle
+            bridgeC: 9,        // its damping
+            bridgeMax: 26,     // the most torque the winch can give
+            g: 14,             // the beam's weight as torque (m·g·L/2)
+            bridgeEvery: 4,    // seconds between raise and lower
+            pushEvery: 2.8,    // the idle door pusher
+            push: 4,           // its push, rad/s
+            run: 0.3,          // wheel mode: the mote's run speed ×W/s
+            damping: 0.2,      // wheel mode: bearing friction
+            label: "α = τ / I · ω += α·dt · θ += ω·dt · θ clamped at the stops" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, arrow, mote, label, clamp, noise, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // a HINGE removes every freedom but one: the body keeps an angle θ and a
+  // spin ω about a fixed pivot, and all that physics may do is add TORQUE.
+  // Pendulum was a hinge with gravity as its only torque. here three hinges
+  // share one integrator and differ only in what τ is: the door's is a
+  // spring toward shut plus damping (a door closer) and two hard stops; the
+  // windmill's is a VELOCITY MOTOR, τ = k(ω₀ − ω); the drawbridge's is
+  // gravity (m·g·L·cosθ, pulling it down) against a POSITION MOTOR with a
+  // torque cap, so a heavy beam rises slowly and drops fast. the wheel is
+  // the same hinge with a runner inside as its motor.
+  const hg = [{ a: 0, w: 0 }, { a: 0, w: 0 }, { a: -1.3, w: 0 }];   // door, mill, bridge (wheel mode uses the mill's)
+  let bridgeTarget = 0, bridgeT = 0, pushT = 1.4, sprint = 0, side = 1, phi = 0;
+  function step(h, tau, dt, I) { h.w += tau / I * dt; h.a += h.w * dt; }
+  return {
+    press(mx, my) {
+      if (D.mode === "wheel") { sprint = 1.6; return; }
+      const px = W * 0.2, L = W * 0.14, tipX = px + Math.sin(hg[0].a) * L;
+      hg[0].w += mx < tipX ? D.push : -D.push;         // pushed from the side you are on
+    },
+    frame(dt, t) {
+      stage();
+      if (D.mode === "wheel") {                        // ---- the hamster wheel
+        ground();
+        const cx = W / 2, R = H * 0.3, cy = GY - R - 4, h = hg[1];
+        sprint -= dt;
+        const vrun = W * D.run * (0.3 + 0.7 * (noise(t * 0.3) + 1) / 2) * (sprint > 0 ? 2 : 1);
+        const rim = h.w * R;                           // the rim's speed under the feet
+        phi = clamp((rim - vrun) * 0.02, -1.2, 1.2);   // carried up when the wheel outruns the runner
+        const tau = 3 * (vrun - rim) - D.damping * h.w * R - 120 * Math.sin(phi);   // feet, bearing, the runner's weight
+        step(h, tau, dt, R * 2);
+        for (let i = 0; i < 8; i++) { const a = h.a + i / 8 * TAU; line(cx, cy, cx + Math.cos(a) * R, cy + Math.sin(a) * R, "rgba(201,196,228,0.35)"); }
+        ring(cx, cy, R, BONE, 3); ring(cx, cy, R * 0.12, BONE, 2);
+        line(cx, cy, cx - R * 0.9, GY, "rgba(201,196,228,0.4)", 2); line(cx, cy, cx + R * 0.9, GY, "rgba(201,196,228,0.4)", 2);
+        const ma = Math.PI / 2 + phi;
+        mote(cx + Math.cos(ma) * (R - 10), cy + Math.sin(ma) * (R - 10), phi * 0.6 + (Math.abs(Math.sin(t * 14)) * 0.1), MOVER, 8);
+        arrow(cx, cy - R - 10, cx + clamp(h.w * 18, -60, 60), cy - R - 10, TARGET);
+        label("ω = " + h.w.toFixed(2) + " · run " + Math.round(vrun) + " px/s" + (sprint > 0 ? " · sprint" : ""), W / 2, 14, DIM, "center");
+        label("τ = k(v_run − ωR)·R − c·ω − mgR·sinφ", W / 2, H - 20, DIM, "center");
+        label(D.label, W / 2, H - 8, null, "center");
+        return;
+      }
+      pushT -= dt; bridgeT += dt;
+      if (pushT <= 0) { pushT = D.pushEvery; side = -side; hg[0].w += side * D.push; }
+      if (bridgeT > D.bridgeEvery) { bridgeT = 0; bridgeTarget = bridgeTarget === 0 ? -1.3 : 0; }
+      const door = hg[0], mill = hg[1], br = hg[2];
+      step(door, -D.doorK * door.a - D.doorC * door.w, dt, 1);           // the closer
+      if (door.a > D.doorLimit) { door.a = D.doorLimit; if (door.w > 0) door.w = -door.w * 0.3; }   // the stops
+      if (door.a < -D.doorLimit) { door.a = -D.doorLimit; if (door.w < 0) door.w = -door.w * 0.3; }
+      const tauM = D.motorK * (D.motorW - mill.w);
+      step(mill, tauM - 0.1 * mill.w, dt, 1);
+      const tauG = D.g * Math.cos(br.a);                                 // weight pulls the far end down
+      const tauW = clamp(D.bridgeK * (bridgeTarget - br.a) - D.bridgeC * br.w, -D.bridgeMax, D.bridgeMax);
+      step(br, tauG + tauW, dt, 4);
+      if (br.a > 0) { br.a = 0; br.w = 0; }                              // resting on the far bank
+      if (br.a < -1.45) { br.a = -1.45; br.w = 0; }
+      // the door, from above
+      const dx0 = W * 0.2, dy0 = H * 0.4, L = W * 0.14;
+      line(dx0, dy0 - H * 0.3, dx0, dy0 - 4, BONE, 3); line(dx0, dy0 + L + 4, dx0, dy0 + L + H * 0.08, BONE, 3);
+      ctx.fillStyle = "rgba(245,193,105,0.1)";
+      ctx.beginPath(); ctx.moveTo(dx0, dy0); ctx.arc(dx0, dy0, L, Math.PI / 2 - D.doorLimit, Math.PI / 2 + D.doorLimit); ctx.closePath(); ctx.fill();
+      const tx = dx0 + Math.sin(door.a) * L, ty = dy0 + Math.cos(door.a) * L;
+      line(dx0, dy0, tx, ty, MOVER, 4);
+      ring(dx0, dy0, 4, TARGET, 1.5);
+      arrow(tx, ty, tx + Math.cos(door.a) * door.w * 8, ty - Math.sin(door.a) * door.w * 8, HOT);
+      label("door: τ = −k·θ − c·ω", dx0, dy0 + L + H * 0.14, DIM, "center");
+      // the windmill
+      const mx = W * 0.5, my = H * 0.34, B = H * 0.15;
+      line(mx, my, mx, GY, BONE, 3);
+      for (let i = 0; i < 4; i++) {
+        const a = mill.a + i * Math.PI / 2;
+        ctx.save(); ctx.translate(mx, my); ctx.rotate(a);
+        ctx.fillStyle = "rgba(201,196,228,0.35)"; ctx.fillRect(0, -3, B, 6);
+        ctx.fillStyle = "rgba(138,217,245,0.35)"; ctx.fillRect(B * 0.3, -B * 0.12, B * 0.7, B * 0.12);
+        ctx.restore();
+      }
+      ring(mx, my, 4, TARGET, 1.5);
+      ctx.strokeStyle = GOOD; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(mx, my, B + 6, mill.a, mill.a + clamp(mill.w * 0.5, 0, 5)); ctx.stroke();
+      ctx.lineWidth = 1;
+      label("motor: τ = k(ω₀ − ω) = " + tauM.toFixed(1), mx, GY + 20, DIM, "center");
+      // the drawbridge
+      const bx = W * 0.7, by = GY, BL = W * 0.24;
+      ground();
+      line(bx, by, bx, by - H * 0.36, BONE, 3);        // the tower
+      const ex = bx + Math.cos(br.a) * BL, ey = by + Math.sin(br.a) * BL;
+      line(bx, by - H * 0.36, ex, ey, "rgba(201,196,228,0.4)");   // the chain
+      line(bx, by, ex, ey, MOVER, 5);
+      ring(bx, by, 4, TARGET, 1.5);
+      const cxm = (bx + ex) / 2, cym = (by + ey) / 2;
+      arrow(cxm, cym, cxm, cym + tauG * 1.6, HOT);     // gravity's torque, at the beam's middle
+      arrow(ex, ey, ex + Math.sin(br.a) * tauW * 1.2, ey - Math.cos(br.a) * tauW * 1.2, GOOD);   // the winch
+      label("bridge: τ = mgL·cosθ + winch(±" + D.bridgeMax + ")", bx + BL * 0.2, by - H * 0.36 - 6, DIM, "center");
+      label("θ door " + door.a.toFixed(2) + " · mill ω " + mill.w.toFixed(2) + " · bridge " + br.a.toFixed(2) + " → " + bridgeTarget.toFixed(1), W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Hinge", "Hamsterwheel", "the same hinge integrator with a runner inside as its motor — the wheel spins up, outruns it, and carries it up the front", { mode: "wheel", run: 0.36, damping: 0.1 });
+
+def("Y", "Yield", "joints", "BREAKABLE links: a distance promise (Rope) with a strain limit — stretch past it and the link SNAPS; strain shown as colour — drag to pull", function (u) {
+  var D = { strands: 3,        // hanging chains
+            links: 9,          // links per strand
+            seg: 0.05,         // rest length ×H
+            limit: 1.3,        // d / rest at which a link gives up
+            rounds: 4,         // solver passes (fewer = strain concentrates near the pull)
+            g: 1.8,            // gravity ×H
+            damp: 0.985,       // velocity kept per step
+            pullEvery: 2.4,    // the idle hand's timer
+            pullTime: 1.1,     // seconds one idle pull lasts
+            pullDist: 0.5,     // how far it pulls ×H
+            heal: 5,           // seconds before a torn strand re-knits
+            label: "strain = d / rest · a link lives while strain < limit" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, line, label, len, clamp, rand, lerp, BONE, TARGET, HOT, GOOD, DIM } = u;
+  // Rope's promise was "restore the rest length, every round, forever". a
+  // BREAKABLE constraint adds one test after the solve: how stretched is the
+  // link — d ÷ rest, its STRAIN — and past a limit the promise is deleted.
+  // nothing else changes: the points below the tear keep falling with the
+  // same verlet, they just no longer have anyone above them to obey. the
+  // few solver rounds are honest too: they leave most of the stretch near
+  // the hand, so the chain tears where you pull it, not at the roof.
+  const seg = H * D.seg, S = D.strands, gap = Math.min(W * 0.24, W * 0.84 / S);
+  const strands = [];
+  for (let s = 0; s < S; s++) {
+    const x = W / 2 + (s - (S - 1) / 2) * gap, pts = [], alive = [];
+    for (let i = 0; i <= D.links; i++) { pts.push({ x: x, y: H * 0.05 + i * seg, px: x, py: H * 0.05 + i * seg }); if (i) alive.push(true); }
+    strands.push({ x0: x, pts: pts, alive: alive, strain: alive.slice().fill(1), tornAt: -1 });
+  }
+  const hand = { s: -1, i: -1, x: 0, y: 0, hold: 0, auto: 0, fx: 0, fy: 0, tx: 0, ty: 0 };
+  let pullT = 1.2;
+  function grab(mx, my) {
+    let bs = -1, bi = -1, bd = 1e9;
+    for (let s = 0; s < S; s++) for (let i = 1; i <= D.links; i++) {
+      const p = strands[s].pts[i], d = len(p.x - mx, p.y - my);
+      if (d < bd) { bd = d; bs = s; bi = i; }
+    }
+    hand.s = bs; hand.i = bi;
+  }
+  return {
+    drag: true,
+    press(mx, my) { grab(mx, my); hand.x = mx; hand.y = my; hand.hold = 0.15; hand.auto = 0; },
+    frame(dt, t) {
+      stage(); ground();
+      hand.hold -= dt; pullT -= dt;
+      if (hand.hold <= 0 && hand.auto <= 0 && pullT <= 0) {   // the idle hand picks a bottom and pulls
+        pullT = D.pullEvery;
+        const s = Math.floor(rand(0, S)), p = strands[s].pts[D.links];
+        hand.s = s; hand.i = D.links; hand.fx = p.x; hand.fy = p.y;
+        hand.tx = clamp(p.x + rand(-1, 1) * H * D.pullDist, 10, W - 10); hand.ty = Math.min(GY - 6, p.y + H * D.pullDist * 0.7);
+        hand.auto = D.pullTime;
+      }
+      if (hand.auto > 0) {
+        hand.auto -= dt;
+        const k = 1 - clamp(hand.auto / D.pullTime, 0, 1);
+        hand.x = lerp(hand.fx, hand.tx, k); hand.y = lerp(hand.fy, hand.ty, k);
+      }
+      const pinned = hand.hold > 0 || hand.auto > 0;
+      const cap = H * 0.04, G = H * D.g;
+      for (let s = 0; s < S; s++) {
+        const st = strands[s], P = st.pts;
+        if (st.tornAt >= 0 && t - st.tornAt > D.heal) {              // re-knit
+          st.tornAt = -1;
+          for (let i = 0; i <= D.links; i++) { P[i].x = st.x0; P[i].y = H * 0.05 + i * seg; P[i].px = P[i].x; P[i].py = P[i].y; if (i) st.alive[i - 1] = true; }
+        }
+        for (let i = 1; i <= D.links; i++) {
+          const p = P[i];
+          const vx = clamp((p.x - p.px) * D.damp, -cap, cap), vy = clamp((p.y - p.py) * D.damp, -cap, cap);
+          p.px = p.x; p.py = p.y; p.x += vx; p.y += vy + G * dt * dt;
+        }
+        for (let it = 0; it < D.rounds; it++) {
+          for (let i = 0; i < D.links; i++) {
+            if (!st.alive[i]) continue;
+            const a = P[i], b = P[i + 1];
+            const dx = b.x - a.x, dy = b.y - a.y, d = len(dx, dy) || 1, err = (d - seg) / d;
+            if (i === 0) { b.x -= dx * err; b.y -= dy * err; }
+            else { a.x += dx * err / 2; a.y += dy * err / 2; b.x -= dx * err / 2; b.y -= dy * err / 2; }
+          }
+          if (pinned && hand.s === s) { const p = P[hand.i]; p.x = hand.x; p.y = hand.y; p.px = hand.x; p.py = hand.y; }
+          for (let i = 1; i <= D.links; i++) {
+            const p = P[i];
+            if (p.y > GY - 2) { p.y = GY - 2; p.x -= (p.x - p.px) * 0.5; }
+            if (p.x < 3) p.x = 3; if (p.x > W - 3) p.x = W - 3;
+          }
+        }
+        for (let i = 0; i < D.links; i++) {                           // the test that makes them breakable
+          if (!st.alive[i]) continue;
+          const a = P[i], b = P[i + 1];
+          st.strain[i] = len(b.x - a.x, b.y - a.y) / seg;
+          if (st.strain[i] > D.limit) { st.alive[i] = false; if (st.tornAt < 0) st.tornAt = t; }
+        }
+      }
+      for (let s = 0; s < S; s++) {
+        const st = strands[s], P = st.pts;
+        dot(st.x0, H * 0.05, 4, BONE);
+        ctx.lineCap = "round";
+        for (let i = 0; i < D.links; i++) {
+          const a = P[i], b = P[i + 1];
+          if (!st.alive[i]) {                          // the tear: two frayed ends
+            dot(a.x, a.y, 2.5, HOT); dot(b.x, b.y, 2.5, HOT);
+            continue;
+          }
+          const k = clamp((st.strain[i] - 1) / (D.limit - 1), 0, 1);
+          ctx.strokeStyle = "rgb(" + Math.round(lerp(201, 245, k)) + "," + Math.round(lerp(196, 138, k)) + "," + Math.round(lerp(228, 138, k)) + ")";
+          ctx.lineWidth = 3 - k;
+          ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+        }
+        ctx.lineWidth = 1; ctx.lineCap = "butt";
+        for (let i = 1; i <= D.links; i++) dot(P[i].x, P[i].y, 1.8, BONE);
+        if (st.tornAt >= 0) label("torn · " + Math.max(0, D.heal - (t - st.tornAt)).toFixed(0) + " s", st.x0, H * 0.05 - 6, "rgba(245,138,138,0.7)", "center");
+      }
+      if (pinned && hand.s >= 0) {
+        ring(hand.x, hand.y, 8, "rgba(245,193,105,0.8)", 1.5);
+        const st = strands[hand.s], i = Math.min(hand.i, D.links) - 1;
+        if (i >= 0 && st.alive[i]) label("strain " + st.strain[i].toFixed(2) + " / " + D.limit, hand.x, hand.y - 14, TARGET, "center");
+      }
+      label("BONE → HOT as strain → limit", W - 6, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Yield", "Yarn", "six strands of twelve weak links that give at twelve percent stretch — a tug frays everything it touches", { strands: 6, limit: 1.12, links: 12 });
+
+def("G", "Grab", "joints", "GRAB & THROW: pick up = parent to the hand (Nest); hold = a damped spring; throw = spring velocity + aim + a LOB (Knock) — press to throw or fetch", function (u) {
+  var D = { crates: 2,
+            size: 0.07,        // crate side ×H
+            mass: 1,           // heavier = slower spring, shorter throw
+            omega: 14,         // the holding spring's ω (÷ √mass)
+            zeta: 0.55,        // its damping ratio (< 1: it overshoots the hand)
+            throwV: 0.55,      // aim speed ×W/s (÷ √mass)
+            lob: 0.6,          // extra upward speed ×H/s
+            g: 2.2,            // gravity ×H
+            e: 0.35,           // floor restitution
+            friction: 3,       // ground friction, per second
+            reach: 0.09,       // grab radius ×W
+            speed: 0.32,       // walking speed ×W/s
+            holdTime: 1.1,     // the autopilot holds this long, then throws
+            label: "held: a = ω²(hand − p) − 2ζω·v · thrown: v = v_spring + aim·v₀ + lob" };
+  const { ctx, W, H, GY, stage, ground, dot, ring, rect, line, arrow, mote, label, len, clamp, rand, smooth, MOVER, TARGET, HOT, BONE, DIM } = u;
+  // three verbs, three couplings. FETCH walks to a crate. GRAB parents it:
+  // the crate's goal is now a point fixed to the hand (Nest's child offset).
+  // HOLD is a spring toward that goal — ω and ζ, from Damp — so the crate
+  // swings and lags as the body moves instead of being welded on. THROW
+  // un-parents it and hands it a velocity: whatever the spring had already
+  // given it, plus the aim, plus a LOB straight up, so a throw at a floor
+  // target still arcs. from there it is Knock's world: gravity, a bounce,
+  // friction to a stop. mass divides the spring and the throw honestly.
+  const S = H * D.size, sm = Math.sqrt(D.mass);
+  const crates = [];
+  for (let i = 0; i < D.crates; i++) crates.push({ x: W * (0.25 + 0.5 * i / Math.max(1, D.crates - 1)), y: GY - S / 2, vx: 0, vy: 0, held: false });
+  let x = W * 0.5, face = 1, held = -1, holdT = 0, fetch = -1, flash = 0, ax = 0, ay = 0, avx = 0, avy = 0;
+  function throwAt(tx, ty) {
+    const c = crates[held];
+    const dx = tx - c.x, dy = ty - c.y, d = len(dx, dy) || 1;
+    const v0 = W * D.throwV / sm;
+    c.vx += dx / d * v0; c.vy += dy / d * v0 - H * D.lob / sm;
+    c.held = false; ax = c.x; ay = c.y; avx = c.vx; avy = c.vy; flash = 0.8;
+    held = -1; fetch = -1;
+  }
+  return {
+    press(mx, my) {
+      if (held >= 0) { throwAt(mx, my); return; }
+      let best = 0, bd = 1e9;
+      for (let i = 0; i < crates.length; i++) { const d = len(crates[i].x - mx, crates[i].y - my); if (d < bd) { bd = d; best = i; } }
+      fetch = best;
+    },
+    frame(dt, t) {
+      stage(); ground();
+      flash -= dt;
+      if (held < 0 && fetch < 0) {                     // choose the nearest resting crate
+        let bd = 1e9;
+        for (let i = 0; i < crates.length; i++) { const d = Math.abs(crates[i].x - x); if (!crates[i].held && crates[i].y > GY - S && d < bd) { bd = d; fetch = i; } }
+      }
+      if (held < 0 && fetch >= 0) {
+        const c = crates[fetch], dx = c.x - x;
+        if (Math.abs(dx) > 4) { face = dx > 0 ? 1 : -1; x += face * W * D.speed * dt; }
+        if (len(dx, c.y - (GY - 9)) < W * D.reach && c.y > GY - S * 1.5) { held = fetch; c.held = true; holdT = D.holdTime; }
+      } else if (held >= 0) {
+        holdT -= dt;
+        x += face * W * D.speed * 0.5 * dt;            // strolls while holding, so the spring has work
+        if (x < W * 0.15) face = 1; if (x > W * 0.85) face = -1;
+        if (holdT <= 0) throwAt(x - face * rand(W * 0.3, W * 0.6), GY - H * rand(0.05, 0.3));
+      }
+      const hx = x + face * 13, hy = GY - 9 - 22;      // the hand: a child of the body
+      const w = D.omega / sm;
+      for (let i = 0; i < crates.length; i++) {
+        const c = crates[i];
+        if (c.held) {                                  // the spring toward the hand
+          c.vx += (w * w * (hx - c.x) - 2 * D.zeta * w * c.vx) * dt;
+          c.vy += (w * w * (hy - c.y) - 2 * D.zeta * w * c.vy) * dt;
+          c.x += c.vx * dt; c.y += c.vy * dt;
+          continue;
+        }
+        c.vy += H * D.g * dt;
+        c.x += c.vx * dt; c.y += c.vy * dt;
+        if (c.y > GY - S / 2) { c.y = GY - S / 2; if (c.vy > H * 0.1) c.vy = -c.vy * D.e; else c.vy = 0; c.vx *= 1 - smooth(D.friction, dt); }
+        if (c.x < S / 2) { c.x = S / 2; c.vx = Math.abs(c.vx) * D.e; }
+        if (c.x > W - S / 2) { c.x = W - S / 2; c.vx = -Math.abs(c.vx) * D.e; }
+        if (c.y < S / 2) { c.y = S / 2; c.vy = Math.abs(c.vy) * D.e; }
+      }
+      if (flash > 0) {
+        ctx.globalAlpha = clamp(flash, 0, 1);
+        arrow(ax, ay, ax + avx * 0.25, ay + avy * 0.25, HOT);
+        label("v = spring + aim + lob", ax, ay - 12, HOT, "center");
+        ctx.globalAlpha = 1;
+      }
+      for (const c of crates) {
+        rect(c.x - S / 2, c.y - S / 2, S, S, c.held ? "rgba(245,193,105,0.35)" : "rgba(201,196,228,0.25)");
+        ctx.strokeStyle = c.held ? TARGET : BONE; ctx.lineWidth = 1.5; ctx.strokeRect(c.x - S / 2, c.y - S / 2, S, S); ctx.lineWidth = 1;
+      }
+      if (held >= 0) {
+        const c = crates[held];
+        ctx.setLineDash([2, 3]); line(hx, hy, c.x, c.y, TARGET); ctx.setLineDash([]);
+        dot(hx, hy, 3, TARGET);
+        label("ω " + w.toFixed(1) + " ζ " + D.zeta, hx, hy - 10 - S, TARGET, "center");
+      } else if (fetch >= 0) ring(x, GY - 9, W * D.reach, "rgba(155,226,138,0.35)");
+      mote(x, GY - 9, face > 0 ? 0 : Math.PI);
+      label(held >= 0 ? "hold · " + Math.max(0, holdT).toFixed(1) + " s" : "fetch", W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Grab", "Gorilla", "crates three times the mass on a slow spring, thrown with twice the lob — heavy things swing on the hand and go high, not far", { mass: 3, omega: 7, lob: 1.2 });
+
+
+def("A", "Artillery", "joints", "ARTILLERY SOLVE: the closed-form launch angle to land a shell of speed v on (x, y) — a HIGH and a LOW root, both drawn (Jump, Volley) — press to aim", function (u) {
+  var D = { v: 0.8,            // muzzle speed ×W/s
+            g: 1.6,            // gravity ×H/s²
+            pick: "both",      // which root the gun fires: "both" (alternating), "high", "low"
+            fireEvery: 1.5,    // seconds between shells
+            targetSpeed: 0.12, // the drone's cruise ×W/s
+            sticky: 4,         // how long a press holds the target still
+            label: "tanθ = (v² ± √(v⁴ − g(g·x² + 2y·v²))) / (g·x)" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, label, len, clamp, MOVER, TARGET, GOOD, MAGIC, HOT, DIM } = u;
+  // a shell's path is a parabola, and a parabola through the muzzle and the
+  // target at a known speed has at most TWO launch angles: the LOW shot,
+  // flat and quick, and the HIGH shot, a lob that falls in from above.
+  // solving y = x·tanθ − g·x²/(2v²cos²θ) for tanθ is a quadratic, so both
+  // roots fall out of one square root — and a negative discriminant means
+  // honestly out of range. the drone moves, so the gun leads it Chase-style:
+  // solve, read the flight time, solve again for where it will be by then.
+  const gx = W * 0.08, gy = GY - 6;
+  let tx = W * 0.65, ty = H * 0.35, tvx = 0, tvy = 0, sticky = 0, fireT = 0.8, useHigh = false;
+  let hit = 0, hx = 0, hy = 0, lastAng = -0.6, outOfRange = false;
+  const shells = [];
+  const sol = { ok: false, lo: 0, hi: 0 };
+  function solve(px, py) {                             // launch angles to hit (px, py); y is measured UP
+    const v = W * D.v, g = H * D.g, x = px - gx, y = gy - py;
+    const disc = v * v * v * v - g * (g * x * x + 2 * y * v * v);
+    if (disc < 0 || x < 2) { sol.ok = false; return sol; }
+    const r = Math.sqrt(disc);
+    sol.lo = Math.atan2(v * v - r, g * x); sol.hi = Math.atan2(v * v + r, g * x);
+    sol.ok = true; return sol;
+  }
+  function arc(theta, c) {                             // the parabola, dotted
+    const v = W * D.v, g = H * D.g, vx = Math.cos(theta) * v, vy = Math.sin(theta) * v;
+    for (let i = 1; i < 60; i++) {
+      const tt = i * 0.05, x = gx + vx * tt, y = gy - (vy * tt - g * tt * tt / 2);
+      if (y > GY || x > W) break;
+      dot(x, y, 1.2, c);
+    }
+  }
+  return {
+    press(mx, my) { tx = clamp(mx, gx + 20, W - 6); ty = clamp(my, 8, GY - 8); tvx = 0; tvy = 0; sticky = D.sticky; },
+    frame(dt, t) {
+      stage(); ground();
+      sticky -= dt; fireT -= dt; hit -= dt;
+      if (sticky <= 0) {                               // the drone: a slow figure across the sky
+        const nx = W * 0.62 + Math.sin(t * D.targetSpeed * 4) * W * 0.26, ny = H * 0.36 + Math.sin(t * D.targetSpeed * 7) * H * 0.16;
+        tvx = (nx - tx) / Math.max(dt, 1e-3); tvy = (ny - ty) / Math.max(dt, 1e-3);
+        tx = nx; ty = ny;
+      }
+      solve(tx, ty);
+      outOfRange = !sol.ok;
+      const wantHigh = D.pick === "high" || (D.pick === "both" && useHigh);
+      let aimAng = lastAng, ax = tx, ay = ty;
+      if (sol.ok) {
+        aimAng = wantHigh ? sol.hi : sol.lo;
+        const T = (tx - gx) / Math.max(1, Math.cos(aimAng) * W * D.v);   // flight time → lead the target
+        ax = tx + tvx * T; ay = ty + tvy * T;
+        solve(ax, ay);
+        if (sol.ok) aimAng = wantHigh ? sol.hi : sol.lo;
+        lastAng = aimAng;
+      }
+      if (fireT <= 0 && sol.ok) {
+        fireT = D.fireEvery;
+        shells.push({ x: gx, y: gy, vx: Math.cos(aimAng) * W * D.v, vy: -Math.sin(aimAng) * W * D.v, high: wantHigh });
+        if (D.pick === "both") useHigh = !useHigh;
+        if (shells.length > 6) shells.shift();
+      }
+      for (let i = shells.length - 1; i >= 0; i--) {
+        const s = shells[i];
+        s.vy += H * D.g * dt; s.x += s.vx * dt; s.y += s.vy * dt;
+        if (len(s.x - tx, s.y - ty) < 10) { hit = 0.5; hx = s.x; hy = s.y; shells.splice(i, 1); continue; }
+        if (s.y > GY || s.x > W + 10) shells.splice(i, 1);
+      }
+      solve(tx, ty);                                   // draw both roots at the target's true place
+      if (sol.ok) {
+        arc(sol.lo, "rgba(155,226,138,0.7)"); arc(sol.hi, "rgba(201,160,245,0.7)");
+        label("low θ = " + Math.round(sol.lo * 180 / Math.PI) + "°", gx + 30, gy - 4, GOOD);
+        label("high θ = " + Math.round(sol.hi * 180 / Math.PI) + "°", gx + 30, gy - 16, MAGIC);
+      } else label("disc < 0 — out of range", gx + 30, gy - 8, HOT);
+      const bl = 18;                                   // the barrel, aimed with the root in use
+      line(gx, gy, gx + Math.cos(aimAng) * bl, gy - Math.sin(aimAng) * bl, "rgba(201,196,228,0.9)", 5);
+      dot(gx, gy, 7, MOVER);
+      for (const s of shells) dot(s.x, s.y, 3, s.high ? MAGIC : GOOD);
+      ctx.setLineDash([2, 4]); line(tx, ty, tx, GY, DIM); line(gx, GY, tx, GY, DIM); ctx.setLineDash([]);
+      label("x", (gx + tx) / 2, GY + 12, DIM, "center"); label("y", tx + 6, (ty + GY) / 2, DIM);
+      if (sticky <= 0 && sol.ok) ring(ax, ay, 4, "rgba(245,193,105,0.4)");   // the led aim point
+      ring(tx, ty, 7, TARGET, 2); line(tx - 10, ty, tx + 10, ty, TARGET); line(tx, ty - 10, tx, ty + 10, TARGET);
+      if (hit > 0) ring(hx, hy, 8 + (0.5 - hit) * 40, "rgba(245,138,138," + hit * 2 + ")", 2);
+      label("v = " + D.v + " W/s · fires " + D.pick + (outOfRange ? " · holding" : ""), W / 2, 14, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Artillery", "Antiair", "faster shells, only ever the high root, at a drone doing two and a half times the speed — a flak battery that leads by lobbing", { v: 1.15, pick: "high", targetSpeed: 0.3 });
+
+def("Y", "Yardstick", "joints", "TRAJECTORY PREVIEW: dots run the flight code ahead, stopping at the FIRST HIT on the terrain (Xmarks); the throw follows its dots — drag to aim", function (u) {
+  var D = { power: 0.9,        // throw speed at full pull ×W/s
+            pull: 0.35,        // pointer distance ×W that means full power
+            g: 2.4,            // gravity ×H/s²
+            step: 0.05,        // the preview's step — and the flight's, so they agree
+            dots: 60,          // preview steps at most
+            hills: 0.16,       // terrain height ×H
+            bumps: 2.5,        // terrain waves across W
+            e: 0.3,            // bounce at the landing
+            autoEvery: 3,      // the idle thrower's timer
+            label: "same dt, same v += g·dt, same p += v·dt — preview and flight cannot disagree" };
+  const { ctx, W, H, GY, stage, dot, ring, line, arrow, mote, label, len, clamp, noise, ease, rand, MOVER, TARGET, HOT, GOOD, BONE, DIM } = u;
+  // the honest preview: not a formula for the arc but the FLIGHT CODE ITSELF,
+  // run ahead with the same fixed step, drawing a dot per step, until a dot
+  // is under the ground — Xmarks' test, once per dot. the throw then
+  // advances by the same fixed step (an accumulator turns any frame's dt
+  // into whole steps), so the ball lands on the X the dots promised. change
+  // the integrator and both change together; that is the whole design.
+  const sx = W * 0.1;
+  function terrain(x) { return GY - H * D.hills * (noise(x / W * D.bumps + 3.3) + 1) / 2; }
+  const hy0 = () => terrain(sx) - 22;
+  let ax = sx + W * 0.25, ay = hy0() - H * 0.2, aiming = false, since = 1, idle = 0;
+  let ghost = -1, gx0 = 0, gy0 = 0, gx1 = 0, gy1 = 0;
+  const ball = { x: sx, y: 0, vx: 0, vy: 0, acc: 0, flying: false, rest: true };
+  const mark = { x: -1, y: -1, n: 0 };
+  function velocityFor(px, py) {
+    const dx = px - sx, dy = py - hy0(), d = len(dx, dy) || 1;
+    const k = clamp(d / (W * D.pull), 0, 1) * W * D.power;
+    return [dx / d * k, dy / d * k];
+  }
+  function stepBall(b) {
+    b.vy += H * D.g * D.step; b.x += b.vx * D.step; b.y += b.vy * D.step;
+    return b.y >= terrain(b.x) || b.x > W + 4 || b.x < -4;
+  }
+  function throwNow() {
+    const v = velocityFor(ax, ay);
+    ball.x = sx; ball.y = hy0(); ball.vx = v[0]; ball.vy = v[1]; ball.acc = 0; ball.flying = true; ball.rest = false;
+    aiming = false; idle = 0;
+  }
+  return {
+    drag: true,
+    press(mx, my) { ax = mx; ay = my; aiming = true; since = 0; ghost = -1; },
+    frame(dt, t) {
+      stage();
+      since += dt; idle += dt;
+      if (aiming && since > 0.15) throwNow();          // the finger lifted
+      if (!aiming && ghost < 0 && idle > D.autoEvery) {   // the idle thrower draws its own aim
+        ghost = 0; gx0 = sx + 20; gy0 = hy0() - 10;
+        gx1 = sx + rand(W * 0.15, W * 0.45); gy1 = hy0() - rand(H * 0.05, H * 0.35);
+      }
+      if (ghost >= 0) {
+        ghost += dt;
+        const k = ease(ghost / 1.2);
+        ax = gx0 + (gx1 - gx0) * k; ay = gy0 + (gy1 - gy0) * k;
+        if (ghost > 1.4) { ghost = -1; aiming = true; since = 0; throwNow(); }
+      }
+      if (ball.flying) {
+        ball.acc = Math.min(ball.acc + dt, 0.5);   // never more than ten steps owed
+        while (ball.acc >= D.step && ball.flying) {
+          ball.acc -= D.step;
+          if (stepBall(ball)) {
+            ball.y = Math.min(ball.y, terrain(ball.x));
+            if (ball.vy > H * 0.25 && ball.x > 0 && ball.x < W) { ball.vy = -ball.vy * D.e; ball.vx *= 0.6; }
+            else { ball.flying = false; ball.rest = true; ball.vx = 0; ball.vy = 0; }
+          }
+        }
+      }
+      ctx.fillStyle = "rgba(201,196,228,0.18)";        // the terrain
+      ctx.beginPath(); ctx.moveTo(0, H);
+      for (let x = 0; x <= W + 6; x += 6) ctx.lineTo(x, terrain(x));
+      ctx.lineTo(W, H); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(201,196,228,0.6)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(0, terrain(0));
+      for (let x = 6; x <= W + 6; x += 6) ctx.lineTo(x, terrain(x));
+      ctx.stroke(); ctx.lineWidth = 1;
+      const showAim = aiming || ghost >= 0 || !ball.flying;
+      if (showAim) {                                   // the preview: the flight code, run ahead
+        const v = velocityFor(ax, ay);
+        const p = { x: sx, y: hy0(), vx: v[0], vy: v[1] };
+        mark.x = -1; mark.n = 0;
+        for (let i = 0; i < D.dots; i++) {
+          const done = stepBall(p);
+          mark.n++;
+          if (done) { mark.x = p.x; mark.y = Math.min(p.y, terrain(p.x)); break; }
+          dot(p.x, p.y, i % 2 ? 1.2 : 2, i % 2 ? "rgba(245,193,105,0.45)" : "rgba(245,193,105,0.9)");
+        }
+        if (mark.x >= 0) { line(mark.x - 5, mark.y - 5, mark.x + 5, mark.y + 5, HOT, 2); line(mark.x - 5, mark.y + 5, mark.x + 5, mark.y - 5, HOT, 2); }
+        arrow(sx, hy0(), sx + v[0] * 0.12, hy0() + v[1] * 0.12, TARGET);
+        label("v₀ = " + Math.round(len(v[0], v[1])) + " px/s · " + mark.n + " steps of " + D.step + " s" + (mark.x >= 0 ? " → hit" : " → no hit yet"), W / 2, 14, DIM, "center");
+        if (ghost >= 0) ring(ax, ay, 6, "rgba(232,229,244,0.4)", 1.5);
+      } else label("flying: acc += dt; while acc ≥ step: one step", W / 2, 14, DIM, "center");
+      mote(sx, terrain(sx) - 9, 0);
+      if (!ball.rest || ball.flying) dot(ball.x, ball.y, 4, MOVER);
+      else if (ball.x !== sx) dot(ball.x, ball.y, 4, "rgba(138,217,245,0.6)");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Yardstick", "Yardage", "golf: half again the power over a long flat fairway — the same dots, stretched into a drive", { power: 1.3, hills: 0.05, bumps: 0.8 });
+
+
+def("S", "Sand", "joints", "FALLING SAND, a cellular automaton: a grain looks down, then down a diagonal; water also looks sideways; walls never look — press to pour", function (u) {
+  var D = { cols: 60, rows: 40,
+            material: "sand",  // what a press pours: "sand", "water" or "wall"
+            mix: 0.3,          // the spout's share of water
+            spoutRate: 4,      // cells poured per step
+            stepsPerSec: 60,   // automaton ticks per second
+            spread: 4,         // how far water looks sideways in one tick
+            leak: 0.15,        // chance per tick that the bowl's hole passes a cell
+            label: "sand: ↓ else ↙ or ↘ · water: ↓, ↙↘, else ← → · one cell, one look" };
+  const { ctx, W, H, stage, rect, label, rand, noise, clamp, MOVER, TARGET, BONE, DIM } = u;
+  // a CELLULAR AUTOMATON has no bodies, no velocities, no vectors — only a
+  // grid, and one rule each cell applies by looking at its neighbours. SAND:
+  // if the cell below is free, move there; else try one diagonal, then the
+  // other (that alone gives heaps with a slope). WATER: the same, and if
+  // nothing below is free, slide sideways up to `spread` cells (that alone
+  // gives a flat surface). sand sinks through water because "free" for sand
+  // includes water. the scan runs bottom-up and flips direction every tick so
+  // nothing leans; the bottom row is a drain, so the loop never fills up.
+  const cols = D.cols, rows = D.rows, cw = W / cols, ch = (H - 20) / rows, y0 = 2;
+  const g = new Uint8Array(cols * rows);               // 0 empty · 1 sand · 2 water · 3 wall
+  function wallLine(x0, yy0, x1, yy1) {
+    const n = Math.max(Math.abs(x1 - x0), Math.abs(yy1 - yy0)) * cols;
+    for (let i = 0; i <= n; i++) {
+      const cx = Math.round((x0 + (x1 - x0) * i / n) * (cols - 1)), cy = Math.round((yy0 + (yy1 - yy0) * i / n) * (rows - 1));
+      g[cy * cols + cx] = 3; if (cy + 1 < rows) g[(cy + 1) * cols + cx] = 3;
+    }
+  }
+  wallLine(0.06, 0.28, 0.42, 0.46); wallLine(0.94, 0.28, 0.58, 0.46);   // the funnel
+  wallLine(0.28, 0.66, 0.4, 0.86); wallLine(0.4, 0.86, 0.6, 0.86); wallLine(0.72, 0.66, 0.6, 0.86);   // the bowl
+  const hole = Math.round(0.5 * (cols - 1)) + Math.round(0.86 * (rows - 1)) * cols;
+  const hole2 = hole + cols;
+  let acc = 0, flip = false, spout = 0.5, ticks = 0;
+  function free(m, v) { return v === 0 || (m === 1 && v === 2); }
+  function tick() {
+    flip = !flip; ticks++;
+    for (let y = rows - 2; y >= 0; y--) {
+      for (let k = 0; k < cols; k++) {
+        const x = flip ? k : cols - 1 - k, i = y * cols + x; let m = g[i];
+        if (m === 0 || m === 3) continue;
+        const b = i + cols;
+        if (free(m, g[b])) { g[i] = g[b]; g[b] = m; continue; }          // ↓
+        const d = Math.random() < 0.5 ? 1 : -1;
+        for (let s = 0; s < 2; s++) {                                    // ↙ or ↘, in a random order
+          const nx = x + (s ? -d : d);
+          if (nx < 0 || nx >= cols) continue;
+          const j = b + (s ? -d : d);
+          if (free(m, g[j]) && g[i + (s ? -d : d)] !== 3) { g[i] = g[j]; g[j] = m; m = 0; break; }
+        }
+        if (m !== 2) continue;
+        for (let s = 1; s <= D.spread; s++) {                            // water: ← → to the nearest gap
+          const nx = x + d * s;
+          if (nx < 0 || nx >= cols) break;
+          const j = y * cols + nx;
+          if (g[j] === 0) { g[j] = 2; g[i] = 0; break; }
+          if (g[j] !== 2) break;
+        }
+      }
+    }
+    for (let x = 0; x < cols; x++) g[(rows - 1) * cols + x] = 0;         // the drain
+    if (Math.random() < D.leak) { g[hole] = 0; g[hole2] = 0; }           // the bowl's slow hole
+    spout = clamp(0.5 + noise(ticks * 0.004) * 0.36, 0.14, 0.86);
+    for (let n = 0; n < D.spoutRate; n++) {
+      const x = clamp(Math.round(spout * cols + rand(-2, 2)), 0, cols - 1), i = Math.floor(rand(0, 2)) * cols + x;
+      if (g[i] === 0) g[i] = Math.random() < D.mix ? 2 : 1;
+    }
+  }
+  return {
+    press(mx, my) {
+      const cx = clamp(Math.floor(mx / cw), 1, cols - 2), cy = clamp(Math.floor((my - y0) / ch), 1, rows - 3);
+      const m = D.material === "wall" ? 3 : (D.material === "water" ? 2 : 1);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const i = (cy + dy) * cols + cx + dx;
+        if (m === 3 || g[i] === 0) g[i] = m;
+      }
+    },
+    frame(dt, t) {
+      stage();
+      acc += dt;
+      let n = 0;
+      while (acc >= 1 / D.stepsPerSec && n < 4) { acc -= 1 / D.stepsPerSec; tick(); n++; }
+      if (acc > 0.2) acc = 0;
+      for (let y = 0; y < rows; y++) {                 // draw in runs: one rect per stretch of one material
+        let run = 0, x0 = 0;
+        for (let x = 0; x <= cols; x++) {
+          const m = x < cols ? g[y * cols + x] : -1;
+          if (m !== run) {
+            if (run) rect(x0 * cw, y0 + y * ch, (x - x0) * cw + 0.5, ch + 0.5, run === 1 ? TARGET : (run === 2 ? "rgba(138,217,245,0.75)" : "rgba(201,196,228,0.7)"));
+            run = m; x0 = x;
+          }
+        }
+      }
+      rect(spout * W - 4, 0, 8, y0 + 1, BONE);         // the spout
+      rect(0, y0 + (rows - 1) * ch, W, 1, "rgba(245,138,138,0.35)");
+      label("drain", W - 4, y0 + (rows - 1) * ch - 2, "rgba(245,138,138,0.5)", "right");
+      rect(W - 60, 6, 6, 6, TARGET); label("sand", W - 50, 12, DIM);
+      rect(W - 60, 16, 6, 6, "rgba(138,217,245,0.75)"); label("water", W - 50, 22, DIM);
+      rect(W - 60, 26, 6, 6, "rgba(201,196,228,0.7)"); label("wall", W - 50, 32, DIM);
+      label("press pours " + D.material + " · " + D.stepsPerSec + " ticks/s", 6, 12, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Sand", "Silt", "the same rules at half the tick rate with a spout that is mostly water, and a press that pours water — a slow, wet world that pools", { material: "water", mix: 0.85, stepsPerSec: 30 });
+
+def("L", "Liquid", "joints", "TILE FLUIDS: a MASS per cell levels out with its neighbours by a flow fraction — or, in fire mode, spreads by chance to ash — press to pour", function (u) {
+  var D = { cols: 48, rows: 30,
+            mode: "water",     // "water" or "fire"
+            flow: 0.25,        // fraction of a sideways difference that moves per tick
+            compress: 0.02,    // extra mass a cell holds under a full one (a little pressure)
+            stepsPerSec: 30,   // ticks per second
+            tap: 0.35,         // mass per tick from the tap while it runs
+            tapOn: 4, tapOff: 3,   // the tap's rhythm, seconds
+            drain: 0.3,        // mass per tick each drain cell lets out
+            drainFrom: 0.78,   // the drain slot: the floor to the right of this fraction of the width
+            spread: 0.07,      // fire: chance per tick of catching from each burning neighbour
+            burn: 1.5,         // fire: seconds a cell burns
+            regrow: 7,         // fire: seconds for ash to grow back
+            fuel: 0.55,        // fire: share of the field that starts as fuel
+            strikeEvery: 4,    // fire: seconds between lightning strikes
+            label: "water: Δm = (m − m_side)·flow, ↓ fills first · fire: P(catch) = spread per burning neighbour" };
+  const { ctx, W, H, stage, rect, label, rand, rng, noise, clamp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+  // Sand moved whole cells; TILE WATER moves a NUMBER. each cell holds a mass
+  // from 0 to 1 (a little more under pressure). every tick it gives what it
+  // can DOWN first (the cell below fills to its stable share), then shares a
+  // FRACTION of any difference with its left and right neighbours — that
+  // fraction is what makes a poured heap of water flatten into a level, and
+  // how fast. FIRE is the other classic cell rule: a burning cell tries, by
+  // chance, to light each fuel neighbour every tick, burns for a while, and
+  // leaves ash, which slowly grows back. same grid, same four neighbours.
+  const cols = D.cols, rows = D.rows, cw = W / cols, ch = (H - 20) / rows, y0 = 2, N = cols * rows;
+  const kind = new Uint8Array(N);                      // water: 0 air, 1 wall · fire: 0 air, 1 wall, 2 fuel, 3 burning, 4 ash, 5 just lit
+  const mass = new Float32Array(N), next = new Float32Array(N), timer = new Float32Array(N);
+  const seed = rng(11);
+  const fire = D.mode === "fire";
+  for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+    const i = y * cols + x;
+    if (x === 0 || x === cols - 1 || y === rows - 1) kind[i] = 1;
+    else if (!fire) {
+      if (y === Math.round(rows * 0.55) && x > cols * 0.15 && x < cols * 0.6) kind[i] = 1;      // a shelf
+      if (x === Math.round(cols * 0.72) && y > rows * 0.35 && y < rows * 0.8) kind[i] = 1;      // a weir, with a gap under it
+    } else if (y > rows * 0.35 && seed() < D.fuel * clamp((y - rows * 0.35) / (rows * 0.4), 0.3, 1)) kind[i] = 2;
+  }
+  const drainX0 = Math.round(cols * D.drainFrom);
+  let acc = 0, tapX = 0.4, tapT = 0, strikeT = 1.5, ticks = 0, burning = 0;
+  function stable(total) {                             // how much the LOWER of two cells should hold
+    if (total <= 1) return 1;
+    if (total < 2 + D.compress) return (1 + total * D.compress) / (1 + D.compress);
+    return (total + D.compress) / 2;
+  }
+  function tickWater() {
+    for (let i = 0; i < N; i++) next[i] = mass[i];
+    for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+      const i = y * cols + x;
+      if (kind[i] === 1 || mass[i] <= 0.0005) continue;
+      let rem = mass[i], f;
+      const b = i + cols;
+      if (y + 1 < rows && kind[b] !== 1) {              // down: fill the cell below to its stable share
+        f = clamp(stable(rem + mass[b]) - mass[b], 0, Math.min(rem, 1));
+        next[i] -= f; next[b] += f; rem -= f;
+      }
+      if (rem <= 0) continue;
+      if (kind[i - 1] !== 1) {                          // left: a fraction of the difference
+        f = clamp((rem - mass[i - 1]) * D.flow, 0, rem);
+        next[i] -= f; next[i - 1] += f; rem -= f;
+      }
+      if (rem <= 0) continue;
+      if (kind[i + 1] !== 1) {                          // right
+        f = clamp((rem - mass[i + 1]) * D.flow, 0, rem);
+        next[i] -= f; next[i + 1] += f; rem -= f;
+      }
+      if (rem <= 0 || y === 0 || kind[i - cols] === 1) continue;
+      f = clamp(rem - stable(rem), 0, rem);            // up: only what pressure cannot hold
+      next[i] -= f; next[i - cols] += f;
+    }
+    for (let i = 0; i < N; i++) mass[i] = kind[i] === 1 ? 0 : next[i];
+    for (let x = drainX0; x < cols - 1; x++) { const i = (rows - 2) * cols + x; mass[i] = Math.max(0, mass[i] - D.drain); }   // the slot in the floor
+    tapX = clamp(0.4 + noise(ticks * 0.003) * 0.3, 0.1, 0.65);
+    if (tapT % (D.tapOn + D.tapOff) < D.tapOn) { const i = cols + Math.round(tapX * cols); mass[i] = Math.min(1, mass[i] + D.tap); }
+  }
+  function tickFire(step) {
+    burning = 0;
+    for (let i = 0; i < N; i++) {
+      const k = kind[i];
+      if (k === 3) {
+        burning++;
+        timer[i] -= step;
+        if (timer[i] <= 0) { kind[i] = 4; timer[i] = D.regrow * rand(0.6, 1.6); continue; }
+        const x = i % cols;
+        if (x > 0 && kind[i - 1] === 2 && Math.random() < D.spread) { kind[i - 1] = 5; timer[i - 1] = D.burn; }
+        if (x < cols - 1 && kind[i + 1] === 2 && Math.random() < D.spread) { kind[i + 1] = 5; timer[i + 1] = D.burn; }
+        if (i >= cols && kind[i - cols] === 2 && Math.random() < D.spread * 1.5) { kind[i - cols] = 5; timer[i - cols] = D.burn; }
+        if (i + cols < N && kind[i + cols] === 2 && Math.random() < D.spread * 0.6) { kind[i + cols] = 5; timer[i + cols] = D.burn; }
+      } else if (k === 4) { timer[i] -= step; if (timer[i] <= 0) kind[i] = 2; }
+    }
+    for (let i = 0; i < N; i++) if (kind[i] === 5) kind[i] = 3;   // the newly lit burn from the next tick
+  }
+  function ignite(cx, cy) {
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const i = (cy + dy) * cols + cx + dx;
+      if (kind[i] === 2 || kind[i] === 4) { kind[i] = 3; timer[i] = D.burn; }
+    }
+  }
+  return {
+    press(mx, my) {
+      const cx = clamp(Math.floor(mx / cw), 1, cols - 2), cy = clamp(Math.floor((my - y0) / ch), 1, rows - 3);
+      if (fire) { ignite(cx, cy); return; }
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const i = (cy + dy) * cols + cx + dx; if (kind[i] !== 1) mass[i] = Math.min(1, mass[i] + 1); }
+    },
+    frame(dt, t) {
+      stage();
+      acc += dt; tapT += dt; strikeT -= dt;
+      const step = 1 / D.stepsPerSec;
+      let n = 0;
+      while (acc >= step && n < 4) { acc -= step; ticks++; if (fire) tickFire(step); else tickWater(); n++; }
+      if (acc > 0.2) acc = 0;
+      if (fire && strikeT <= 0) {                      // lightning
+        strikeT = D.strikeEvery;
+        for (let tries = 0; tries < 20; tries++) { const i = Math.floor(rand(cols, N - cols)); if (kind[i] === 2) { ignite(i % cols, Math.floor(i / cols)); break; } }
+      }
+      let total = 0;
+      for (let y = 0; y < rows; y++) {
+        let run = -1, x0 = 0;
+        for (let x = 0; x <= cols; x++) {
+          const i = y * cols + x;
+          let m = -1;                                  // the drawn kind of this cell 
+          if (x < cols) {
+            const k = kind[i];
+            if (k === 1) m = 1;
+            else if (fire) m = k === 2 ? 2 : (k === 3 ? 3 : (k === 4 ? 4 : -1));
+            else if (mass[i] > 0.01) { total += mass[i]; m = mass[i] >= 0.95 || (y > 0 && mass[i - cols] > 0.01) ? 6 : 7; }
+          }
+          if (m === 7 && x < cols) {                   // a surface cell: its fill height IS its mass
+            const hh = ch * clamp(mass[i], 0.08, 1);
+            rect(x * cw, y0 + (y + 1) * ch - hh, cw + 0.5, hh + 0.5, "rgba(138,217,245,0.8)");
+            m = -1;
+          }
+          if (m === 3 && x < cols) {                   // a flame flickers by its own clock
+            rect(x * cw, y0 + y * ch, cw + 0.5, ch + 0.5, Math.random() < 0.5 ? HOT : TARGET);
+            m = -1;
+          }
+          if (m !== run) {
+            if (run >= 0 && run !== 7 && run !== 3) rect(x0 * cw, y0 + y * ch, (x - x0) * cw + 0.5, ch + 0.5,
+              run === 1 ? "rgba(201,196,228,0.55)" : (run === 2 ? "rgba(155,226,138,0.45)" : (run === 4 ? "rgba(232,229,244,0.14)" : "rgba(138,217,245,0.8)")));
+            run = m; x0 = x;
+          }
+        }
+      }
+      if (fire) label("burning " + burning + " · spread " + D.spread + " · burn " + D.burn + " s · ash → fuel in " + D.regrow + " s", 6, 12, DIM);
+      else {
+        const on = tapT % (D.tapOn + D.tapOff) < D.tapOn;
+        rect(tapX * W - 4, 0, 8, y0 + 2, on ? MOVER : BONE);
+        label("tap " + (on ? "on" : "off") + " · mass " + total.toFixed(0) + " · flow " + D.flow, 6, 12, DIM);
+        rect(drainX0 * cw, y0 + (rows - 1) * ch - 1, (cols - 1 - drainX0) * cw, 2, "rgba(245,138,138,0.5)");
+        label("drain", W - 8, y0 + (rows - 2) * ch - 3, "rgba(245,138,138,0.6)", "right");
+      }
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Liquid", "Lightfire", "mode fire: every burning cell tries four times as hard to spread and burns out in a third of the time — a grass fire that races and leaves ash", { mode: "fire", spread: 0.3, burn: 0.5 });
+/* ============================== REWINDS, ROOMS & BEATS ==============================
+   The time family, second lap: what a game remembers about TIME, and the
+   shape of the WINDOW it looks through. A ring buffer of states is a rewind
+   and a replay; a fixed step plus an alpha is motion smooth at any frame
+   rate; an energy pool is a turn order; a bpm is a beat every input is
+   measured against; two clocks in one frame are a pause; named countdowns
+   are cooldowns. Then the camera proper — framing a group, clamping to
+   rooms, kicking on a shot, punching in on a hit, riding a rail, orbiting
+   a pivot — and the world that has no edge at all. Frame counters, buffers,
+   clocks and camera frames are all drawn where they act. */
+
+def("R", "Rewind", "frames", "a ring buffer keeps the last 4 s of state at 30 Hz; hold to play it backward, let go to resume from there (Braid) — drag to rewind", function (u) {
+  var D = { seconds: 4,        // how much past the buffer holds
+            hz: 30,            // snapshots per second
+            g: 1.6,            // gravity, ×H per second²
+            e: 0.92,           // restitution on the walls and pegs
+            autoEvery: 5,      // the idle rewind: after this many seconds of play…
+            autoLen: 1.3,      // …rewind for this long
+            label: "buf[(head − k) mod N] · hold: k += hz·dt" };
+  const { W, H, stage, dot, poly, rect, line, mote, label, len, MOVER, TARGET, MAGIC, BONE } = u;
+  // Echo queued poses for its clones; a REWIND queues the whole state — x,
+  // y, vx, vy — in a RING BUFFER: N slots, a head that wraps around, the
+  // oldest slot silently overwritten. hold, and every frame the read cursor
+  // walks back hz·dt slots and the mote is simply placed where that slot
+  // says. let go, and the head moves back to the cursor: the future is
+  // thrown away and the bounce resumes from the past. the purple ghost is
+  // the same buffer read forward from its oldest slot — a REPLAY for free.
+  const N = Math.max(8, Math.round(D.seconds * D.hz));
+  const bx = new Float32Array(N), by = new Float32Array(N), bvx = new Float32Array(N), bvy = new Float32Array(N);
+  const R = 8, x0 = W * 0.06, x1 = W * 0.94, y0 = H * 0.22, y1 = H * 0.9;
+  const pegs = [[W * 0.34, H * 0.52], [W * 0.66, H * 0.64], [W * 0.5, H * 0.38]];
+  let head = 0, count = 0, acc = 0, cursor = 0, holdT = 0, autoT = 0, ghost = 0, rewinds = 0;
+  let x = W * 0.3, y = H * 0.32, vx = W * 0.4, vy = 0;
+  function slot(k) { return ((head - k) % N + N) % N; }   // the slot k snapshots behind the head
+  return {
+    drag: true,
+    press() { holdT = 0.12; },
+    frame(dt, t) {
+      stage();
+      holdT -= dt; autoT += dt;
+      if (autoT > D.autoEvery + D.autoLen) autoT = 0;
+      const rewinding = (holdT > 0 || autoT > D.autoEvery) && count > 1;
+      if (rewinding) {
+        cursor = Math.min(cursor + D.hz * dt, count - 1);   // the cursor walks back through the past
+        const s = slot(Math.floor(cursor));
+        x = bx[s]; y = by[s]; vx = bvx[s]; vy = bvy[s];
+      } else {
+        if (cursor > 0) {                              // let go: the future is discarded
+          const k = Math.floor(cursor);
+          head = slot(k); count -= k; cursor = 0; rewinds++;
+        }
+        vy += H * D.g * dt;                            // the chaotic bounce, three pegs
+        x += vx * dt; y += vy * dt;
+        if (x < x0 + R) { x = x0 + R; vx = Math.abs(vx) * D.e; }
+        if (x > x1 - R) { x = x1 - R; vx = -Math.abs(vx) * D.e; }
+        if (y < y0 + R) { y = y0 + R; vy = Math.abs(vy) * D.e; }
+        if (y > y1 - R) { y = y1 - R; vy = -Math.max(Math.abs(vy) * D.e, H * 0.95); }   // the floor is a trampoline
+        if (Math.abs(vx) < W * 0.15) vx = (vx < 0 ? -1 : 1) * W * 0.4;   // never let it settle
+        for (const p of pegs) {
+          const dx = x - p[0], dy = y - p[1], d = len(dx, dy);
+          if (d < R + 6 && d > 0.001) {
+            const nx = dx / d, ny = dy / d, vn = vx * nx + vy * ny;
+            if (vn < 0) { vx -= (1 + D.e) * vn * nx; vy -= (1 + D.e) * vn * ny; }
+            x = p[0] + nx * (R + 6); y = p[1] + ny * (R + 6);
+          }
+        }
+        acc = Math.min(acc + dt, 0.5);
+        while (acc >= 1 / D.hz) {                      // a snapshot every 1/hz seconds
+          acc -= 1 / D.hz;
+          head = (head + 1) % N; count = Math.min(N, count + 1);
+          bx[head] = x; by[head] = y; bvx[head] = vx; bvy[head] = vy;
+        }
+      }
+      const kept = count - Math.floor(cursor);         // the slots the ghost may replay
+      ghost += D.hz * dt;
+      if (kept < 2 || ghost >= kept) ghost = 0;
+      poly([[x0, y0], [x1, y0], [x1, y1], [x0, y1]], "rgba(201,196,228,0.35)", 1);
+      for (const p of pegs) dot(p[0], p[1], 6, BONE);
+      const stride = Math.max(1, Math.floor(count / 80));   // the buffer drawn as a trail —
+      for (let k = 0; k < count; k += stride) {             // the discarded future in red
+        const s = slot(k), a = 0.08 + 0.35 * (1 - k / count);
+        dot(bx[s], by[s], 1.5, k < cursor ? "rgba(245,138,138," + a + ")" : "rgba(138,217,245," + a + ")");
+      }
+      const gk = kept - 1 - Math.floor(ghost);
+      if (kept > 1) {                                  // the replay ghost reads the buffer forward
+        const s = slot(gk);
+        mote(bx[s], by[s], Math.atan2(bvy[s], bvx[s]), "rgba(201,160,245,0.45)", 7);
+      }
+      mote(x, y, Math.atan2(vy, vx), rewinding ? TARGET : MOVER);
+      const sx0 = W * 0.08, sw = W * 0.84, sy = H * 0.08;   // the scrubber: N slots, oldest left
+      const px = k => sx0 + sw * (count - 1 - k) / N;
+      rect(sx0, sy - 4, sw, 8, "rgba(232,229,244,0.08)");
+      rect(sx0, sy - 4, sw * count / N, 8, "rgba(138,217,245,0.35)");
+      if (cursor > 0) rect(px(cursor), sy - 4, sw * (cursor + 1) / N, 8, "rgba(245,138,138,0.5)");
+      if (kept > 1) dot(px(gk), sy, 3, MAGIC);
+      line(px(cursor), sy - 7, px(cursor), sy + 7, rewinding ? TARGET : MOVER, 2);
+      label("N = " + N + " · held " + count + (rewinding ? " · ◀◀ rewinding" : " · ● recording") + " · rewinds " + rewinds, W / 2, sy + 18, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Rewind", "Rerun", "ten seconds of past at fifteen snapshots a second — a long, chunky buffer where the rewind visibly steps from slot to slot", { seconds: 10, hz: 15 });
+
+def("X", "Xtrapolate", "frames", "a fixed-step sim at hz; between ticks draw the last state, a blend of the last two by α = acc/step, or the last run ahead by acc — press to change hz", function (u) {
+  var D = { hzList: [20, 10, 40],   // the fixed simulation rates the press cycles through
+            speed: 0.9,             // horizontal speed, columns per second
+            g: 2.0,                 // gravity, ×H per second²
+            apex: 0.34,             // bounce apex, ×H
+            trail: 24,              // draws remembered per column
+            label: "α = acc/step · a + (b − a)·α · b + v·acc" };
+  const { W, H, GY, stage, ground, dot, ring, line, rect, mote, label, TARGET, MOVER, GOOD, MAGIC, DIM } = u;
+  // Substep replayed the missed ticks; this is the other half of a FIXED
+  // TIMESTEP: the screen draws whenever it likes, so what does it draw
+  // between ticks? RAW draws the newest state, and stutters. INTERPOLATION
+  // keeps the previous state too and blends them by α = acc/step — smooth,
+  // but always one step behind. EXTRAPOLATION runs the newest state ahead
+  // by acc with its velocity — smooth and on time, and it pokes through the
+  // wall at every bounce. the trails are the last 24 draws: clumps, even
+  // beads, and spikes. the counters: many frames, fewer steps.
+  const cw = W / 3;
+  const C = [["raw", MOVER, "138,217,245"], ["interp", GOOD, "155,226,138"], ["extrap", MAGIC, "201,160,245"]]
+    .map((c, i) => ({ name: c[0], c: c[1], rgb: c[2], x0: i * cw, tx: new Float32Array(D.trail), ty: new Float32Array(D.trail), ti: 0, tn: 0 }));
+  const v0 = Math.sqrt(2 * D.g * H * H * D.apex);
+  let hi = 0, acc = 0, steps = 0, frames = 0;
+  let ax = cw * 0.2, ay = GY - 9, avx = cw * D.speed, avy = -v0;   // state a: the previous tick
+  let bx = ax, by = ay, bvx = avx, bvy = avy;                       // state b: the newest tick
+  function tick(h) {
+    ax = bx; ay = by; avx = bvx; avy = bvy;            // b becomes a — the previous state is kept for α
+    bvy += D.g * H * h;
+    bx += bvx * h; by += bvy * h;
+    if (bx < 9) { bx = 9; bvx = Math.abs(bvx); }
+    if (bx > cw - 9) { bx = cw - 9; bvx = -Math.abs(bvx); }
+    if (by > GY - 9) { by = GY - 9; bvy = -v0; }
+  }
+  return {
+    press() { hi = (hi + 1) % D.hzList.length; },
+    frame(dt, t) {
+      stage(); ground();
+      const hz = D.hzList[hi], step = 1 / hz;
+      acc += dt;
+      let n = 0;
+      while (acc >= step && n < 16) { tick(step); acc -= step; steps++; n++; }
+      if (n >= 16) acc = 0;                            // the spiral-of-death guard
+      const al = acc / step;                           // α: how far into the next step we are
+      frames++;
+      for (let i = 0; i < 3; i++) {
+        const c = C[i];
+        let x, y;
+        if (i === 0) { x = bx; y = by; }                               // raw: the newest tick
+        else if (i === 1) { x = ax + (bx - ax) * al; y = ay + (by - ay) * al; }   // interp: between a and b
+        else { x = bx + bvx * acc; y = by + bvy * acc; }               // extrap: b run ahead
+        c.tx[c.ti] = x; c.ty[c.ti] = y; c.ti = (c.ti + 1) % D.trail; c.tn = Math.min(D.trail, c.tn + 1);
+        if (i) line(c.x0, H * 0.06, c.x0, GY, DIM, 1);
+        line(c.x0 + 9, H * 0.3, c.x0 + 9, GY, "rgba(201,196,228,0.25)", 1);          // the walls it bounces off
+        line(c.x0 + cw - 9, H * 0.3, c.x0 + cw - 9, GY, "rgba(201,196,228,0.25)", 1);
+        for (let k = 0; k < c.tn; k++) {               // the last draws, oldest faintest
+          const j = (c.ti - 1 - k + 2 * D.trail) % D.trail;
+          dot(c.x0 + c.tx[j], c.ty[j], 2, "rgba(" + c.rgb + "," + (0.55 * (1 - k / c.tn)) + ")");
+        }
+        if (i) ring(c.x0 + bx, by, 7, DIM, 1);         // where the raw state is, for reference
+        mote(c.x0 + x, y, Math.atan2(bvy, bvx), c.c, 7);
+        label(c.name, c.x0 + cw / 2, 14, null, "center");
+        rect(c.x0 + cw * 0.2, 19, cw * 0.6, 4, "rgba(232,229,244,0.1)");   // α, as a bar
+        rect(c.x0 + cw * 0.2, 19, cw * 0.6 * al, 4, TARGET);
+      }
+      label("α " + al.toFixed(2), W / 2, 33, "rgba(245,193,105,0.8)", "center");
+      label(hz + " Hz · frames " + frames + " · steps " + steps, W / 2, GY + 16, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Xtrapolate", "Xtralow", "ten, five and three ticks a second with longer trails — the raw column crawls in lumps, the others stay smooth", { hzList: [10, 5, 3], trail: 40 });
+
+def("I", "Initiative", "frames", "each tick every actor adds its speed to an energy pool and acts at 100 — the fast rat acts twice per turn of yours — press to take your turn", function (u) {
+  var D = { tickEvery: 0.28,         // seconds per scheduler tick (a roguelike ticks instantly)
+            cost: 100,               // energy one action costs
+            player: 100,             // your speed
+            speeds: [200, 50, 100],  // the rat, the ogre, the bat
+            autoWait: 1.4,           // the idle player acts after this long
+            cols: 8, rows: 5,        // the grid
+            label: "e += speed per tick · act while e ≥ cost" };
+  const { ctx, W, H, stage, ring, line, rect, arrow, mote, label, clamp, MOVER, HOT, TARGET, GOOD, MAGIC, DIM } = u;
+  // Quantize snapped the clock; this snaps TURNS. an ENERGY SCHEDULER, the
+  // roguelike's initiative: every tick each actor's pool grows by its speed,
+  // and whoever holds 100 acts and pays 100. speed 200 acts every tick,
+  // speed 50 every fourth — "the fast monster acts twice" is arithmetic,
+  // not a special case. when your pool is full the tick loop blocks until
+  // you press: turn-based is just a scheduler that waits for one actor.
+  const names = ["rat", "ogre", "bat"], cols = D.cols, rows = D.rows;
+  const cell = Math.min(W * 0.56 / cols, H * 0.7 / rows), gx0 = W * 0.04, gy0 = H * 0.14;
+  const actors = [{ name: "you", speed: D.player, x: 1, y: 2, e: 0, flash: 0, c: MOVER }];
+  for (let i = 0; i < D.speeds.length; i++)
+    actors.push({ name: names[i % 3], speed: D.speeds[i], x: cols - 2 - (i % 2), y: (i * 2) % rows, e: 0, flash: 0, c: [HOT, MAGIC, GOOD][i % 3] });
+  const log = [];
+  let tickT = 0, ticks = 0, waiting = false, waitT = 0, wantX = 0, wantY = 0, turns = 0, bites = 0;
+  function at(x, y) { for (const a of actors) if (a.x === x && a.y === y) return a; return null; }
+  function step(a, dx, dy) {
+    const nx = clamp(a.x + dx, 0, cols - 1), ny = clamp(a.y + dy, 0, rows - 1);
+    if ((nx === a.x && ny === a.y) || at(nx, ny)) return false;
+    a.x = nx; a.y = ny; return true;
+  }
+  function say(s) { log.unshift(s); if (log.length > 5) log.pop(); }
+  function act(a) {
+    a.e -= D.cost; a.flash = 1; turns++;
+    const p = actors[0];
+    if (a === p) {
+      if (wantX || wantY) { say(step(a, wantX, wantY) ? "you move" : "you bump"); wantX = 0; wantY = 0; return; }
+      if (actors.length < 2) { say("you wait"); return; }
+      let m = actors[1], best = 1e9;                   // no order given: step away from the nearest
+      for (let i = 1; i < actors.length; i++) { const d = Math.abs(actors[i].x - a.x) + Math.abs(actors[i].y - a.y); if (d < best) { best = d; m = actors[i]; } }
+      const dx = a.x - m.x, dy = a.y - m.y, sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+      const ok = Math.abs(dx) >= Math.abs(dy) ? (step(a, sx, 0) || step(a, 0, sy)) : (step(a, 0, sy) || step(a, sx, 0));
+      say(ok ? "you step away" : "you wait");
+      return;
+    }
+    const dx = p.x - a.x, dy = p.y - a.y;              // a monster: toward you, or a bite
+    if (Math.abs(dx) + Math.abs(dy) === 1) { say(a.name + " bites you"); p.flash = 1; bites++; return; }
+    const ok = Math.abs(dx) >= Math.abs(dy) ? (step(a, Math.sign(dx), 0) || step(a, 0, Math.sign(dy))) : (step(a, 0, Math.sign(dy)) || step(a, Math.sign(dx), 0));
+    say(a.name + (ok ? " moves" : " waits"));
+  }
+  function tick() {
+    ticks++;
+    for (const a of actors) a.e += a.speed;            // ← the scheduler: energy by speed
+    for (let i = 1; i < actors.length; i++) { let g = 0; while (actors[i].e >= D.cost && g++ < 4) act(actors[i]); }
+    if (actors[0].e >= D.cost) { waiting = true; waitT = 0; }   // your pool is full: the world waits
+  }
+  function playerGo() { act(actors[0]); waiting = actors[0].e >= D.cost; waitT = 0; }
+  function cx(a) { return gx0 + (a.x + 0.5) * cell; }
+  function cy(a) { return gy0 + (a.y + 0.5) * cell; }
+  return {
+    press(px, py) {
+      const p = actors[0], dx = px - cx(p), dy = py - cy(p);
+      if (Math.abs(dx) >= Math.abs(dy)) { wantX = dx < 0 ? -1 : 1; wantY = 0; } else { wantX = 0; wantY = dy < 0 ? -1 : 1; }
+      if (waiting) playerGo();
+    },
+    frame(dt, t) {
+      stage();
+      for (const a of actors) a.flash = Math.max(0, a.flash - dt * 3);
+      if (waiting) { waitT += dt; if (waitT > D.autoWait) playerGo(); }
+      else { tickT += dt; if (tickT >= D.tickEvery) { tickT = 0; tick(); } }
+      ctx.strokeStyle = "rgba(201,196,228,0.18)"; ctx.lineWidth = 1;   // the grid
+      ctx.beginPath();
+      for (let i = 0; i <= cols; i++) { ctx.moveTo(gx0 + i * cell, gy0); ctx.lineTo(gx0 + i * cell, gy0 + rows * cell); }
+      for (let j = 0; j <= rows; j++) { ctx.moveTo(gx0, gy0 + j * cell); ctx.lineTo(gx0 + cols * cell, gy0 + j * cell); }
+      ctx.stroke();
+      const p = actors[0];
+      for (let i = actors.length - 1; i >= 0; i--) {
+        const a = actors[i], x = cx(a), y = cy(a);
+        if (a.flash > 0) ring(x, y, cell * 0.45, "rgba(232,229,244," + a.flash * 0.8 + ")", 1.5);
+        mote(x, y, i ? Math.atan2(p.y - a.y, p.x - a.x) : 0, a.c, cell * 0.28);
+        rect(x - cell * 0.4, y + cell * 0.36, cell * 0.8, 2.5, "rgba(232,229,244,0.12)");   // the pool, in the grid too
+        rect(x - cell * 0.4, y + cell * 0.36, cell * 0.8 * clamp(a.e / D.cost, 0, 1), 2.5, a.c);
+      }
+      if (wantX || wantY) arrow(cx(p), cy(p), cx(p) + wantX * cell * 0.8, cy(p) + wantY * cell * 0.8, TARGET);
+      const px0 = W * 0.63, bx0 = W * 0.77, bw = W * 0.19, rowH = H * 0.075;   // the panel: pools and the log
+      for (let i = 0; i < actors.length; i++) {
+        const a = actors[i], y = gy0 + i * rowH;
+        label(a.name + " " + a.speed, px0, y + 4, a.c);
+        rect(bx0, y - 1, bw, 6, "rgba(232,229,244,0.1)");
+        rect(bx0, y - 1, bw * clamp(a.e / D.cost, 0, 1), 6, a.c);
+        if (i === 0 && waiting) {
+          const k = 0.5 + 0.5 * Math.sin(t * 8);
+          rect(bx0, y - 1, bw, 6, "rgba(245,193,105," + k * 0.7 + ")");
+          label("your turn — press", bx0 + bw, y + 14, TARGET, "right");
+        }
+      }
+      line(bx0 + bw, gy0 - 4, bx0 + bw, gy0 + actors.length * rowH - 4, DIM, 1);
+      label("cost " + D.cost, bx0 + bw, gy0 + actors.length * rowH + 6, DIM, "right");
+      const ly = gy0 + actors.length * rowH + 20;
+      for (let i = 0; i < log.length; i++) label(log[i], px0, ly + i * 11, "rgba(232,229,244," + (0.85 - i * 0.15) + ")");
+      label("tick " + ticks + " · turns " + turns + " · bites " + bites, W / 2, 12, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Initiative", "Impatient", "you at speed 200 among sluggish monsters — two moves of yours to their one, and the rat is the slow one now", { player: 200, speeds: [60, 40, 50] });
+
+def("K", "Kickdrum", "frames", "beat = t·bpm/60: hops land only on the beat, and a press is judged by its distance to the nearest one — early, late, miss — press to hop on the beat", function (u) {
+  var D = { bpm: 120,          // beats per minute
+            window: 0.1,       // seconds either side of the beat that still count
+            tiles: 8,          // the dance floor
+            hopT: 0.16,        // seconds a hop takes
+            kickHz: 110,       // the kick's pitch
+            label: "beat = t·bpm/60 · Δ = t − beat·60/bpm · |Δ| ≤ w" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, rand, lerp, beep, MOVER, TARGET, HOT, GOOD, BONE, DIM } = u;
+  // Invaders marched to a metronome; a BEAT CLOCK makes the metronome the
+  // rule. one number, bpm, and the running clock give the current beat,
+  // beat = t·bpm/60; its fractional part is the phase, and the kick lamp is
+  // that phase made visible. an input is measured by Δ, its distance in
+  // seconds to the nearest whole beat: inside the window it is a hop —
+  // early or late, but a hop — outside it is a miss and the mote stumbles.
+  // NecroDancer's whole rule. the kick sounds only once you have pressed.
+  const tw = W * 0.82 / D.tiles, tx0 = W * 0.09, lampX = W * 0.12, lampY = H * 0.5;
+  const marks = [];
+  let tile = 0, dir = 1, hop = -1, fromX = 0, toX = 0, lastBeat = -1, kick = 0, pressed = false, userLast = -9, now = 0;
+  let nextAuto = 1, judgeTxt = "", judgeT = 0, judgeC = DIM, hits = 0, misses = 0, stumble = 0;
+  function tileX(i) { return tx0 + (i + 0.5) * tw; }
+  function judge(now) {
+    const period = 60 / D.bpm, b = now * D.bpm / 60;
+    const d = (b - Math.round(b)) * period;            // Δ: seconds early (−) or late (+)
+    marks.push({ d: d, age: 0 }); if (marks.length > 8) marks.shift();
+    if (Math.abs(d) <= D.window) {
+      hits++;
+      const perfect = Math.abs(d) < D.window * 0.3;
+      judgeTxt = perfect ? "perfect" : (d < 0 ? "early −" : "late +") + Math.round(Math.abs(d) * 1000) + " ms";
+      judgeC = perfect ? GOOD : TARGET;
+      if (hop < 0) {                                   // the hop: one tile, on the beat
+        if (tile + dir < 0 || tile + dir >= D.tiles) dir = -dir;
+        fromX = tileX(tile); tile += dir; toX = tileX(tile); hop = 0;
+      }
+    } else { misses++; judgeTxt = "miss · " + Math.round(Math.abs(d) * 1000) + " ms off"; judgeC = HOT; stumble = 0.4; }
+    judgeT = 0.9;
+  }
+  return {
+    press() { pressed = true; userLast = now; judge(now); },
+    frame(dt, t) {
+      stage(); ground();
+      now = t;
+      const period = 60 / D.bpm, beat = t * D.bpm / 60, phase = beat - Math.floor(beat), bi = Math.floor(beat);
+      if (bi !== lastBeat) {                           // a new beat: the kick
+        if (pressed) beep(D.kickHz, 0.1, "sine");      // once per beat, and only after a press
+        lastBeat = bi; kick = 1;
+      }
+      kick = Math.max(0, kick - dt * 5);
+      if (t - userLast > 2 * period) {                 // the autopilot presses near the beat, with human error
+        if (t > nextAuto + period) nextAuto = (bi + 1) * period + rand(-1, 1) * D.window * 1.4;
+        if (t >= nextAuto) { judge(t); nextAuto = (bi + 1) * period + rand(-1, 1) * D.window * 1.4; }
+      }
+      judgeT = Math.max(0, judgeT - dt); stumble = Math.max(0, stumble - dt);
+      for (const m of marks) m.age += dt;
+      while (marks.length && marks[0].age > 2.5) marks.shift();
+      const hx = W * 0.5, sy = H * 0.17, sp = W * 0.18;   // the beat strip: beats slide toward the hit line
+      line(W * 0.1, sy, W * 0.9, sy, DIM, 1);
+      rect(hx - D.window / period * sp, sy - 9, 2 * D.window / period * sp, 18, "rgba(155,226,138,0.18)");
+      line(hx, sy - 11, hx, sy + 11, TARGET, 2);
+      for (let k = -2; k <= 3; k++) {
+        const x = hx + (k - phase) * sp;
+        if (x > W * 0.1 && x < W * 0.9) line(x, sy - 6, x, sy + 6, BONE, 1.5);
+      }
+      for (const m of marks) dot(hx + m.d / period * sp, sy + 14, 2.5, Math.abs(m.d) <= D.window ? "rgba(155,226,138," + (1 - m.age / 2.5) + ")" : "rgba(245,138,138," + (1 - m.age / 2.5) + ")");
+      label("← early · late →", hx, sy + 27, DIM, "center");
+      ring(lampX, lampY, 15, DIM, 1);                  // the kick lamp and the phase hand
+      dot(lampX, lampY, 5 + kick * 8, HOT);
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(lampX, lampY, 15, -TAU / 4, -TAU / 4 + phase * TAU); ctx.stroke();
+      label("kick", lampX, lampY + 28, DIM, "center");
+      for (let i = 0; i < D.tiles; i++) {              // the floor
+        const x = tileX(i);
+        rect(x - tw * 0.46, GY - 3, tw * 0.92, 3, i === tile ? "rgba(138,217,245,0.6)" : "rgba(201,196,228,0.18)");
+      }
+      let mx = tileX(tile), my = GY - 9 - kick * 2, ang = dir > 0 ? 0 : Math.PI;
+      if (hop >= 0) {
+        hop += dt / D.hopT;
+        const k = Math.min(1, hop);
+        mx = lerp(fromX, toX, k); my = GY - 9 - Math.sin(k * Math.PI) * H * 0.12; ang = Math.atan2(-Math.cos(k * Math.PI) * 2, dir);
+        if (hop >= 1) hop = -1;
+      }
+      if (stumble > 0) mx += Math.sin(t * 60) * 3 * stumble;
+      mote(mx, my, ang, stumble > 0 ? HOT : MOVER);
+      if (judgeT > 0) label(judgeTxt, W * 0.6, H * 0.5, judgeC, "center");
+      label("bpm " + D.bpm + " · beat " + beat.toFixed(2) + " · hits " + hits + " · misses " + misses, W / 2, 12, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Kickdrum", "Klezmer", "180 beats a minute and half the window — the hops come thick and fast and the autopilot's human error misses more than it lands", { bpm: 180, window: 0.05 });
+
+def("P", "Pause", "frames", "two clocks in one frame: the world's dt is scaled to 0 while the menu spinner keeps the real dt — pause is a time scale of zero — press to toggle it", function (u) {
+  var D = { scale: 0,          // the world's dt multiplier while paused (0 = frozen solid)
+            every: 3.2,        // the idle toggle: seconds of play…
+            pauseFor: 2,       // …then seconds of pause
+            g: 1.8,            // gravity, ×H per second²
+            spin: 5,           // the spinner, radians per second of UNSCALED time
+            label: "world += dt × scale · menu += dt" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, smooth, MOVER, TARGET, HOT, GOOD, MAGIC, BONE, DIM } = u;
+  // Timescale fed each column dt × scale; a PAUSE is scale = 0 — and the menu
+  // that appears is the giveaway that one frame carries TWO CLOCKS. the
+  // world clock advances by dt × scale: the ball hangs, the orbit stops,
+  // the dust freezes mid-air. the UNSCALED clock advances by dt regardless:
+  // the spinner turns, the "paused for" counter counts, the menu fades in.
+  // every engine has both — Unity's unscaledDeltaTime, Godot's
+  // process_always — and a frame counter that never notices the difference.
+  const puffs = [];
+  for (let i = 0; i < 12; i++) puffs.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0 });
+  let paused = false, phaseT = 0, worldT = 0, realT = 0, pausedFor = 0, menuK = 0, spinA = 0, frames = 0;
+  let x = W * 0.3, y = H * 0.3, vx = W * 0.32, vy = 0;
+  function clock(cx, cy, tt, c, name) {                // a little clock face: one turn per 10 s
+    ring(cx, cy, 11, DIM, 1);
+    const a = tt / 10 * TAU - TAU / 4;
+    line(cx, cy, cx + Math.cos(a) * 9, cy + Math.sin(a) * 9, c, 1.5);
+    label(name + " " + tt.toFixed(1) + " s", cx + 16, cy + 4, c);
+  }
+  return {
+    press() { paused = !paused; phaseT = 0; if (paused) pausedFor = 0; },
+    frame(dt, t) {
+      stage();
+      frames++;
+      phaseT += dt;
+      if (!paused && phaseT > D.every) { paused = true; phaseT = 0; pausedFor = 0; }
+      if (paused && phaseT > D.pauseFor) { paused = false; phaseT = 0; }
+      const wdt = paused ? dt * D.scale : dt;          // ← the world's clock
+      realT += dt; worldT += wdt;                      // ← the menu's clock
+      if (paused) pausedFor += dt;
+      vy += H * D.g * wdt;                             // the world, fed wdt only
+      x += vx * wdt; y += vy * wdt;
+      if (x < 9) { x = 9; vx = Math.abs(vx); }
+      if (x > W - 9) { x = W - 9; vx = -Math.abs(vx); }
+      if (y > GY - 9) {
+        y = GY - 9; vy = -Math.sqrt(2 * D.g * H * H * 0.4);
+        for (let i = 0; i < 4; i++) { const p = puffs[(frames + i) % puffs.length]; p.x = x; p.y = GY - 2; p.vx = (i - 1.5) * W * 0.12; p.vy = -H * 0.15; p.life = 1; }
+      }
+      for (const p of puffs) if (p.life > 0) { p.life -= wdt * 1.4; p.x += p.vx * wdt; p.y += p.vy * wdt; }
+      ground();
+      const ox = W * 0.72, oy = H * 0.36;              // an orbit on the world clock
+      ring(ox, oy, H * 0.13, DIM, 1);
+      dot(ox, oy, 4, TARGET);
+      for (let i = 0; i < 3; i++) { const a = worldT * 1.6 + i * TAU / 3; dot(ox + Math.cos(a) * H * 0.13, oy + Math.sin(a) * H * 0.13, 4, [GOOD, MAGIC, BONE][i]); }
+      for (const p of puffs) if (p.life > 0) dot(p.x, p.y, 2.5, "rgba(232,229,244," + p.life * 0.5 + ")");
+      mote(x, y, Math.atan2(vy, vx));
+      clock(W * 0.07, H * 0.1, worldT, paused ? HOT : MOVER, "world");
+      clock(W * 0.55, H * 0.1, realT, BONE, "real");
+      label("frame " + frames, W - 6, H * 0.1 + 4, DIM, "right");
+      menuK += ((paused ? 1 : 0) - menuK) * smooth(10, dt);   // the menu animates on the real clock
+      spinA += D.spin * dt;
+      if (menuK > 0.01) {
+        rect(0, H * 0.2, W, H * 0.5, "rgba(19,16,32," + menuK * 0.55 + ")");
+        const mx = W * 0.5, my = H * 0.45;
+        ctx.strokeStyle = "rgba(245,193,105," + menuK + ")"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(mx, my, 14, spinA, spinA + TAU * 0.72); ctx.stroke();
+        label("PAUSED", mx, my + 32, "rgba(232,229,244," + menuK + ")", "center");
+        label("for " + pausedFor.toFixed(1) + " s (unscaled) · world dt × " + D.scale, mx, my + 45, "rgba(245,193,105," + menuK + ")", "center");
+      }
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Pause", "Pausebullet", "the paused world runs at a twentieth speed instead of freezing — the bullet-time menu, the ball still creeping while the spinner spins", { scale: 0.05, pauseFor: 3.5 });
+
+def("C", "Cooldown", "frames", "named countdowns — dash 0.4 s, shot 0.15 s, heal 5 s — a use starts its timer, and it is refused until that hits zero — press to fire everything", function (u) {
+  var D = { dash: 0.4, shot: 0.15, heal: 5,   // the cooldowns, seconds
+            tryEvery: 0.3,                    // the autopilot tries a random ability this often
+            dashLen: 0.22,                    // dash distance, ×W
+            label: "use: t[k] ≤ 0 ? t[k] = cd[k] : refused" };
+  const { W, H, GY, stage, ground, dot, ring, line, rect, mote, label, rand, clamp, MOVER, HOT, GOOD, DIM } = u;
+  // Dash had one timer; a COOLDOWN MANAGER has a list of them — a name, a
+  // length, a remaining time — all counted down by the same dt in one loop.
+  // an ability asks "is mine at zero?": yes, act and reset the timer to its
+  // length; no, refuse (the grey flash and a refused count, so the player
+  // learns the rhythm). the bars ARE the timers: full at the moment of use,
+  // draining to empty, a lamp when ready. a heal that takes five seconds
+  // and a shot that takes a sixth share the same three lines of code.
+  const T = [{ name: "dash", cd: D.dash, c: MOVER }, { name: "shot", cd: D.shot, c: HOT }, { name: "heal", cd: D.heal, c: GOOD }];
+  for (const a of T) { a.t = 0; a.uses = 0; a.refused = 0; a.flash = 0; a.glow = 0; }
+  const bullets = [];
+  for (let i = 0; i < 10; i++) bullets.push({ x: 0, y: 0, vx: 0, on: false });
+  let x = W * 0.4, dir = 1, dashT = 0, tryT = 0, hp = 0.6, healR = 0, bi = 0, streakX = 0, streakK = 0;
+  function use(k) {
+    const a = T[k];
+    if (a.t > 0) { a.refused++; a.flash = 0.3; return; }   // ← refused: still cooling
+    a.t = a.cd; a.uses++; a.glow = 0.4;                     // ← used: the timer restarts
+    if (k === 0) { dashT = 0.15; streakX = x; streakK = 1; }
+    if (k === 1) { const b = bullets[bi]; bi = (bi + 1) % bullets.length; b.x = x + dir * 12; b.y = GY - 11; b.vx = dir * W * 1.3; b.on = true; }
+    if (k === 2) { hp = Math.min(1, hp + 0.3); healR = 1; }
+  }
+  return {
+    press() { for (let k = 0; k < T.length; k++) use(k); },
+    frame(dt, t) {
+      stage(); ground();
+      for (const a of T) { a.t = Math.max(0, a.t - dt); a.flash = Math.max(0, a.flash - dt); a.glow = Math.max(0, a.glow - dt); }   // one loop counts them all
+      tryT += dt;
+      if (tryT > D.tryEvery) { tryT = 0; use(Math.floor(rand(0, T.length)) % T.length); }
+      if (dashT > 0) { dashT -= dt; x += dir * W * D.dashLen / 0.15 * dt; }
+      if (x > W * 0.8) { x = W * 0.8; dir = -1; } if (x < W * 0.2) { x = W * 0.2; dir = 1; }
+      hp = Math.max(0.05, hp - dt * 0.04);
+      healR = Math.max(0, healR - dt * 1.5); streakK = Math.max(0, streakK - dt * 3);
+      for (const b of bullets) if (b.on) { b.x += b.vx * dt; if (b.x < -10 || b.x > W + 10) b.on = false; }
+      const bx0 = W * 0.2, bw = W * 0.46;              // the timers, one bar each
+      for (let i = 0; i < T.length; i++) {
+        const a = T[i], y = H * 0.1 + i * H * 0.12;
+        label(a.name, W * 0.05, y + 4, a.c);
+        rect(bx0, y - 1, bw, 7, "rgba(232,229,244,0.1)");
+        rect(bx0, y - 1, bw * clamp(a.t / a.cd, 0, 1), 7, a.c);
+        if (a.flash > 0) { rect(bx0, y - 1, bw, 7, "rgba(160,160,170," + a.flash * 1.5 + ")"); label("✗ refused", bx0 + bw / 2, y + 4, HOT, "center"); }
+        if (a.t <= 0) { dot(bx0 + bw + 8, y + 2.5, 3.5, GOOD); label("ready", bx0 + bw + 15, y + 6, GOOD); }
+        else label(a.t.toFixed(2) + " s", bx0 + bw + 6, y + 6, a.c);
+        label(a.uses + " · " + a.refused, W * 0.97, y + 6, DIM, "right");
+        if (a.glow > 0) ring(bx0 + bw * 0.5, y + 2.5, bw * 0.5 + 4, "rgba(232,229,244," + a.glow + ")", 1);
+      }
+      label("used · refused", W * 0.97, H * 0.1 - 10, DIM, "right");
+      if (streakK > 0) line(streakX, GY - 9, x, GY - 9, "rgba(138,217,245," + streakK * 0.7 + ")", 5);
+      for (const b of bullets) if (b.on) dot(b.x, b.y, 2.5, HOT);
+      if (healR > 0) ring(x, GY - 9, (1 - healR) * 26 + 8, "rgba(155,226,138," + healR + ")", 2);
+      rect(x - 12, GY - 26, 24, 3, "rgba(232,229,244,0.12)");
+      rect(x - 12, GY - 26, 24 * hp, 3, GOOD);
+      mote(x, GY - 9, dir > 0 ? 0 : Math.PI, dashT > 0 ? "#DFF4FF" : MOVER);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Cooldown", "Cheatmode", "every cooldown near zero — the bars barely fill before they empty, nothing is ever refused, and the room fills with bullets", { dash: 0.03, shot: 0.03, heal: 0.15 });
+
+def("X", "Xtents", "frames", "the camera centres on the group's bounding box and zooms so everyone fits — padded, clamped to min..max (Smash) — press to scatter or gather", function (u) {
+  var D = { pad: 0.12,         // padding around the box, ×W each side
+            minZoom: 0.55,     // the zoom floor: never further out than this
+            maxZoom: 1.7,      // the zoom ceiling: never closer than this
+            omega: 4,          // the framing spring (ζ = 1) for centre and zoom
+            phase: 4.5,        // seconds between the idle scatter and gather
+            world: 2.6,        // the arena, ×W
+            label: "z = clamp(min(W/(bw+2p), H/(bh+2p)), min, max)" };
+  const { ctx, W, H, GY, stage, dot, line, rect, poly, mote, label, rand, rng, clamp, MOVER, TARGET, HOT, GOOD, MAGIC, BONE, DIM } = u;
+  // Camera followed one mote; MULTI-TARGET FRAMING follows a GROUP. every
+  // frame: the bounding box of all the fighters, grown by a padding; the
+  // camera centre is the box's centre, and the zoom is whatever makes the
+  // box fit the screen — the smaller of W / box width and H / box height —
+  // clamped so it never zooms in past max nor out past min (the blast zones
+  // live out there). centre and zoom both chase their targets with Camera's
+  // ζ = 1 spring. drawing is one transform: translate, scale, translate.
+  const AW = W * D.world, seed = rng(3);
+  const posts = [];
+  for (let i = 0; i < 9; i++) posts.push({ x: seed() * AW, h: 10 + seed() * H * 0.12 });
+  const F = [MOVER, HOT, GOOD, MAGIC].map((c, i) => ({ c: c, x: AW / 2 + (i - 1.5) * W * 0.18, tx: 0, hop: i * 0.7, moving: false }));
+  let gather = true, phaseT = 0, cx = AW / 2, cvx = 0, cy = GY - H * 0.05, cvy = 0, z = 1, zv = 0;
+  function pick() { for (const f of F) f.tx = gather ? AW / 2 + rand(-W * 0.22, W * 0.22) : rand(W * 0.12, AW - W * 0.12); }
+  pick();
+  return {
+    press() { gather = !gather; pick(); phaseT = 0; },
+    frame(dt, t) {
+      stage();
+      phaseT += dt;
+      if (phaseT > D.phase) { phaseT = 0; gather = !gather; pick(); }
+      let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+      for (const f of F) {
+        const d = f.tx - f.x, v = W * 0.35;
+        f.moving = Math.abs(d) > 3;
+        if (f.moving) { f.x += clamp(d, -v * dt, v * dt); f.hop += dt * 9; }
+        f.y = GY - 9 - (f.moving ? Math.abs(Math.sin(f.hop)) * H * 0.07 : 0);
+        x0 = Math.min(x0, f.x - 9); x1 = Math.max(x1, f.x + 9); y0 = Math.min(y0, f.y - 9); y1 = Math.max(y1, f.y + 9);
+      }
+      const p = W * D.pad, bw = x1 - x0, bh = y1 - y0;   // the group box, then the framing rule
+      const zt = clamp(Math.min(W / (bw + 2 * p), H / (bh + 2 * p)), D.minZoom, D.maxZoom);
+      const gx = (x0 + x1) / 2, gy = (y0 + y1) / 2, w = D.omega;
+      cvx += (w * w * (gx - cx) - 2 * w * cvx) * dt; cx += cvx * dt;   // ζ = 1: never overshoots
+      cvy += (w * w * (gy - cy) - 2 * w * cvy) * dt; cy += cvy * dt;
+      zv += (w * w * (zt - z) - 2 * w * zv) * dt; z += zv * dt;
+      z = clamp(z, D.minZoom * 0.5, D.maxZoom * 2);
+      ctx.save();
+      ctx.translate(W / 2, H * 0.55); ctx.scale(z, z); ctx.translate(-cx, -cy);   // ← the camera, as one transform
+      rect(0, GY, AW, H * 0.12, "rgba(201,196,228,0.14)");
+      line(0, GY, AW, GY, "rgba(201,196,228,0.5)", 1.5);
+      for (const q of posts) rect(q.x - 3, GY - q.h, 6, q.h, BONE);
+      for (const f of F) { dot(f.x, GY - 2, 6, "rgba(0,0,0,0.35)"); mote(f.x, f.y, f.tx < f.x ? Math.PI : 0, f.c); }
+      ctx.restore();
+      const sx = v => (v - cx) * z + W / 2, sy = v => (v - cy) * z + H * 0.55;   // world → screen
+      poly([[sx(x0), sy(y0)], [sx(x1), sy(y0)], [sx(x1), sy(y1)], [sx(x0), sy(y1)]], "rgba(245,193,105,0.7)", 1);
+      ctx.setLineDash([3, 3]);
+      poly([[sx(x0 - p), sy(y0 - p)], [sx(x1 + p), sy(y0 - p)], [sx(x1 + p), sy(y1 + p)], [sx(x0 - p), sy(y1 + p)]], "rgba(245,193,105,0.35)", 1);
+      ctx.setLineDash([]);
+      label("box " + Math.round(bw) + " × " + Math.round(bh) + " + pad " + Math.round(p), clamp(sx(gx), 40, W - 40), clamp(sy(y0 - p) - 6, 30, H - 20), "rgba(245,193,105,0.8)", "center");
+      const mw = W * 0.8, mx0 = W * 0.1, my = 12;      // the minimap: the arena and the window
+      line(mx0, my, mx0 + mw, my, DIM, 1);
+      const wl = mx0 + (cx - W / 2 / z) / AW * mw, ww = W / z / AW * mw;
+      poly([[wl, my - 5], [wl + ww, my - 5], [wl + ww, my + 5], [wl, my + 5]], "rgba(232,229,244,0.5)", 1);
+      for (const f of F) dot(mx0 + f.x / AW * mw, my, 2.5, f.c);
+      label("zoom " + z.toFixed(2) + " → " + zt.toFixed(2) + " · min " + D.minZoom + " · max " + D.maxZoom + " · " + (gather ? "gather" : "scatter"), W / 2, 28, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Xtents", "Xtrawide", "two and a half times the padding and a lazy spring — the fighters float in a wide frame that drifts after them like a broadcast crane", { pad: 0.3, omega: 1.5 });
+
+def("P", "Pan", "frames", "the view is clamped to the level; cross a room's edge and the camera slides one whole screen over (Zelda) — press to send the mote", function (u) {
+  var D = { mode: "rooms",     // "rooms": flip screen by screen · "scroll": a bounded smooth follow
+            rooms: 2,          // rooms per side (a 2 × 2 level)
+            slide: 0.55,       // seconds the room flip takes
+            speed: 0.55,       // walking speed, ×W per second
+            lag: 5,            // the scroll mode's follow rate
+            label: "cam = clamp(focus, 0, level − W) · flip: tween" };
+  const { ctx, W, H, stage, dot, ring, line, rect, poly, mote, label, rng, rand, clamp, lerp, ease, smooth, len, MOVER, TARGET, BONE, DIM } = u;
+  // Camera's world was one long strip; here the level is a grid of ROOMS,
+  // each exactly one screen, and the camera has BOUNDS: it may never show
+  // past the level's edge, so its position is a clamp. in rooms mode the
+  // camera sits on a room corner and, when the mote crosses a doorway, TWEENS
+  // one whole screen to the next corner (the mote frozen, Zelda-style) — the
+  // count of flips is the count of rooms visited. in scroll mode it follows
+  // the mote with a lag and the clamp alone stops it at the walls.
+  const N = D.rooms, LW = W * N, LH = H * N, seed = rng(5);
+  const stuff = [];
+  for (let r = 0; r < N * N; r++)
+    for (let i = 0; i < 4; i++) stuff.push({ x: (r % N) * W + W * (0.12 + seed() * 0.76), y: Math.floor(r / N) * H + H * (0.14 + seed() * 0.7), w: 8 + seed() * W * 0.06, h: 8 + seed() * H * 0.06 });
+  const path = [];
+  let mx = W * 0.5, my = H * 0.5, gx = mx, gy = my, camx = 0, camy = 0, fx = 0, fy = 0, tox = 0, toy = 0, tween = -1, idleT = 0, flips = 0, rx = 0, ry = 0;
+  function roomOf(x, y) { return [clamp(Math.floor(x / W), 0, N - 1), clamp(Math.floor(y / H), 0, N - 1)]; }
+  function route(x, y) {                               // waypoints through the doorways
+    const a = roomOf(mx, my), b = roomOf(x, y);
+    let ax = a[0], ay = a[1];
+    path.length = 0;
+    while (ax !== b[0]) { const nx = ax + (b[0] > ax ? 1 : -1); path.push([W * Math.max(ax, nx), (ay + 0.5) * H]); ax = nx; }
+    while (ay !== b[1]) { const ny = ay + (b[1] > ay ? 1 : -1); path.push([(ax + 0.5) * W, H * Math.max(ay, ny)]); ay = ny; }
+    path.push([x, y]); gx = x; gy = y;
+  }
+  return {
+    press(px, py) { route(clamp(camx + px, 14, LW - 14), clamp(camy + py, 14, LH - 14)); idleT = 0; },
+    frame(dt, t) {
+      stage();
+      const frozen = D.mode === "rooms" && tween >= 0;
+      if (!frozen && path.length) {                    // walk the route
+        const p = path[0], dx = p[0] - mx, dy = p[1] - my, d = len(dx, dy), step = W * D.speed * dt;
+        if (d <= step || d < 0.5) { mx = p[0]; my = p[1]; path.shift(); }
+        else { mx += dx / d * step; my += dy / d * step; }
+      }
+      if (!path.length) {                              // idle: pick a random room and a point in it
+        idleT += dt;
+        if (idleT > 1.2) { idleT = 0; const r = Math.floor(rand(0, N * N)); route((r % N) * W + rand(W * 0.15, W * 0.85), Math.floor(r / N) * H + rand(H * 0.15, H * 0.85)); }
+      }
+      const room = roomOf(mx, my);
+      if (D.mode === "rooms") {
+        if (room[0] !== rx || room[1] !== ry) {        // a doorway crossed: tween one screen
+          rx = room[0]; ry = room[1]; fx = camx; fy = camy; tox = rx * W; toy = ry * H; tween = 0; flips++;
+        }
+        if (tween >= 0) { tween += dt / D.slide; const k = ease(Math.min(1, tween)); camx = lerp(fx, tox, k); camy = lerp(fy, toy, k); if (tween >= 1) tween = -1; }
+      } else {
+        const k = smooth(D.lag, dt);                   // a bounded smooth follow
+        camx += (clamp(mx - W / 2, 0, LW - W) - camx) * k;
+        camy += (clamp(my - H / 2, 0, LH - H) - camy) * k;
+      }
+      ctx.save();
+      ctx.translate(-camx, -camy);                     // ← the camera
+      for (let r = 0; r < N * N; r++) rect((r % N) * W, Math.floor(r / N) * H, W, H, (r % 2 === Math.floor(r / N) % 2) ? "rgba(138,217,245,0.04)" : "rgba(245,193,105,0.04)");
+      for (const s of stuff) rect(s.x, s.y, s.w, s.h, "rgba(201,196,228,0.22)");
+      ctx.strokeStyle = BONE; ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let k = 1; k < N; k++)                      // the seams, with doorways
+        for (let j = 0; j < N; j++) {
+          ctx.moveTo(k * W, j * H); ctx.lineTo(k * W, (j + 0.5) * H - H * 0.1);
+          ctx.moveTo(k * W, (j + 0.5) * H + H * 0.1); ctx.lineTo(k * W, (j + 1) * H);
+          ctx.moveTo(j * W, k * H); ctx.lineTo((j + 0.5) * W - W * 0.1, k * H);
+          ctx.moveTo((j + 0.5) * W + W * 0.1, k * H); ctx.lineTo((j + 1) * W, k * H);
+        }
+      ctx.rect(1.5, 1.5, LW - 3, LH - 3);
+      ctx.stroke();
+      ring(gx, gy, 5, TARGET, 1.5);
+      for (let i = 0; i + 1 < path.length; i++) line(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1], "rgba(245,193,105,0.3)", 1);
+      const hd = path.length ? Math.atan2(path[0][1] - my, path[0][0] - mx) : 0;
+      mote(mx, my, hd, frozen ? BONE : MOVER);
+      ctx.restore();
+      const ms = W * 0.09, mx0 = W - 8 - ms * N, my0 = 8;   // the minimap: rooms, window, mote
+      for (let r = 0; r < N * N; r++) poly([[mx0 + (r % N) * ms, my0 + Math.floor(r / N) * ms], [mx0 + (r % N + 1) * ms, my0 + Math.floor(r / N) * ms], [mx0 + (r % N + 1) * ms, my0 + (Math.floor(r / N) + 1) * ms], [mx0 + (r % N) * ms, my0 + (Math.floor(r / N) + 1) * ms]], DIM, 1);
+      poly([[mx0 + camx / LW * ms * N, my0 + camy / LH * ms * N], [mx0 + (camx + W) / LW * ms * N, my0 + camy / LH * ms * N], [mx0 + (camx + W) / LW * ms * N, my0 + (camy + H) / LH * ms * N], [mx0 + camx / LW * ms * N, my0 + (camy + H) / LH * ms * N]], TARGET, 1.5);
+      dot(mx0 + mx / LW * ms * N, my0 + my / LH * ms * N, 2, MOVER);
+      label(D.mode === "rooms" ? "room (" + rx + ", " + ry + ") · flips " + flips + (tween >= 0 ? " · sliding " + (tween * D.slide).toFixed(2) + " s" : "")
+                               : "cam (" + Math.round(camx) + ", " + Math.round(camy) + ") in 0.." + Math.round(LW - W) + " × 0.." + Math.round(LH - H), 8, 14);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Pan", "Pushscroll", "no rooms at all — the camera follows the mote smoothly and the clamp alone stops it at the level's edges", { mode: "scroll", lag: 4 });
+
+def("N", "Nudge", "frames", "a shot kicks the camera back along the recoil line; a spring returns it — a punch, not noise (the shake beside it is) — press to fire at your click", function (u) {
+  var D = { kick: 0.06,        // the camera kick, ×W per shot
+            omega: 18,         // the return spring's ω, rad/s
+            zeta: 0.5,         // its damping ratio (under 1 = a little overshoot)
+            trauma: 0.55,      // trauma a shot adds to the shake panel
+            shakeAmp: 0.05,    // the shake's reach at trauma 1, ×W
+            shakeFreq: 22,     // the noise's speed
+            every: 1.3,        // the autopilot fires this often
+            label: "kick: x −= k·dir → spring · shake: noise·trauma²" };
+  const { ctx, W, H, GY, stage, dot, ring, line, rect, arrow, mote, label, rand, clamp, len, noise, TARGET, HOT, MAGIC, BONE, DIM } = u;
+  // chapter 6's screen shake is NOISE scaled by trauma²: random, directionless,
+  // and it says "rumble". a CAMERA KICK is the opposite: one DIRECTIONAL
+  // displacement — straight back along the recoil line, the exact opposite
+  // of the shot — and Damp's spring returns it, with a little overshoot if ζ
+  // is under 1. it says "punch". the two panels get the same shots; the
+  // traces underneath are the camera offsets: one clean spike per shot on
+  // the left, a decaying scribble on the right.
+  const pw = W / 2, hist = [new Float32Array(48), new Float32Array(48)];
+  const P = [{ name: "kick", x: 0, y: 0, vx: 0, vy: 0 }, { name: "shake", x: 0, y: 0, trauma: 0 }];
+  const B = [{ x: 0, y: 0, vx: 0, vy: 0, life: 0 }, { x: 0, y: 0, vx: 0, vy: 0, life: 0 }];
+  const gx = pw * 0.3, gy = GY - 9;
+  let aimX = pw * 0.75, aimY = H * 0.35, fireT = 0, hi = 0, shots = 0;
+  function fire() {
+    const dx = aimX - gx, dy = aimY - gy, d = Math.max(1, len(dx, dy)), ux = dx / d, uy = dy / d;
+    shots++;
+    P[0].x -= ux * W * D.kick; P[0].y -= uy * W * D.kick;   // ← the kick: straight back from the shot
+    P[1].trauma = Math.min(1, P[1].trauma + D.trauma);      // ← the shake: more trauma
+    for (const b of B) { b.x = gx + ux * 14; b.y = gy + uy * 14; b.vx = ux * W * 1.4; b.vy = uy * W * 1.4; b.life = d / (W * 1.4); }
+  }
+  return {
+    press(px, py) { aimX = clamp(px % pw, 10, pw - 10); aimY = clamp(py, 10, GY - 4); fire(); fireT = 0; },
+    frame(dt, t) {
+      stage();
+      fireT += dt;
+      if (fireT > D.every) { fireT = 0; aimX = rand(pw * 0.5, pw * 0.95); aimY = rand(H * 0.15, GY - 20); fire(); }
+      const k = P[0], n = Math.max(1, Math.ceil(D.omega * dt / 0.35)), h = dt / n;   // the spring, in safe steps
+      for (let i = 0; i < n; i++) {
+        k.vx += (-D.omega * D.omega * k.x - 2 * D.zeta * D.omega * k.vx) * h; k.x += k.vx * h;
+        k.vy += (-D.omega * D.omega * k.y - 2 * D.zeta * D.omega * k.vy) * h; k.y += k.vy * h;
+      }
+      const s = P[1];
+      s.trauma = Math.max(0, s.trauma - dt * 0.9);
+      const amp = W * D.shakeAmp * s.trauma * s.trauma;
+      s.x = noise(t * D.shakeFreq) * amp; s.y = noise(t * D.shakeFreq + 57.3) * amp;
+      for (const b of B) if (b.life > 0) { b.life -= dt; b.x += b.vx * dt; b.y += b.vy * dt; }
+      hist[0][hi] = len(k.x, k.y); hist[1][hi] = len(s.x, s.y); hi = (hi + 1) % 48;
+      for (let i = 0; i < 2; i++) {
+        const p = P[i], x0 = i * pw;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(x0, 0, pw, H); ctx.clip();
+        ctx.translate(x0 + p.x, p.y);                  // ← the camera offset moves the whole scene
+        line(-pw, GY, pw * 2, GY, "rgba(201,196,228,0.5)", 1.5);
+        rect(pw * 0.55, GY - H * 0.18, 5, H * 0.18, BONE);
+        rect(pw * 0.85, GY - H * 0.1, 5, H * 0.1, BONE);
+        ring(aimX, aimY, 5, TARGET, 1.5);
+        const a = Math.atan2(aimY - gy, aimX - gx);
+        line(gx, gy, gx + Math.cos(a) * 15, gy + Math.sin(a) * 15, BONE, 3);
+        mote(gx, gy, a);
+        if (B[i].life > 0) dot(B[i].x, B[i].y, 2.5, HOT);
+        ctx.restore();
+        if (i) line(pw, 0, pw, H, DIM, 1);
+        const cx = x0 + pw / 2, cy = H * 0.2;          // the camera's offset, drawn ×3
+        ring(cx, cy, 3, DIM, 1);
+        arrow(cx, cy, cx + p.x * 3, cy + p.y * 3, i ? MAGIC : HOT);
+        label(p.name + " · offset " + Math.round(len(p.x, p.y)) + " px (×3)", cx, 12, i ? MAGIC : HOT, "center");
+        const tx0 = x0 + pw * 0.08, tw = pw * 0.84, ty = H - 20, th = H * 0.08;   // the trace: |offset| over the last 48 frames
+        line(tx0, ty, tx0 + tw, ty, DIM, 1);
+        ctx.strokeStyle = i ? MAGIC : HOT; ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let j = 0; j < 48; j++) {
+          const v = hist[i][(hi + j) % 48], x = tx0 + j / 47 * tw, y = ty - Math.min(th, v / (W * D.kick) * th);
+          if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+      }
+      label("shots " + shots + " · trauma " + s.trauma.toFixed(2), W / 2, H * 0.3, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Nudge", "Nailgun", "four shots a second, a small kick and a very stiff spring — a rattle of tiny directional punches instead of one big one", { kick: 0.025, omega: 40, every: 0.25 });
+
+def("Z", "Zoompunch", "frames", "a hit zooms in about the impact point and springs back — scale about a focus: p' = f + (p − f)·z — press to hit; click a corner for the death dolly", function (u) {
+  var D = { punch: 0.35,       // zoom added by a hit (1 → 1.35)
+            omega: 14,         // the punch spring's ω
+            zeta: 0.4,         // its damping (a little wobble)
+            dollyZoom: 2.3,    // the death zoom
+            dolly: 2.6,        // seconds the death dolly takes
+            every: 1.5,        // the autopilot's hits
+            label: "p' = f + (p − f)·z · punch: spring · dolly: ease" };
+  const { ctx, W, H, GY, TAU, stage, ground, ring, line, rect, mote, label, ease, lerp, MOVER, TARGET, HOT, DIM } = u;
+  // Camera moved the window; a ZOOM scales it, and the only question is
+  // ABOUT WHAT POINT. scaling about the focus f — translate to f, scale by
+  // z, translate back — leaves f exactly where it was and pulls everything
+  // else toward it: p' = f + (p − f)·z. a ZOOM PUNCH sets f at the impact,
+  // bumps z by a little and lets a wobbly spring bring it home in a quarter
+  // of a second. the DEATH DOLLY is the same transform with an ease instead
+  // of a spring: seconds long, about the loser. the strip is z over time.
+  const F = [{ x: W * 0.36, c: MOVER, dir: 1 }, { x: W * 0.64, c: HOT, dir: -1 }];
+  for (const f of F) { f.lunge = -1; f.recoil = 0; f.down = 0; }
+  const zh = new Float32Array(60);
+  let z = 1, zv = 0, fx = W / 2, fy = GY - 12, att = 0, hitT = 0, spark = 0, sx = 0, sy = 0, hits = 0, zi = 0;
+  let dolly = -1, loser = 1, dollyFrom = 1;
+  function hit(i) { const a = F[i]; if (a.lunge >= 0 || dolly >= 0) return; a.lunge = 0; att = i; }
+  return {
+    press(px, py) {
+      const corner = (px < W * 0.2 || px > W * 0.8) && (py < H * 0.2 || py > H * 0.8);
+      if (corner && dolly < 0) { loser = px < W / 2 ? 0 : 1; dolly = 0; dollyFrom = z; }
+      else hit(att ^ 1);
+    },
+    frame(dt, t) {
+      stage();
+      hitT += dt;
+      if (hitT > D.every && dolly < 0) { hitT = 0; hit(att ^ 1); }
+      for (let i = 0; i < 2; i++) {
+        const a = F[i], b = F[i ^ 1];
+        if (a.lunge >= 0) {
+          const was = a.lunge;
+          a.lunge += dt / 0.28;
+          if (was < 0.5 && a.lunge >= 0.5) {           // the moment of impact
+            fx = (a.x + b.x) / 2; fy = GY - 12; sx = fx; sy = fy; spark = 1; hits++;
+            z += D.punch;                              // ← the punch: z bumped, the spring will bring it home
+            b.recoil = 1;
+          }
+          if (a.lunge >= 1) a.lunge = -1;
+        }
+        a.recoil = Math.max(0, a.recoil - dt * 3);
+      }
+      spark = Math.max(0, spark - dt * 4);
+      if (dolly >= 0) {                                // the death dolly: an ease, not a spring
+        dolly += dt;
+        const k = ease(Math.min(1, dolly / D.dolly));
+        const L = F[loser];
+        L.down = Math.min(1, L.down + dt * 3);
+        fx = L.x; fy = GY - 6;
+        z = lerp(dollyFrom, D.dollyZoom, k); zv = 0;
+        if (dolly > D.dolly + 0.8) { dolly = -1; L.down = 0; }
+      } else {
+        const n = Math.max(1, Math.ceil(D.omega * dt / 0.35)), h = dt / n;
+        for (let i = 0; i < n; i++) { zv += (D.omega * D.omega * (1 - z) - 2 * D.zeta * D.omega * zv) * h; z += zv * h; }
+        for (const f of F) f.down = Math.max(0, f.down - dt * 2);
+      }
+      z = Math.max(0.3, z);
+      zh[zi] = z; zi = (zi + 1) % 60;
+      ctx.save();
+      ctx.translate(fx, fy); ctx.scale(z, z); ctx.translate(-fx, -fy);   // ← scale about the focus
+      ground();
+      for (let i = 0; i < 5; i++) rect(W * (0.1 + i * 0.2) - 2, GY - H * 0.08 - i % 2 * H * 0.05, 4, H * 0.08 + i % 2 * H * 0.05, "rgba(201,196,228,0.35)");
+      for (let i = 0; i < 2; i++) {
+        const a = F[i], b = F[i ^ 1];
+        let x = a.x, y = GY - 12 + Math.sin(t * 6 + i) * 1.5;
+        if (a.lunge >= 0) x += (b.x - a.x) * 0.55 * Math.sin(Math.min(1, a.lunge) * Math.PI);
+        x -= a.dir * a.recoil * W * 0.05;
+        const ang = a.down > 0 ? a.dir * a.down * TAU / 4 : (a.dir > 0 ? 0 : Math.PI);
+        mote(x, y + a.down * 6, ang, a.c);
+      }
+      if (spark > 0) for (let i = 0; i < 8; i++) { const an = i / 8 * TAU + 0.4, r0 = 5, r1 = 6 + (1 - spark) * 16; line(sx + Math.cos(an) * r0, sy + Math.sin(an) * r0, sx + Math.cos(an) * r1, sy + Math.sin(an) * r1, "rgba(245,193,105," + spark + ")", 2); }
+      ctx.restore();
+      ring(fx, fy, 6, TARGET, 1);                      // the focus: the one point that does not move
+      line(fx - 10, fy, fx + 10, fy, TARGET, 1); line(fx, fy - 10, fx, fy + 10, TARGET, 1);
+      label("f · z = " + z.toFixed(2), fx + 12, fy - 8, TARGET);
+      const gx0 = W * 0.1, gw = W * 0.8, gy0 = 30, gh = 22;   // z over the last second
+      line(gx0, gy0, gx0 + gw, gy0, DIM, 1);
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let j = 0; j < 60; j++) { const v = zh[(zi + j) % 60] || 1, x = gx0 + j / 59 * gw, y = gy0 - (v - 1) / (D.dollyZoom - 1 || 1) * gh; if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+      ctx.stroke();
+      label("z = 1", gx0 - 2, gy0 + 3, DIM, "right");
+      label("hits " + hits + (dolly >= 0 ? " · death dolly " + Math.min(D.dolly, dolly).toFixed(1) + " / " + D.dolly + " s" : " · corners: dolly"), W / 2, 12, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Zoompunch", "Zoomslow", "a gentle punch on a soft spring and a five-second dolly — the art-film cut, every zoom a slow breath", { punch: 0.12, omega: 6, dolly: 5 });
+
+def("T", "Tracking", "frames", "the camera rides a Bézier with its look-at pinned to the target and its fov keyframed along the rail — map + what it sees — press to move the target", function (u) {
+  var D = { rail: [[0.08, 0.88], [0.08, 0.1], [0.92, 0.1], [0.92, 0.88]],   // the cubic's four control points, ×W and ×H
+            fovKeys: [[0, 75], [0.5, 32], [1, 85]],   // keyframes: [u along the rail, fov in degrees]
+            period: 9,          // seconds for one ride there and back
+            range: 0.5,         // how far the frustum is drawn, ×W
+            wander: 3,          // seconds between the target's wanders
+            label: "cam = B(u) · look-at target · fov = keys(u)" };
+  const { ctx, W, H, TAU, stage, dot, ring, line, rect, poly, mote, label, rng, rand, clamp, lerp, len, wrapAngle, MOVER, TARGET, GOOD, BONE, DIM } = u;
+  // a CUTSCENE CAMERA is three curves evaluated at one parameter u. its
+  // position rides Bezier's cubic, B(u); its heading is Lookat's atan2 to
+  // the target, whatever the rail does; its FIELD OF VIEW is a list of
+  // KEYFRAMES lerped by u — wide at the ends, tight in the middle. the
+  // wedge on the map is the frustum, and the inset renders what falls
+  // inside it: anything within ±fov/2 of the look direction, placed by
+  // tan(angle)/tan(fov/2) and sized by 1/distance.
+  const seed = rng(9), posts = [];
+  for (let i = 0; i < 7; i++) posts.push({ x: W * (0.25 + seed() * 0.5), y: H * (0.28 + seed() * 0.5), h: 0.5 + seed() });
+  const ix = W * 0.6, iy = H * 0.05, iw = W * 0.36, ih = H * 0.3;
+  let tx = W * 0.5, ty = H * 0.55, gx = tx, gy = ty, wanderT = 0;
+  function B(u) {
+    const p = D.rail, a = 1 - u;
+    return { x: W * (a * a * a * p[0][0] + 3 * a * a * u * p[1][0] + 3 * a * u * u * p[2][0] + u * u * u * p[3][0]),
+             y: H * (a * a * a * p[0][1] + 3 * a * a * u * p[1][1] + 3 * a * u * u * p[2][1] + u * u * u * p[3][1]) };
+  }
+  function fovAt(u) {                                  // the keyframes, lerped
+    const k = D.fovKeys;
+    if (k.length < 2) return (k.length ? k[0][1] : 60) * TAU / 360;
+    if (u <= k[0][0]) return k[0][1] * TAU / 360;
+    for (let i = 1; i < k.length; i++)
+      if (u <= k[i][0]) { const s = (u - k[i - 1][0]) / ((k[i][0] - k[i - 1][0]) || 1); return lerp(k[i - 1][1], k[i][1], clamp(s, 0, 1)) * TAU / 360; }
+    return k[k.length - 1][1] * TAU / 360;
+  }
+  return {
+    press(px, py) { gx = clamp(px, W * 0.1, W * 0.9); gy = clamp(py, H * 0.15, H * 0.85); wanderT = 0; },
+    frame(dt, t) {
+      stage();
+      wanderT += dt;
+      if (wanderT > D.wander) { wanderT = 0; gx = rand(W * 0.2, W * 0.8); gy = rand(H * 0.3, H * 0.8); }
+      const dgx = gx - tx, dgy = gy - ty, dg = len(dgx, dgy), sp = W * 0.12 * dt;
+      if (dg > sp) { tx += dgx / dg * sp; ty += dgy / dg * sp; } else { tx = gx; ty = gy; }
+      const ph = (t / D.period) % 1, u = ph < 0.5 ? ph * 2 : 2 - ph * 2;   // there and back along the rail
+      const cam = B(u), fov = clamp(fovAt(u), 0.15, 2.8), look = Math.atan2(ty - cam.y, tx - cam.x);
+      ctx.strokeStyle = "rgba(201,196,228,0.3)"; ctx.lineWidth = 1.5;   // the rail
+      ctx.beginPath();
+      for (let i = 0; i <= 32; i++) { const q = B(i / 32); if (i) ctx.lineTo(q.x, q.y); else ctx.moveTo(q.x, q.y); }
+      ctx.stroke();
+      ctx.setLineDash([2, 4]);
+      for (let i = 0; i < 3; i++) line(W * D.rail[i][0], H * D.rail[i][1], W * D.rail[i + 1][0], H * D.rail[i + 1][1], DIM, 1);
+      ctx.setLineDash([]);
+      for (const p of D.rail) ring(W * p[0], H * p[1], 3, DIM, 1);
+      const R = W * D.range;                           // the frustum
+      poly([[cam.x, cam.y], [cam.x + Math.cos(look - fov / 2) * R, cam.y + Math.sin(look - fov / 2) * R], [cam.x + Math.cos(look + fov / 2) * R, cam.y + Math.sin(look + fov / 2) * R]], "rgba(245,193,105,0.08)");
+      line(cam.x, cam.y, cam.x + Math.cos(look - fov / 2) * R, cam.y + Math.sin(look - fov / 2) * R, "rgba(245,193,105,0.6)", 1);
+      line(cam.x, cam.y, cam.x + Math.cos(look + fov / 2) * R, cam.y + Math.sin(look + fov / 2) * R, "rgba(245,193,105,0.6)", 1);
+      line(cam.x, cam.y, tx, ty, "rgba(138,217,245,0.35)", 1);
+      const seen = [];                                 // what falls inside the wedge
+      for (const p of posts) {
+        const rel = wrapAngle(Math.atan2(p.y - cam.y, p.x - cam.x) - look), d = len(p.x - cam.x, p.y - cam.y);
+        const inside = Math.abs(rel) < fov / 2;
+        dot(p.x, p.y, 4, inside ? GOOD : BONE);
+        if (inside) seen.push({ rel: rel, d: d, h: p.h, mote: false });
+      }
+      seen.push({ rel: wrapAngle(Math.atan2(ty - cam.y, tx - cam.x) - look), d: len(tx - cam.x, ty - cam.y), h: 0.6, mote: true });
+      seen.sort((a, b) => b.d - a.d);
+      ctx.save();                                      // the camera glyph
+      ctx.translate(cam.x, cam.y); ctx.rotate(look);
+      rect(-7, -5, 10, 10, BONE); poly([[3, -3], [9, -6], [9, 6], [3, 3]], BONE);
+      ctx.restore();
+      ring(gx, gy, 4, TARGET, 1);
+      mote(tx, ty, Math.atan2(dgy, dgx));
+      rect(ix, iy, iw, ih, "#0E0B1A");                 // the inset: the framed view
+      ctx.save();
+      ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip();
+      rect(ix, iy + ih * 0.55, iw, ih * 0.45, "rgba(201,196,228,0.08)");
+      line(ix, iy + ih * 0.55, ix + iw, iy + ih * 0.55, DIM, 1);
+      const half = Math.tan(fov / 2);
+      for (const s of seen) {
+        const k = W * 0.08 / Math.max(s.d, W * 0.04), sx = ix + iw / 2 + Math.tan(clamp(s.rel, -1.4, 1.4)) / half * iw / 2;
+        const base = iy + ih * 0.55 + Math.min(ih * 0.45, ih * 0.45 * k), hh = Math.min(ih, s.h * ih * 0.5 * k);
+        if (s.mote) mote(sx, base - 8 * k, 0, MOVER, Math.min(14, 8 * k));
+        else rect(sx - 2 * k - 1, base - hh, 4 * k + 2, hh, GOOD);
+      }
+      ctx.restore();
+      poly([[ix, iy], [ix + iw, iy], [ix + iw, iy + ih], [ix, iy + ih]], BONE, 1);
+      label("the view · fov " + Math.round(fov * 360 / TAU) + "°", ix + iw / 2, iy + ih + 11, null, "center");
+      const kx0 = W * 0.06, kw = W * 0.3, ky = H * 0.93, kh = H * 0.1;   // the fov keyframes, and u
+      line(kx0, ky, kx0 + kw, ky, DIM, 1);
+      ctx.strokeStyle = TARGET; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let i = 0; i <= 24; i++) { const x = kx0 + i / 24 * kw, y = ky - fovAt(i / 24) / 2 * kh; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+      ctx.stroke();
+      for (const k of D.fovKeys) dot(kx0 + clamp(k[0], 0, 1) * kw, ky - k[1] * TAU / 360 / 2 * kh, 2.5, TARGET);
+      dot(kx0 + u * kw, ky - fov / 2 * kh, 3, MOVER);
+      label("u " + u.toFixed(2), kx0 + kw + 6, ky - 2, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Tracking", "Trucking", "a straight rail along the bottom and one constant fov — the sideways truck of a stage camera, only the look-at turning", { rail: [[0.08, 0.9], [0.36, 0.9], [0.64, 0.9], [0.92, 0.9]], fovKeys: [[0, 50], [1, 50]] });
+
+def("Z", "Zenith", "frames", "yaw and pitch swing the camera about the mote on a spring arm — pitch stops short of straight up, the arm shortens at a wall — drag to orbit", function (u) {
+  var D = { arm: 0.34,         // the spring arm's full length, ×room width
+            pitchMin: 0.12,    // radians above the floor
+            pitchMax: 1.25,    // radians — short of π/2, the ZENITH
+            margin: 0.03,      // the arm stops this far short of a wall, ×room width
+            fov: 75,           // the inset's field of view, degrees
+            yawSpeed: 0.4,     // the idle orbit, radians per second
+            label: "pitch ∈ [min, max] · arm = min(L, wall − m)" };
+  const { ctx, W, H, TAU, stage, dot, line, rect, poly, mote, label, rng, clamp, lerp, wrapAngle, MOVER, TARGET, HOT, GOOD, BONE, DIM } = u;
+  // Camera in 2D followed; the THIRD-PERSON ORBIT CAMERA hangs behind the
+  // mote on a SPRING ARM: two angles, yaw around it and pitch above the
+  // floor, and a length. pitch is clamped short of the zenith — straight up
+  // the yaw would become meaningless, the classic gimbal problem. the arm is
+  // Xmarks' ray, cast backward from the mote: if it hits a wall before its
+  // full length, the camera moves in to the hit (minus a margin), so the
+  // wall never comes between them. the inset is what that camera sees.
+  const rx0 = W * 0.04, ry0 = H * 0.12, rw = W * 0.54, rh = H * 0.76;   // the room, top-down
+  const ix = W * 0.62, iy = H * 0.06, iw = W * 0.34, ih = H * 0.4;       // the inset
+  const seed = rng(13), posts = [];
+  for (let i = 0; i < 4; i++) posts.push({ x: rx0 + rw * (0.15 + seed() * 0.7), y: ry0 + rh * (0.15 + seed() * 0.7) });
+  let yaw = 0.6, pitch = 0.6, userT = -9;
+  return {
+    drag: true,
+    press(px, py) { yaw = px / W * TAU - Math.PI; pitch = lerp(D.pitchMin, D.pitchMax, clamp(py / H, 0, 1)); userT = 0; },
+    frame(dt, t) {
+      stage();
+      userT += dt;
+      if (userT > 2.5) { yaw += D.yawSpeed * dt; pitch = lerp(D.pitchMin, D.pitchMax, 0.5 + 0.4 * Math.sin(t * 0.5)); }
+      pitch = clamp(pitch, D.pitchMin, Math.min(D.pitchMax, 1.55));   // ← never the zenith
+      const px = rx0 + rw / 2 + Math.cos(t * 0.31) * rw * 0.36, py = ry0 + rh / 2 + Math.sin(t * 0.43) * rh * 0.36;   // the pivot walks
+      const ph = Math.atan2(Math.cos(t * 0.43) * 0.43 * rh, -Math.sin(t * 0.31) * 0.31 * rw);
+      const L = rw * D.arm, lx = Math.cos(yaw), ly = Math.sin(yaw);   // the look direction; the arm goes the other way
+      const dx = -lx, dy = -ly;
+      let hit = 1e9;                                   // the ray from the pivot along the arm to the room's walls
+      if (dx > 1e-6) hit = Math.min(hit, (rx0 + rw - px) / dx); else if (dx < -1e-6) hit = Math.min(hit, (rx0 - px) / dx);
+      if (dy > 1e-6) hit = Math.min(hit, (ry0 + rh - py) / dy); else if (dy < -1e-6) hit = Math.min(hit, (ry0 - py) / dy);
+      const wantH = L * Math.cos(pitch), armH = Math.max(0, Math.min(wantH, hit - rw * D.margin)), short = armH < wantH - 0.01;
+      const arm3 = Math.cos(pitch) > 0.05 ? armH / Math.cos(pitch) : L, camH = arm3 * Math.sin(pitch);
+      const cx = px + dx * armH, cy = py + dy * armH;
+      poly([[rx0, ry0], [rx0 + rw, ry0], [rx0 + rw, ry0 + rh], [rx0, ry0 + rh]], BONE, 1.5);   // the map
+      for (const q of posts) dot(q.x, q.y, 4, BONE);
+      ctx.setLineDash([3, 3]);
+      line(px, py, px + dx * wantH, py + dy * wantH, DIM, 1);   // the arm it wanted
+      ctx.setLineDash([]);
+      line(px, py, cx, cy, short ? HOT : BONE, 2);     // the arm it got
+      if (short) { dot(px + dx * hit, py + dy * hit, 3, HOT); label("wall", px + dx * hit, py + dy * hit - 6, HOT, "center"); }
+      const fov = D.fov * TAU / 360;
+      line(cx, cy, cx + Math.cos(yaw - fov / 2) * rw * 0.3, cy + Math.sin(yaw - fov / 2) * rw * 0.3, "rgba(245,193,105,0.45)", 1);
+      line(cx, cy, cx + Math.cos(yaw + fov / 2) * rw * 0.3, cy + Math.sin(yaw + fov / 2) * rw * 0.3, "rgba(245,193,105,0.45)", 1);
+      dot(cx, cy, 4, TARGET);
+      mote(px, py, ph);
+      rect(ix, iy, iw, ih, "#0E0B1A");                 // the inset: what the camera sees
+      ctx.save();
+      ctx.beginPath(); ctx.rect(ix, iy, iw, ih); ctx.clip();
+      const f = (iw / 2) / Math.tan(fov / 2), vcx = ix + iw / 2, vcy = iy + ih / 2;
+      const horizon = vcy - Math.tan(Math.min(pitch, 1.3)) * f;
+      rect(ix, Math.max(iy, horizon), iw, ih, "rgba(201,196,228,0.08)");
+      line(ix, horizon, ix + iw, horizon, DIM, 1);
+      const items = [];
+      for (const q of posts) items.push({ x: q.x, y: q.y, h: rw * 0.12, mote: false });
+      items.push({ x: px, y: py, h: 0, mote: true });
+      for (const it of items) { it.d = (it.x - cx) * lx + (it.y - cy) * ly; it.s = -(it.x - cx) * ly + (it.y - cy) * lx; }
+      items.sort((a, b) => b.d - a.d);
+      for (const it of items) {
+        if (it.d < rw * 0.02) continue;
+        const sx = vcx + it.s / it.d * f;
+        const base = vcy + Math.tan(clamp(Math.atan2(camH, it.d) - pitch, -1.4, 1.4)) * f;
+        const top = vcy + Math.tan(clamp(Math.atan2(camH - it.h, it.d) - pitch, -1.4, 1.4)) * f;
+        const wpx = Math.min(iw, 6 * f / it.d * 0.6 + 1);
+        if (it.mote) mote(sx, base - Math.min(20, 9 * f / it.d * 0.4), wrapAngle(ph - yaw) + Math.PI / 2, MOVER, Math.min(20, 9 * f / it.d * 0.4));
+        else rect(sx - wpx / 2, Math.min(top, base), wpx, Math.abs(base - top), GOOD);
+      }
+      ctx.restore();
+      poly([[ix, iy], [ix + iw, iy], [ix + iw, iy + ih], [ix, iy + ih]], BONE, 1);
+      label("the view", ix + iw / 2, iy + ih + 11, null, "center");
+      const gx = ix + iw * 0.15, gy = H * 0.88, gr = iw * 0.7;   // the pitch gauge, side on
+      line(gx - 6, gy, gx + gr + 4, gy, "rgba(201,196,228,0.5)", 1.5);
+      ctx.setLineDash([2, 3]); line(gx, gy, gx, gy - gr, DIM, 1); ctx.setLineDash([]);
+      label("zenith", gx + 3, gy - gr + 2, DIM);
+      ctx.strokeStyle = "rgba(245,193,105,0.35)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(gx, gy, gr * 0.5, -Math.min(D.pitchMax, 1.55), -D.pitchMin); ctx.stroke();
+      line(gx, gy, gx + Math.cos(pitch) * gr * (arm3 / L), gy - Math.sin(pitch) * gr * (arm3 / L), short ? HOT : BONE, 2);
+      dot(gx + Math.cos(pitch) * gr * (arm3 / L), gy - Math.sin(pitch) * gr * (arm3 / L), 3, TARGET);
+      dot(gx, gy, 3, MOVER);
+      label("pitch " + pitch.toFixed(2) + " · yaw " + wrapAngle(yaw).toFixed(2), ix + iw / 2, H * 0.6, null, "center");
+      label("arm " + Math.round(arm3) + " / " + Math.round(L) + " px" + (short ? " · shortened" : ""), ix + iw / 2, H * 0.68, short ? HOT : DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Zenith", "Zoomedin", "a short arm, a wider pitch range and a wide lens — the over-the-shoulder camera that almost never meets a wall", { arm: 0.14, pitchMax: 1.5, fov: 95 });
+
+def("W", "Wrap", "frames", "a torus: past the right edge is the left (x mod W); near a seam the sprite is drawn twice so it never blinks — press to thrust at your click", function (u) {
+  var D = { asteroids: 5,      // drifting rocks
+            thrust: 0.6,       // ship acceleration, ×W per second²
+            drag: 0.5,         // velocity damping per second
+            wrapX: true,       // wrap horizontally…
+            wrapY: true,       // …and vertically (false = bounce off the top and bottom)
+            every: 1.4,        // the autopilot's thrust bursts
+            label: "x = ((x mod W) + W) mod W · draw at x and x ± W" };
+  const { W, H, TAU, stage, dot, ring, line, poly, mote, label, rng, rand, len, HOT, MAGIC, BONE } = u;
+  // Asteroids' world is a TORUS: leave the right edge and you enter the
+  // left, one modulo per axis — ((x mod W) + W) mod W keeps a negative x
+  // honest. the catch is the SEAM: a sprite half over the edge would blink
+  // out and back in, so anything within its radius of an edge is drawn
+  // TWICE, once at x and once at x ± W (four times in a corner). the purple
+  // rings mark the copies. the rhyme keeps only the horizontal wrap and
+  // bounces the vertical one: a cylinder instead of a doughnut.
+  const seed = rng(21), rocks = [];
+  for (let i = 0; i < D.asteroids; i++) {
+    const r = 9 + seed() * 10, pts = [];
+    for (let k = 0; k < 8; k++) pts.push(0.7 + seed() * 0.5);
+    rocks.push({ x: seed() * W, y: seed() * H, vx: (seed() - 0.5) * W * 0.16, vy: (seed() - 0.5) * H * 0.16, r: r, a: 0, w: (seed() - 0.5) * 1.6, pts: pts });
+  }
+  let x = W * 0.5, y = H * 0.5, vx = W * 0.15, vy = 0, ang = 0, burst = 0, aimX = W * 0.8, aimY = H * 0.3, autoT = 0, wraps = 0, copies = 0, seamX = 0, seamY = 0;
+  function wrap(b, r) {                                // ← the torus, one modulo per axis
+    if (D.wrapX) { const nx = ((b.x % W) + W) % W; if (nx !== b.x) { wraps++; seamX = 1; } b.x = nx; }
+    else { if (b.x < r) { b.x = r; b.vx = Math.abs(b.vx); } if (b.x > W - r) { b.x = W - r; b.vx = -Math.abs(b.vx); } }
+    if (D.wrapY) { const ny = ((b.y % H) + H) % H; if (ny !== b.y) { wraps++; seamY = 1; } b.y = ny; }
+    else { if (b.y < r) { b.y = r; b.vy = Math.abs(b.vy); } if (b.y > H - r) { b.y = H - r; b.vy = -Math.abs(b.vy); } }
+  }
+  function each(b, r, draw) {                          // draw at x, and at x ± W / y ± H near a seam
+    const oxs = [0], oys = [0];
+    if (D.wrapX) { if (b.x < r) oxs.push(W); if (b.x > W - r) oxs.push(-W); }
+    if (D.wrapY) { if (b.y < r) oys.push(H); if (b.y > H - r) oys.push(-H); }
+    for (const ox of oxs) for (const oy of oys) {
+      draw(b.x + ox, b.y + oy);
+      if (ox || oy) { copies++; ring(b.x + ox, b.y + oy, r + 4, MAGIC, 1); label("copy", b.x + ox, b.y + oy - r - 7, MAGIC, "center"); }
+    }
+  }
+  const ship = { x: 0, y: 0, vx: 0, vy: 0 };
+  return {
+    press(px, py) { aimX = px; aimY = py; burst = 0.5; },
+    frame(dt, t) {
+      stage();
+      autoT += dt;
+      if (autoT > D.every) { autoT = 0; aimX = rand(0, W); aimY = rand(0, H); burst = 0.4; }
+      copies = 0; seamX = Math.max(0, seamX - dt * 2); seamY = Math.max(0, seamY - dt * 2);
+      let ax = aimX - x, ay = aimY - y;                // the shortest way to the aim may cross a seam
+      if (D.wrapX && Math.abs(ax) > W / 2) ax -= Math.sign(ax) * W;
+      if (D.wrapY && Math.abs(ay) > H / 2) ay -= Math.sign(ay) * H;
+      const ad = len(ax, ay);
+      if (ad > 1) ang = Math.atan2(ay, ax);
+      if (burst > 0 && ad > 8) { burst -= dt; vx += Math.cos(ang) * W * D.thrust * dt; vy += Math.sin(ang) * W * D.thrust * dt; }
+      const k = Math.max(0, 1 - D.drag * dt);
+      vx *= k; vy *= k;
+      const sp = len(vx, vy), cap = W * 0.6;
+      if (sp > cap) { vx *= cap / sp; vy *= cap / sp; }
+      x += vx * dt; y += vy * dt;
+      ship.x = x; ship.y = y; ship.vx = vx; ship.vy = vy;
+      wrap(ship, 9); x = ship.x; y = ship.y; vx = ship.vx; vy = ship.vy;
+      for (const r of rocks) { r.x += r.vx * dt; r.y += r.vy * dt; r.a += r.w * dt; wrap(r, r.r); }
+      line(0, 0.5, W, 0.5, "rgba(201,160,245," + (0.15 + seamY * 0.6) + ")", 1);   // the seams
+      line(0, H - 0.5, W, H - 0.5, "rgba(201,160,245," + (0.15 + seamY * 0.6) + ")", 1);
+      line(0.5, 0, 0.5, H, "rgba(201,160,245," + (0.15 + seamX * 0.6) + ")", 1);
+      line(W - 0.5, 0, W - 0.5, H, "rgba(201,160,245," + (0.15 + seamX * 0.6) + ")", 1);
+      if (!D.wrapX) { line(0.5, 0, 0.5, H, BONE, 2); line(W - 0.5, 0, W - 0.5, H, BONE, 2); }
+      if (!D.wrapY) { line(0, 0.5, W, 0.5, BONE, 2); line(0, H - 0.5, W, H - 0.5, BONE, 2); }
+      for (const r of rocks) each(r, r.r, (cx, cy) => {
+        const pts = [];
+        for (let i = 0; i < 8; i++) { const a = r.a + i / 8 * TAU; pts.push([cx + Math.cos(a) * r.r * r.pts[i], cy + Math.sin(a) * r.r * r.pts[i]]); }
+        poly(pts, BONE, 1.5);
+      });
+      ring(aimX, aimY, 5, "rgba(245,193,105,0.7)", 1);
+      each(ship, 12, (cx, cy) => {
+        if (burst > 0 && ad > 8) for (let i = 0; i < 3; i++) dot(cx - Math.cos(ang) * (12 + i * 5) + rand(-2, 2), cy - Math.sin(ang) * (12 + i * 5) + rand(-2, 2), 2.5 - i * 0.6, HOT);
+        mote(cx, cy, ang);
+      });
+      label("wraps " + wraps + " · copies drawn now " + copies + " · " + (D.wrapX ? "x wraps" : "x bounces") + " · " + (D.wrapY ? "y wraps" : "y bounces"), W / 2, 14, null, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Wrap", "Worldsedge", "wrap left-right only and bounce off the top and bottom, in a thicker rock field — a cylinder world, the Defender strip", { wrapY: false, asteroids: 8 });
+/* ============================== GAME VERBS ==============================
+   The verbs a game is made of, each one a tiny playable system whose rule
+   can be read straight off the canvas: a bobber and a tension bar, tiles
+   that grow one stage per day, a patty with a sweet spot, a push that needs
+   a free cell beyond, needs that decay into a mood, emotes on a schedule, a
+   xylophone with a music box, a pixel canvas that becomes a texture, a photo
+   mode with two clocks, a match-3 cascade, tetromino gravity, a note highway
+   judged by distance to the beat, and the cartoon wind-up run. Every card
+   plays itself — an autopilot, sometimes a clumsy one — until you take the
+   controls; the numbers that make the game fair or cruel all sit in D. */
+
+def("A", "Angler", "games", "fishing: a bobber rides Undulate's wave, a random bite, a tug, then a tension minigame — keep the bar inside the moving zone — drag to reel", function (u) {
+  var D = { biteMin: 1.5, biteMax: 4.5,   // seconds before a fish bites
+            tug: 0.9,                     // seconds the bite lasts before the fish leaves
+            reel: 3.4, g: 1.8, damp: 2.5, // the reel marker: accel up while reeling, gravity down, Damp's drag per s (in bar heights)
+            zoneH: 0.24, zoneSpeed: 0.55, // the fish's zone: height ×bar, how fast it wanders
+            fill: 0.4, drain: 0.32,       // catch progress per second inside / outside the zone
+            amp: 0.03, waves: 3, w: 2.2,  // the wave: amplitude ×H, wavelengths across W, angular speed
+            lag: 0.4,                     // the autopilot's reaction lag, seconds — it plays badly on purpose
+            label: "in zone: catch += fill·dt · outside: catch −= drain·dt" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, mote, label, clamp, rand, noise, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // FISHING is three timers in a trench coat. WAIT: a random delay while the
+  // bobber rides Undulate's wave y = sin(kx − ωt). BITE: a short window where
+  // the bobber is tugged under — press inside it or the fish leaves. FIGHT:
+  // the tension bar — the fish's zone wanders by noise, your reel pushes the
+  // marker up against gravity (Damp's drag keeps it tame), and the catch
+  // fills inside the zone and drains outside. the autopilot sees the zone a
+  // lag late and overshoots, which is exactly what a first-timer does.
+  const Y0 = H * 0.5, by0 = H * 0.16, bh = H * 0.62, bx = W * 0.9, DOCK = H * 0.4;
+  const wave = [];
+  for (let i = 0; i <= 40; i++) wave.push([i / 40 * W, Y0]);
+  wave.push([W, H], [0, H]);
+  let phase = "wait", pt = rand(D.biteMin, D.biteMax), react = 0;
+  let bobX = W * 0.6, tugOff = 0, hold = 0, manualT = 0, sincePress = 9, splashT = 0, splashX = 0;
+  let ind = 0.5, iv = 0, zc = 0.5, zcSeen = 0.5, lagT = 0, prog = 0.35, fightT = 0, msgT = 0, msg = "", caught = 0, lost = 0;
+  function surface(x, t) { return Y0 + Math.sin(x / W * TAU * D.waves - t * D.w) * H * D.amp; }
+  function hook() { if (phase !== "bite") return; phase = "fight"; fightT = 0; prog = 0.35; ind = 0.5; iv = 0; zc = 0.5; zcSeen = 0.5; }
+  function finish(ok) { phase = "done"; pt = 1.4; msg = ok ? "caught!" : "it got away"; msgT = 1.4; if (ok) caught++; else lost++; }
+  return {
+    drag: true,
+    press(x, y) {
+      manualT = 3;
+      if (phase === "bite") hook();
+      else if (phase === "wait" && sincePress > 0.25) { bobX = clamp(x, W * 0.36, W * 0.8); splashT = 0.5; splashX = bobX; }
+      hold = 0.12; sincePress = 0;
+    },
+    frame(dt, t) {
+      stage();
+      sincePress += dt; hold -= dt; manualT -= dt; splashT -= dt; msgT -= dt;
+      const manual = manualT > 0;
+      if (phase === "wait") {
+        pt -= dt; tugOff += (0 - tugOff) * Math.min(1, 8 * dt);
+        if (pt <= 0) { phase = "bite"; pt = 0; react = rand(0.15, D.tug * 1.4); }   // sometimes slower than the fish
+      } else if (phase === "bite") {
+        pt += dt; tugOff = 7 + Math.sin(pt * 34) * 3;
+        if (!manual && pt >= react) hook();
+        else if (pt >= D.tug) { phase = "wait"; pt = rand(D.biteMin, D.biteMax); msg = "too slow"; msgT = 0.9; }
+      } else if (phase === "fight") {
+        fightT += dt;
+        zc = 0.5 + noise(fightT * D.zoneSpeed + 3.7) * (0.5 - D.zoneH / 2);   // the fish wanders
+        lagT += dt; if (lagT >= D.lag) { lagT = 0; zcSeen = zc; }         // the autopilot's stale picture
+        const reeling = manual ? hold > 0 : ind < zcSeen;
+        iv += ((reeling ? D.reel : -D.g) - D.damp * iv) * dt;
+        ind += iv * dt;
+        if (ind < 0) { ind = 0; iv = 0; }
+        if (ind > 1) { ind = 1; iv = 0; }
+        const inZone = Math.abs(ind - zc) < D.zoneH / 2;
+        prog += (inZone ? D.fill : -D.drain) * dt;
+        tugOff = 9 + (zc - 0.5) * 10;
+        if (prog >= 1) finish(true); else if (prog <= 0) finish(false);
+      } else {
+        pt -= dt; tugOff += (0 - tugOff) * Math.min(1, 4 * dt);
+        if (pt <= 0) { phase = "wait"; pt = rand(D.biteMin, D.biteMax); }
+      }
+      for (let i = 0; i <= 40; i++) wave[i][1] = surface(wave[i][0], t);   // the water
+      poly(wave, "rgba(138,217,245,0.13)");
+      ctx.strokeStyle = "rgba(138,217,245,0.6)"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(wave[0][0], wave[0][1]);
+      for (let i = 1; i <= 40; i++) ctx.lineTo(wave[i][0], wave[i][1]);
+      ctx.stroke();
+      rect(0, DOCK, W * 0.2, 5, BONE);                 // the dock, the angler, the rod
+      line(W * 0.05, DOCK + 5, W * 0.05, Y0 + 8, BONE, 2); line(W * 0.16, DOCK + 5, W * 0.16, Y0 + 8, BONE, 2);
+      const tipX = W * 0.3, tipY = H * 0.16;
+      mote(W * 0.1, DOCK - 9, phase === "fight" ? -0.3 : 0);
+      line(W * 0.12, DOCK - 6, tipX, tipY, BONE, 2);
+      const by = surface(bobX, t) + tugOff;
+      ctx.strokeStyle = "rgba(232,229,244,0.4)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(tipX, tipY);
+      ctx.quadraticCurveTo((tipX + bobX) / 2, Math.max(tipY, by) + (phase === "fight" ? 0 : 24), bobX, by);
+      ctx.stroke();
+      if (splashT > 0) ring(splashX, surface(splashX, t), 4 + (0.5 - splashT) * 40, "rgba(138,217,245," + splashT + ")", 1.5);
+      if (phase === "fight") {                         // the fish, on the line
+        const fx = bobX + Math.sin(fightT * 4) * W * 0.03, fy = Y0 + 16 + (1 - zc) * H * 0.28;
+        line(bobX, by, fx, fy, "rgba(245,193,105,0.5)");
+        dot(fx, fy, 5, TARGET); poly([[fx - 4, fy], [fx - 11, fy - 5], [fx - 11, fy + 5]], TARGET);
+        dot(fx + 2, fy - 1.5, 1.2, "#131020");
+      } else if (phase === "bite") for (let i = 0; i < 3; i++) ring(bobX, surface(bobX, t), 6 + i * 6 + (pt * 20) % 6, "rgba(245,138,138,0.35)");
+      dot(bobX, by, 5, HOT); dot(bobX, by + 2.5, 2.5, INK);
+      // the tension bar: the zone (amber), the marker (blue), the catch (green)
+      const dim = phase !== "fight";
+      poly([[bx - 8, by0], [bx + 8, by0], [bx + 8, by0 + bh], [bx - 8, by0 + bh]], dim ? DIM : BONE, true);
+      if (!dim) {
+        rect(bx - 7, by0 + (1 - zc - D.zoneH / 2) * bh, 14, D.zoneH * bh, "rgba(245,193,105,0.4)");
+        rect(bx - 10, by0 + (1 - ind) * bh - 3, 20, 6, MOVER);
+        poly([[bx - 24, by0], [bx - 18, by0], [bx - 18, by0 + bh], [bx - 24, by0 + bh]], DIM, true);
+        rect(bx - 24, by0 + (1 - prog) * bh, 6, prog * bh, GOOD);
+        label("zone", bx, by0 - 6, TARGET, "center"); label("catch", bx - 21, by0 + bh + 12, GOOD, "center");
+      } else label("tension", bx, by0 - 6, DIM, "center");
+      const top = phase === "wait" ? "waiting… bite in " + Math.max(0, pt).toFixed(1) + " s" :
+                  phase === "bite" ? "BITE! press now (" + Math.max(0, D.tug - pt).toFixed(2) + " s)" :
+                  phase === "fight" ? (manual ? "hold to reel" : "autopilot reels (lag " + D.lag + " s)") : msg;
+      label(top, W * 0.42, H - 22, phase === "bite" ? HOT : phase === "fight" ? MOVER : DIM, "center");
+      if (msgT > 0 && phase !== "done") label(msg, bobX, by - 14, HOT, "center");
+      label("caught " + caught + " · lost " + lost, 6, 14, DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Angler", "Abyss", "deep water: twice the wait, a fish that darts fast inside a narrow zone — the late-game catch that takes a steady hand", { biteMax: 9, zoneSpeed: 1.3, zoneH: 0.14 });
+
+def("F", "Farm", "games", "farming: till → plant → water → grow one stage per day → harvest; a state per tile and a day counter ticking — press a tile to work it", function (u) {
+  var D = { tiles: 6,          // plots in the row
+            dayLen: 3.5,       // seconds per day
+            growDays: 3,       // watered days from seed to harvest
+            actEvery: 0.8,     // the farmer's pause between jobs
+            speed: 0.7,        // the farmer's walk, ×W per second
+            label: "tile.state → next · stage = days it was watered" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // a FARM is a state machine per tile — soil → tilled → planted → ready —
+  // plus one number, the stage, that only the DAY may advance: at each day
+  // tick a watered plant grows one stage and dries out again, so watering
+  // is a promise you renew every morning. that is the save-file shape from
+  // §16: a tiny struct per tile, one clock, nothing else. the farmer is an
+  // autopilot walking to the best job (harvest before water before plant
+  // before till); your press does the same job on the tile you point at.
+  const n = D.tiles, tw = Math.min(W * 0.88 / n, H * 0.22), th = tw * 0.5, x0 = (W - n * tw) / 2;
+  const NAMES = ["soil", "tilled", "planted", "ready"], VERBS = ["till", "plant", "water", "harvest"];
+  const tiles = [], pops = [];
+  for (let i = 0; i < n; i++) tiles.push({ s: 0, age: 0, wet: false });
+  let day = 1, dayT = 0, harvested = 0, actT = 0, target = -1, fx = W / 2, dir = 1, walking = false;
+  function tileX(i) { return x0 + (i + 0.5) * tw; }
+  function job(tl) { return tl.s === 3 ? 3 : tl.s === 2 ? (tl.wet ? -1 : 2) : tl.s; }
+  function act(i) {
+    const tl = tiles[i], j = job(tl);
+    if (j < 0) { pops.push({ x: tileX(i), y: GY - th - 6, t: 0.8, txt: "wait for the day", c: DIM }); }
+    else {
+      if (j === 0) tl.s = 1; else if (j === 1) { tl.s = 2; tl.age = 0; tl.wet = false; } else if (j === 2) tl.wet = true; else { tl.s = 0; harvested++; }
+      pops.push({ x: tileX(i), y: GY - th - 6, t: 0.8, txt: VERBS[j], c: j === 3 ? TARGET : GOOD });
+    }
+    if (pops.length > 8) pops.shift();
+  }
+  return {
+    press(x, y) { const i = Math.floor((x - x0) / tw); if (i >= 0 && i < n) act(i); },
+    frame(dt, t) {
+      stage();
+      dayT += dt;
+      if (dayT >= D.dayLen) {                          // the day tick: the only thing that grows a plant
+        dayT -= D.dayLen; day++;
+        for (const tl of tiles) if (tl.s === 2 && tl.wet) { tl.age++; tl.wet = false; if (tl.age >= D.growDays) tl.s = 3; }
+      }
+      const frac = dayT / D.dayLen, sun = Math.sin(frac * Math.PI);
+      dot(lerp(W * 0.08, W * 0.92, frac), H * 0.34 - sun * H * 0.24, 7, TARGET);
+      actT += dt;
+      if (target < 0 && actT >= D.actEvery) {          // pick the best job, nearest breaks ties
+        let best = -1, bestJ = -1, bestD = 1e9;
+        for (let i = 0; i < n; i++) {
+          const j = job(tiles[i]), d = Math.abs(tileX(i) - fx);
+          if (j > bestJ || (j === bestJ && d < bestD)) { best = i; bestJ = j; bestD = d; }
+        }
+        if (bestJ >= 0) target = best;
+      }
+      walking = false;
+      if (target >= 0) {
+        const tx = tileX(target), step = W * D.speed * dt;
+        if (Math.abs(tx - fx) <= step) { fx = tx; act(target); target = -1; actT = 0; }
+        else { dir = tx > fx ? 1 : -1; fx += dir * step; walking = true; }
+      }
+      ground();
+      for (let i = 0; i < n; i++) {                    // the plots, one icon per state
+        const tl = tiles[i], x = x0 + i * tw + 2, cx = tileX(i), w = tw - 4;
+        rect(x, GY - th, w, th, tl.wet ? "rgba(90,80,130,0.75)" : "rgba(140,100,60,0.55)");
+        if (tl.s >= 1) for (let k = 1; k <= 3; k++) line(x + 3, GY - th + th * k / 4, x + w - 3, GY - th + th * k / 4, "rgba(0,0,0,0.35)");
+        if (tl.wet) { dot(x + w * 0.25, GY - th * 0.4, 1.8, MOVER); dot(x + w * 0.7, GY - th * 0.7, 1.8, MOVER); }
+        if (tl.s === 2 || tl.s === 3) {
+          const k = tl.s === 3 ? 1 : tl.age / D.growDays, top = GY - th * 0.5 - (6 + k * th * 1.7);
+          if (tl.age === 0 && tl.s === 2) dot(cx, GY - th * 0.5, 2.5, BONE);
+          else {
+            line(cx, GY - th * 0.5, cx, top, GOOD, 2);
+            dot(cx - 4, top + (GY - th * 0.5 - top) * 0.45, 3, GOOD); dot(cx + 4, top + (GY - th * 0.5 - top) * 0.25, 3, GOOD);
+            if (tl.s === 3) dot(cx, top, 4.5, TARGET); else dot(cx, top, 2.5, GOOD);
+          }
+        }
+        label(tl.s === 2 ? tl.age + "/" + D.growDays : NAMES[tl.s], cx, GY + 14, DIM, "center");
+      }
+      const bob = walking ? Math.abs(Math.sin(t * 12)) * 3 : 0;
+      mote(fx, GY - th - 12 - bob, dir > 0 ? 0 : Math.PI);
+      if (target >= 0) label(VERBS[job(tiles[target])] + " →", fx, GY - th - 26, TARGET, "center");
+      for (let i = pops.length - 1; i >= 0; i--) {
+        const p = pops[i]; p.t -= dt; p.y -= 18 * dt;
+        if (p.t <= 0) pops.splice(i, 1); else label(p.txt, p.x, p.y, p.c, "center");
+      }
+      const night = (1 - sun) * (1 - sun) * 0.35;      // dusk creeps in as the sun sets
+      if (night > 0.01) rect(0, 0, W, H, "rgba(20,15,50," + night + ")");
+      label("day " + day + " · " + Math.floor(frac * 24) + ":00", 6, 14, DIM);
+      label("harvested " + harvested, W - 6, 14, TARGET, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Farm", "Fastforward", "days fly by and the row is longer — a farmer who never stops running, the time-lapse of a season", { dayLen: 1.1, tiles: 9, actEvery: 0.3 });
+
+def("K", "Kitchen", "games", "cooking: doneness fills while a side is down, a sweet spot band, then the burn — timing is the game — press the pan to flip, the plate to serve", function (u) {
+  var D = { rate: 0.24,                 // doneness per second for the side that is down
+            sweetLo: 0.7, sweetHi: 0.92, // the sweet spot
+            burn: 1.1,                   // past this a side is burnt
+            slop: 0.9,                   // the autopilot's lateness, up to this many seconds
+            sizzle: 30,                  // sizzle particles per second
+            label: "side += rate·dt · sweet ∈ [lo, hi] · burnt ≥ burn" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, rand, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // COOKING is a timer you cannot see directly. each side has a DONENESS
+  // that only grows while it faces the pan; a FLIP swaps which side grows;
+  // serving is judged against the sweet spot — under is raw, over is
+  // burnt, both is perfect. the sizzle is ch06's ambient particle rule
+  // (emit += rate·dt) and the two bars are §14's meters. the autopilot
+  // flips and serves a random bit late, so you get to watch the mistakes.
+  const panX = W * 0.42, panW = W * 0.3, panY = GY - 8, plateX = W * 0.85, TH = Math.max(6, H * 0.038);   // the pan's thickness, so the scene keeps its height in the editor
+  const parts = [];
+  for (let i = 0; i < 48; i++) parts.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0, smoke: false });
+  let side = [0, 0], down = 0, flipT = 0, serveT = 0, verdict = "", verdictC = DIM, verdictT = 0, emit = 0;
+  let lateFlip = rand(0, D.slop), lateServe = rand(0, D.slop), manualT = 0, patty = true, nextT = 0;
+  const score = { perfect: 0, raw: 0, burnt: 0 };
+  function flip() { if (!patty || flipT > 0) return; down = 1 - down; flipT = 0.35; }
+  function serve() {
+    if (!patty || flipT > 0) return;
+    const lo = Math.min(side[0], side[1]), hi = Math.max(side[0], side[1]);
+    if (hi >= D.burn) { verdict = "burnt"; verdictC = HOT; score.burnt++; }
+    else if (lo < D.sweetLo) { verdict = "raw inside"; verdictC = BONE; score.raw++; }
+    else if (hi > D.sweetHi) { verdict = "overdone"; verdictC = TARGET; score.burnt++; }
+    else { verdict = "perfect!"; verdictC = GOOD; score.perfect++; }
+    verdictT = 1.2; patty = false; nextT = 1; serveT = 0;
+  }
+  function colourOf(d) {                               // pink → brown → black
+    const k = clamp(d, 0, 1.3);
+    const r = k < 1 ? lerp(235, 120, k) : lerp(120, 30, (k - 1) / 0.3);
+    const g = k < 1 ? lerp(150, 70, k) : lerp(70, 25, (k - 1) / 0.3);
+    const b = k < 1 ? lerp(160, 40, k) : lerp(40, 25, (k - 1) / 0.3);
+    return "rgb(" + Math.round(r) + "," + Math.round(g) + "," + Math.round(b) + ")";
+  }
+  return {
+    press(x, y) { manualT = 3; if (x > W * 0.7) serve(); else flip(); },
+    frame(dt, t) {
+      stage(); ground();
+      manualT -= dt; verdictT -= dt; flipT = Math.max(0, flipT - dt); serveT += dt;
+      if (!patty) { nextT -= dt; if (nextT <= 0) { patty = true; side = [0, 0]; down = 0; lateFlip = rand(0, D.slop); lateServe = rand(0, D.slop); } }
+      else {
+        if (flipT <= 0) side[down] += D.rate * dt;
+        const mid = (D.sweetLo + D.sweetHi) / 2;
+        if (manualT <= 0) {                            // the autopilot: right idea, late hands
+          if (side[1 - down] === 0 && side[down] >= mid + lateFlip * D.rate) flip();
+          else if (side[1 - down] > 0 && side[down] >= mid + lateServe * D.rate) serve();
+          else if (side[down] >= D.burn + 0.05) serve();
+        }
+        emit += dt * D.sizzle * clamp(side[down] * 2, 0.2, 1);
+        while (emit >= 1) {                            // ch06's emitter: a fractional budget
+          emit -= 1;
+          for (const p of parts) if (p.life <= 0) {
+            const smoke = side[down] > D.burn * 0.9;
+            p.x = panX + rand(-panW * 0.2, panW * 0.2); p.y = panY - 6;
+            p.vx = rand(-10, 10); p.vy = smoke ? -rand(14, 28) : -rand(30, 60); p.life = smoke ? 1.4 : 0.5; p.smoke = smoke;
+            break;
+          }
+        }
+      }
+      rect(panX - panW * 0.7, GY - 4, panW * 1.4, 4, BONE);      // the hob
+      for (let i = 0; i < 4; i++) dot(panX - panW * 0.45 + i * panW * 0.3, GY - 2, 1.5, HOT);
+      ctx.fillStyle = "#3a3550"; ctx.beginPath(); ctx.ellipse(panX, panY, panW * 0.5, TH, 0, 0, TAU); ctx.fill();   // the pan
+      line(panX + panW * 0.5, panY, panX + panW * 0.5 + W * 0.09, panY - TH, BONE, 3);
+      ctx.fillStyle = "rgba(232,229,244,0.85)"; ctx.beginPath(); ctx.ellipse(plateX, GY - 3, W * 0.09, TH * 0.6, 0, 0, TAU); ctx.fill();   // the plate
+      label("plate", plateX, GY - TH - 10, DIM, "center"); label("flip", panX, panY - TH * 2 - 24, DIM, "center");
+      if (patty) {                                     // the patty: colour = the side you can see
+        let py = panY - TH, ang = 0;
+        if (flipT > 0) { const k = 1 - flipT / 0.35; py -= Math.sin(k * Math.PI) * H * 0.18; ang = k * Math.PI; }
+        ctx.save(); ctx.translate(panX, py); ctx.rotate(ang);
+        ctx.fillStyle = colourOf(side[1 - down]); ctx.beginPath(); ctx.ellipse(0, 0, panW * 0.22, TH * 0.9, 0, 0, TAU); ctx.fill();
+        ctx.restore();
+      } else if (verdictT > 0) { ctx.fillStyle = colourOf(Math.max(side[0], side[1])); ctx.beginPath(); ctx.ellipse(plateX, GY - 4 - TH * 0.7, panW * 0.22, TH * 0.8, 0, 0, TAU); ctx.fill(); }
+      for (const p of parts) if (p.life > 0) {
+        p.life -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy *= (1 - 1.5 * dt);
+        if (p.smoke) dot(p.x, p.y, 3 + (1.4 - p.life) * 4, "rgba(160,155,180," + Math.max(0, p.life * 0.25) + ")");
+        else dot(p.x, p.y, 1.3, "rgba(245,230,200," + Math.max(0, p.life * 1.6) + ")");
+      }
+      const bw = W * 0.56, bx0 = W * 0.26;              // the two doneness bars
+      for (let s = 0; s < 2; s++) {
+        const y = H * 0.14 + s * 16, sc = bw / 1.3;
+        rect(bx0, y, bw, 8, "rgba(232,229,244,0.08)");
+        rect(bx0 + D.sweetLo * sc, y, (D.sweetHi - D.sweetLo) * sc, 8, "rgba(155,226,138,0.35)");
+        rect(bx0 + D.burn * sc, y, bw - D.burn * sc, 8, "rgba(245,138,138,0.3)");
+        rect(bx0, y, clamp(side[s], 0, 1.3) * sc, 8, colourOf(side[s]));
+        label((s === down && patty ? "▼ " : "") + (s ? "B " : "A ") + side[s].toFixed(2), bx0 - 5, y + 8, s === down ? INK : DIM, "right");
+      }
+      label("sweet", bx0 + (D.sweetLo + D.sweetHi) / 2 * bw / 1.3, H * 0.14 - 4, GOOD, "center");
+      label("burnt", bx0 + (D.burn + 0.1) * bw / 1.3, H * 0.14 - 4, HOT, "center");
+      if (verdictT > 0) label(verdict, plateX, GY - 30 - (1.2 - verdictT) * 14, verdictC, "center");
+      label("★ " + score.perfect + " · raw " + score.raw + " · burnt " + score.burnt, W - 6, 14, DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Kitchen", "Kebab", "slow heat and a wide sweet spot — the skewer that forgives a daydream, though it still burns in the end", { rate: 0.1, sweetLo: 0.55, sweetHi: 0.95 });
+
+def("S", "Sokoban", "games", "sokoban: a push succeeds only if the cell beyond is free, an undo stack of snapshots, a solver that plays and rewinds — press beside the mote to push, on it to undo", function (u) {
+  var D = { level: ["########",       // # wall  @ player  $ crate  O goal
+                    "#......#",
+                    "#.@$...#",
+                    "#..#..O#",
+                    "#..$..O#",
+                    "########"],
+            mode: "push",             // "push": a crate moves one cell · "ice": it slides to the next wall
+            stepEvery: 0.45,          // the solver's pace, seconds per move
+            label: "push ok ⇔ cell beyond is free · undo = pop the snapshot" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, mote, label, smooth, rand, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // SOKOBAN is Grid's cell logic with one rule added: a step into a crate is
+  // a PUSH, legal only if the cell beyond the crate is neither wall nor
+  // crate (the tested cell lights green or red). every move first pushes
+  // a snapshot onto an UNDO stack, so undo is a pop. the autopilot is a
+  // breadth-first search over (player, crates) — the same step function
+  // the player uses — so it copes with the ice rule too; after solving it
+  // rewinds through the stack and starts again.
+  const rows = D.level.length, cols = D.level[0].length;
+  const cs = Math.min(W * 0.72 / cols, (H - 44) / rows), ox = (W - cols * cs) / 2, oy = (H - rows * cs) / 2 + 6;
+  const wall = [], goals = [];
+  let start = [0, 0]; const crates0 = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const ch = D.level[r][c]; wall[r * cols + c] = ch === "#";
+    if (ch === "@" || ch === "+") { start[0] = c; start[1] = r; }
+    if (ch === "$" || ch === "*") crates0.push(c, r);
+    if (ch === "O" || ch === "*" || ch === "+") goals.push([c, r]);
+  }
+  start = start.concat(crates0);
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let s = start.slice(), vis = start.slice();          // the logical state, and the eased picture of it
+  const undo = [];
+  let plan = null, stepT = 0, phase = "solve", holdT = 0, heading = 0, pushes = 0;
+  let testX = -1, testY = -1, testOk = false, testT = 0;
+  function crateAt(st, x, y) { for (let i = 2; i < st.length; i += 2) if (st[i] === x && st[i + 1] === y) return (i - 2) / 2; return -1; }
+  function stepState(st, d, test) {
+    const dx = DIRS[d][0], dy = DIRS[d][1], nx = st[0] + dx, ny = st[1] + dy;
+    if (wall[ny * cols + nx]) return null;
+    const k = crateAt(st, nx, ny), out = st.slice();
+    if (k >= 0) {
+      let bx = nx + dx, by = ny + dy;
+      const free = !wall[by * cols + bx] && crateAt(st, bx, by) < 0;
+      if (test) { testX = bx; testY = by; testOk = free; testT = 0.5; }
+      if (!free) return null;
+      if (D.mode === "ice") while (!wall[(by + dy) * cols + bx + dx] && crateAt(st, bx + dx, by + dy) < 0) { bx += dx; by += dy; }
+      out[2 + k * 2] = bx; out[3 + k * 2] = by;
+    }
+    out[0] = nx; out[1] = ny;
+    return out;
+  }
+  function keyOf(st) { const ids = []; for (let i = 2; i < st.length; i += 2) ids.push(st[i + 1] * cols + st[i]); ids.sort(function (a, b) { return a - b; }); return st[0] + "," + st[1] + "|" + ids.join(","); }
+  function solved(st) { for (const g of goals) if (crateAt(st, g[0], g[1]) < 0) return false; return true; }
+  function solve(from) {                               // BFS: the first solution is the shortest
+    const seen = new Set([keyOf(from)]), states = [from], parent = [-1], move = [-1];
+    for (let i = 0; i < states.length && states.length < 20000; i++) {
+      const st = states[i];
+      if (solved(st)) { const p = []; let j = i; while (parent[j] >= 0) { p.push(move[j]); j = parent[j]; } return p.reverse(); }
+      for (let d = 0; d < 4; d++) {
+        const n = stepState(st, d, false); if (!n) continue;
+        const k = keyOf(n); if (seen.has(k)) continue;
+        seen.add(k); states.push(n); parent.push(i); move.push(d);
+      }
+    }
+    return null;
+  }
+  function tryMove(d) {
+    heading = d;
+    const n = stepState(s, d, true);
+    if (!n) return false;
+    if (crateAt(s, n[0], n[1]) >= 0) pushes++;
+    undo.push(s); if (undo.length > 64) undo.shift();
+    s = n; return true;
+  }
+  function pop() { if (undo.length) { s = undo.pop(); plan = null; } }
+  return {
+    press(x, y) {
+      const cx = ox + (s[0] + 0.5) * cs, cy = oy + (s[1] + 0.5) * cs, dx = x - cx, dy = y - cy;
+      if (Math.abs(dx) < cs / 2 && Math.abs(dy) < cs / 2) { pop(); phase = "solve"; return; }
+      tryMove(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 0 : 1) : (dy > 0 ? 2 : 3));
+      plan = null; phase = "solve";
+    },
+    frame(dt, t) {
+      stage();
+      stepT += dt; testT -= dt;
+      if (phase === "solve") {
+        if (solved(s)) { phase = "won"; holdT = 1.4; }
+        else if (stepT >= D.stepEvery) {
+          stepT = 0;
+          if (!plan || !plan.length) plan = solve(s);
+          if (!plan) pop();                            // stuck: back one move, think again
+          else { const d = plan.shift(); if (!tryMove(d)) plan = null; }
+        }
+      } else if (phase === "won") { holdT -= dt; if (holdT <= 0) { phase = "rewind"; stepT = 0; } }
+      else if (phase === "rewind") {
+        if (stepT >= 0.1) { stepT = 0; if (undo.length) pop(); else { phase = "solve"; pushes = 0; stepT = -0.8; } }
+      }
+      const k = smooth(14, dt);
+      for (let i = 0; i < vis.length; i++) vis[i] += (s[i] - vis[i]) * k;
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const x = ox + c * cs, y = oy + r * cs;
+        if (wall[r * cols + c]) { rect(x + 1, y + 1, cs - 2, cs - 2, "rgba(201,196,228,0.22)"); poly([[x + 1, y + 1], [x + cs - 1, y + 1], [x + cs - 1, y + cs - 1], [x + 1, y + cs - 1]], "rgba(201,196,228,0.5)", true); }
+        else if (D.mode === "ice") rect(x + 1, y + 1, cs - 2, cs - 2, "rgba(138,217,245,0.06)");
+      }
+      if (testT > 0) rect(ox + testX * cs + 2, oy + testY * cs + 2, cs - 4, cs - 4, testOk ? "rgba(155,226,138," + testT * 0.8 + ")" : "rgba(245,138,138," + testT * 0.8 + ")");
+      for (const g of goals) ring(ox + (g[0] + 0.5) * cs, oy + (g[1] + 0.5) * cs, cs * 0.28, TARGET, 1.5);
+      for (let i = 2; i < vis.length; i += 2) {
+        const x = ox + vis[i] * cs, y = oy + vis[i + 1] * cs, onGoal = goals.some(function (g) { return g[0] === s[i] && g[1] === s[i + 1]; });
+        rect(x + cs * 0.15, y + cs * 0.15, cs * 0.7, cs * 0.7, onGoal ? "rgba(155,226,138,0.8)" : "rgba(201,196,228,0.8)");
+        line(x + cs * 0.15, y + cs * 0.15, x + cs * 0.85, y + cs * 0.85, "#131020"); line(x + cs * 0.85, y + cs * 0.15, x + cs * 0.15, y + cs * 0.85, "#131020");
+      }
+      mote(ox + (vis[0] + 0.5) * cs, oy + (vis[1] + 0.5) * cs, Math.atan2(DIRS[heading][1], DIRS[heading][0]), MOVER, cs * 0.28);
+      for (let i = 0; i < undo.length && i < 24; i++) rect(6 + i * 4, 8, 3, 6, i === undo.length - 1 ? INK : DIM);   // the stack (its first 24 snapshots)
+      label("undo stack: " + undo.length + " · pushes " + pushes, 6, 24, DIM);
+      label(phase === "won" ? "solved!" : phase === "rewind" ? "rewind: pop, pop, pop…" : (plan ? "solver: " + plan.length + " moves left" : "solver thinking…") + (D.mode === "ice" ? " · ice" : ""), W - 6, 14, phase === "won" ? GOOD : DIM, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Sokoban", "Sledge", "on ice a pushed crate slides until it meets a wall or another crate — the same level, a different solution the solver finds by itself", { mode: "ice", stepEvery: 0.6 });
+
+def("N", "Needs", "games", "a pet: hunger, energy and affection decay every second; the lowest need is the mood, and the mood picks the idle and the emote — press an icon to feed, rest or play", function (u) {
+  var D = { decay: [0.05, 0.035, 0.07],   // hunger, energy, affection lost per second
+            careEvery: 3.2,               // how often the owner's hand comes to help
+            happy: 0.6, low: 0.3,         // mood thresholds on the lowest need
+            feed: 0.55, rest: 0.6, play: 0.5,   // what each action restores
+            label: "need −= decay·dt · mood = min(needs) → idle + emote" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, ease, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // a PET is three numbers that fall and a MOOD read off the lowest one.
+  // every second each NEED loses its decay; the mood (happy / okay /
+  // grumpy) chooses which of Idle's animations plays — a hop, a breath, a
+  // droop — and the lowest need is drawn as the emote in the thought
+  // bubble. feeding, resting and playing are just additions; resting is a
+  // little state of its own (the pet lies down and the bar fills slowly).
+  // the owner's hand is an autopilot that helps the neediest bar.
+  const NAMES = ["hunger", "energy", "love"], needs = [0.9, 0.8, 0.85];
+  const rowY = [H * 0.24, H * 0.42, H * 0.6], iconX = W * 0.6, barX = W * 0.66, barW = W * 0.3;
+  const px = W * 0.3, py = GY - 18;
+  let careT = 0, hand = -1, handT = 0, sleepT = 0, spinT = 0, crumbT = 0, heartT = 0;
+  function mood() { const m = Math.min(needs[0], needs[1], needs[2]); return m >= D.happy ? "happy" : m >= D.low ? "okay" : "grumpy"; }
+  function lowest() { let k = 0; for (let i = 1; i < 3; i++) if (needs[i] < needs[k]) k = i; return k; }
+  function icon(i, x, y, c) {                          // a bowl, a moon, a heart
+    if (i === 0) { poly([[x - 7, y - 2], [x + 7, y - 2], [x + 4, y + 4], [x - 4, y + 4]], c); dot(x, y - 4, 3, c); }
+    else if (i === 1) { dot(x, y, 6, c); dot(x + 3, y - 2, 5, "#1A1532"); }
+    else { dot(x - 3, y - 2, 3.5, c); dot(x + 3, y - 2, 3.5, c); poly([[x - 6.3, y - 0.5], [x + 6.3, y - 0.5], [x, y + 6]], c); }
+  }
+  function act(i) {
+    if (i === 0) { needs[0] = Math.min(1, needs[0] + D.feed); crumbT = 0.6; }
+    else if (i === 1) { sleepT = 1.6; }
+    else { needs[2] = Math.min(1, needs[2] + D.play); needs[1] = Math.max(0, needs[1] - 0.08); spinT = 0.5; heartT = 0.8; }
+  }
+  return {
+    press(x, y) {
+      for (let i = 0; i < 3; i++) if (Math.abs(y - rowY[i]) < 12 && x > iconX - 14) { act(i); return; }
+      if (Math.abs(x - px) < 24 && Math.abs(y - py) < 24) act(2);
+    },
+    frame(dt, t) {
+      stage(); ground();
+      for (let i = 0; i < 3; i++) needs[i] = Math.max(0, needs[i] - D.decay[i] * dt);
+      if (sleepT > 0) { sleepT -= dt; needs[1] = Math.min(1, needs[1] + D.rest / 1.6 * dt); }
+      spinT = Math.max(0, spinT - dt); crumbT -= dt; heartT -= dt;
+      careT += dt;                                     // the owner's hand: an autopilot for the neediest bar
+      if (hand < 0 && careT >= D.careEvery) { hand = lowest(); handT = 0; careT = 0; }
+      if (hand >= 0) {
+        handT += dt;
+        const k = ease(handT / 0.5), hx = lerp(W * 0.5, iconX, k), hy = lerp(-10, rowY[hand], k);
+        ring(hx, hy, 7, "rgba(232,229,244,0.7)", 1.5); dot(hx, hy, 2, INK);
+        if (handT >= 0.55) { act(hand); hand = -1; }
+      }
+      const m = mood(), low = lowest();
+      let yoff = 0, ang = 0, sx = 1, sy = 1;           // the idle, chosen by mood
+      if (sleepT > 0) { ang = -1.2; yoff = 6; }
+      else if (spinT > 0) ang = (0.5 - spinT) / 0.5 * TAU;
+      else if (m === "happy") { yoff = -Math.abs(Math.sin(t * 6)) * 10; ang = Math.sin(t * 6) * 0.2; }
+      else if (m === "okay") { sy = 1 + Math.sin(t * 3) * 0.04; sx = 1 - Math.sin(t * 3) * 0.03; }
+      else { sy = 0.85; sx = 1.12; yoff = 3; ang = Math.sin(t * 1.5) * 0.15 + 0.25; }
+      ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.beginPath(); ctx.ellipse(px, GY - 2, 16, 4, 0, 0, TAU); ctx.fill();
+      ctx.save(); ctx.translate(px, py + yoff); ctx.scale(sx, sy); mote(0, 0, ang, m === "grumpy" ? "#7fb0c8" : MOVER, 12); ctx.restore();
+      if (sleepT > 0) for (let i = 0; i < 3; i++) label("z", px + 16 + i * 7, py - 16 - i * 8 - ((t * 20) % 8), MAGIC);
+      else if (m !== "happy" || heartT > 0) {          // the thought bubble: the lowest need, or a heart
+        const bx = px + 22, by = py - 34;
+        dot(px + 12, py - 16, 2, BONE); dot(px + 17, py - 24, 3, BONE); ring(bx, by, 12, BONE, 1);
+        if (heartT > 0) icon(2, bx, by, HOT); else icon(low, bx, by, m === "grumpy" ? HOT : TARGET);
+      }
+      if (crumbT > 0) dot(lerp(iconX, px, 1 - crumbT / 0.6), lerp(rowY[0], py, 1 - crumbT / 0.6), 3, TARGET);
+      for (let i = 0; i < 3; i++) {                    // the bars
+        const y = rowY[i], v = needs[i], c = v >= D.happy ? GOOD : v >= D.low ? TARGET : HOT;
+        icon(i, iconX, y, i === low ? INK : BONE);
+        rect(barX, y - 5, barW, 10, "rgba(232,229,244,0.08)"); rect(barX, y - 5, barW * v, 10, c);
+        line(barX + barW * D.happy, y - 7, barX + barW * D.happy, y + 7, DIM); line(barX + barW * D.low, y - 7, barX + barW * D.low, y + 7, DIM);
+        label(NAMES[i] + "  −" + D.decay[i] + "/s", barX, y + 16, DIM);
+      }
+      label("mood: " + (sleepT > 0 ? "asleep" : m) + "  (lowest: " + NAMES[low] + " " + needs[low].toFixed(2) + ")", 6, 14, m === "grumpy" ? HOT : m === "happy" ? GOOD : DIM);
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Needs", "Neurotic", "needs that crash three times as fast and a mood that is only happy near full — the pet that is never satisfied for long", { decay: [0.16, 0.12, 0.2], happy: 0.8, careEvery: 2.4 });
+
+def("E", "Emote", "games", "emotes on a schedule: sweat, blush, tears, an anger vein, an idea bulb, sparkle eyes — each a tiny drawing with a pop-in above the head — press to play the next one", function (u) {
+  var D = { sequence: ["sweat", "blush", "tears", "anger", "idea", "sparkle"],   // names drawn from code; unknown = "?"
+            each: 1.8,          // seconds per emote
+            pop: 0.22,          // pop-in time
+            overshoot: 1.35,    // the pop-in's peak scale
+            label: "emote = sequence[i], i += 1 every `each` s · scale pops to overshoot, settles to 1" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, ease, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // an EMOTE is a small sprite parented to the head with a lifetime: it
+  // POPS IN (scale overshoots, then settles — the folio's Hearts and
+  // Question do the same), lives for `each` seconds, fades out. a
+  // SCHEDULE is just an index into a list of names; the body reacts to
+  // each name too (a shiver, a droop, a hop), because an emote is a
+  // moment, not a decoration. every sprite here is a few dots and lines.
+  const SZ = Math.max(1, Math.min(1.8, H / 220));    // the sprites grow with the editor, not the card
+  const cx = W / 2, cy = GY - 16 * SZ, n = D.sequence.length;
+  let i = 0, et = 0;
+  function star(x, y, r, c) { poly([[x, y - r], [x + r * 0.3, y - r * 0.3], [x + r, y], [x + r * 0.3, y + r * 0.3], [x, y + r], [x - r * 0.3, y + r * 0.3], [x - r, y], [x - r * 0.3, y - r * 0.3]], c); }
+  function heart(x, y, r, c) { dot(x - r * 0.5, y - r * 0.3, r * 0.55, c); dot(x + r * 0.5, y - r * 0.3, r * 0.55, c); poly([[x - r * 1.03, y - r * 0.05], [x + r * 1.03, y - r * 0.05], [x, y + r]], c); }
+  function drawEmote(name, k, alpha) {                 // k = 0..1 through its life; drawn in head space (0,0 = above the head)
+    ctx.globalAlpha = alpha;
+    if (name === "sweat") { const y = 4 + k * 18; dot(16, y, 4, MOVER); poly([[12.2, y - 1], [19.8, y - 1], [16, y - 9]], MOVER); }
+    else if (name === "blush") { ctx.fillStyle = "rgba(245,138,138,0.55)"; ctx.beginPath(); ctx.ellipse(-6, 22, 5, 3, 0, 0, TAU); ctx.ellipse(8, 22, 5, 3, 0, 0, TAU); ctx.fill(); for (let j = -1; j <= 1; j++) line(6 + j * 4, 20, 8 + j * 4, 25, HOT); }
+    else if (name === "tears") { for (let s = -1; s <= 1; s += 2) { const x = 4 + s * 4; line(x, 18, x + s * 2, 34, MOVER, 2); dot(x + s * 3, 36 + ((k * 60) % 14), 2.5, MOVER); } }
+    else if (name === "anger") { const x = 14, y = -2, s = 6; ctx.lineWidth = 3; ctx.strokeStyle = HOT; ctx.beginPath(); ctx.moveTo(x - s, y - 2); ctx.lineTo(x - 2, y - 2); ctx.moveTo(x + 2, y - 2); ctx.lineTo(x + s, y - 2); ctx.moveTo(x - s, y + 2); ctx.lineTo(x - 2, y + 2); ctx.moveTo(x + 2, y + 2); ctx.lineTo(x + s, y + 2); ctx.moveTo(x - 2, y - s); ctx.lineTo(x - 2, y - 2); ctx.moveTo(x + 2, y - s); ctx.lineTo(x + 2, y - 2); ctx.moveTo(x - 2, y + 2); ctx.lineTo(x - 2, y + s); ctx.moveTo(x + 2, y + 2); ctx.lineTo(x + 2, y + s); ctx.stroke(); }
+    else if (name === "idea") { dot(0, -8, 8, TARGET); rect(-4, 0, 8, 5, BONE); if (k < 0.4) for (let j = 0; j < 6; j++) { const a = j / 6 * TAU; line(Math.cos(a) * 12, -8 + Math.sin(a) * 12, Math.cos(a) * 17, -8 + Math.sin(a) * 17, TARGET); } }
+    else if (name === "sparkle") { for (let j = 0; j < 3; j++) { const a = j * 2.1 + k * 3, r = 4 + Math.sin(k * 20 + j) * 1.5; star(Math.cos(a) * 20, -6 + Math.sin(a) * 12, r, TARGET); } star(4, 18, 4, INK); }
+    else if (name === "heart") { heart(0, -6 - k * 10, 7, HOT); }
+    else { ring(0, -6, 10, BONE, 1.5); label("?", 0, -2, INK, "center"); }
+    ctx.globalAlpha = 1;
+  }
+  return {
+    press() { i = (i + 1) % n; et = 0; },
+    frame(dt, t) {
+      stage(); ground();
+      et += dt;
+      if (et >= D.each) { et -= D.each; i = (i + 1) % n; }
+      const name = D.sequence[i], k = et / D.each;
+      const s = et < D.pop ? D.overshoot * ease(et / D.pop) : lerp(D.overshoot, 1, ease((et - D.pop) / D.pop));   // the pop-in
+      const alpha = clamp((D.each - et) / 0.25, 0, 1);
+      let jx = 0, yoff = 0, ang = 0, sx = 1, sy = 1;    // the body's reaction
+      if (name === "sweat") jx = Math.sin(t * 40) * 1.2;
+      else if (name === "blush") { ang = -0.5; jx = -3; }
+      else if (name === "tears") { yoff = 4; sy = 0.9; sx = 1.08; }
+      else if (name === "anger") { jx = Math.sin(t * 60) * 2; ang = 0.15; }
+      else if (name === "idea") yoff = -Math.abs(Math.sin(clamp(et / 0.5, 0, 1) * Math.PI)) * 14;
+      else if (name === "sparkle" || name === "heart") { yoff = -Math.abs(Math.sin(t * 8)) * 6; ang = Math.sin(t * 8) * 0.15; }
+      ctx.save(); ctx.translate(cx + jx, cy + yoff); ctx.scale(sx * SZ, sy * SZ); mote(0, 0, ang, MOVER, 12); ctx.restore();
+      ctx.save(); ctx.translate(cx + jx, cy + yoff - 28 * SZ); ctx.scale(s * SZ, s * SZ); drawEmote(name, k, alpha); ctx.restore();
+      const stripW = Math.min(W * 0.9, n * 52), sx0 = (W - stripW) / 2;   // the schedule strip
+      for (let j = 0; j < n; j++) {
+        const x = sx0 + (j + 0.5) * stripW / n;
+        label(D.sequence[j], x, H * 0.16, j === i ? INK : DIM, "center");
+        if (j === i) rect(x - stripW / n * 0.4, H * 0.16 + 4, stripW / n * 0.8 * k, 2, TARGET);
+      }
+      label("i = " + i + " · scale " + s.toFixed(2) + " · alpha " + alpha.toFixed(2), W / 2, H * 0.09, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Emote", "Elated", "only the happy ones, twice as fast — a bulb, sparkles, a blush and a heart, the victory-screen loop", { sequence: ["idea", "sparkle", "blush", "heart"], each: 0.9 });
+
+def("X", "Xylophone", "games", "an instrument: keys map to a pentatonic scale, a music box plays a tune array with two bouncing hammers, bars light per note — press a key to play it (sound after the first press)", function (u) {
+  var D = { scale: [261.63, 293.66, 329.63, 392, 440, 523.25, 587.33, 659.26],   // C pentatonic, an octave and a bit
+            tune: [0, 2, 4, 5, 4, 2, 0, -1, 2, 4, 7, 5, 4, 2, 0, -1],             // the music box: key indices, −1 rests
+            bpm: 168,           // one tune step per beat
+            decay: 5,           // how fast a struck bar's light fades, per second
+            label: "f = scale[key] · light *= e^(−decay·dt) · one step per 60/bpm s" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, label, clamp, lerp, beep, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // an INSTRUMENT is a lookup table: key index → frequency, and a scale
+  // chosen so that any two keys sound fine together (a PENTATONIC has no
+  // wrong notes — the folio's Xylophone used the same trick). the MUSIC
+  // BOX is ch07's beat clock reading a tune array one step per beat; two
+  // hammers alternate, each a spring that is kicked on the strike so it
+  // bounces. the light on a bar decays like every fading thing here:
+  // multiply by e^(−decay·dt). beep() is only ever called after a press.
+  const n = D.scale.length, kw = W * 0.8 / n, x0 = W * 0.1, cy = H * 0.5;
+  const light = [], shake = [];
+  for (let i = 0; i < n; i++) { light.push(0); shake.push(0); }
+  const ham = [{ x: x0 + kw * 1.5, y: 0, vy: 0, rest: 0 }, { x: x0 + kw * (n - 1.5), y: 0, vy: 0, rest: 0 }];
+  let stepT = 0, pos = -1, armed = false, sinceBeep = 9, next = 0;
+  function keyTop(i) { const h = lerp(H * 0.5, H * 0.26, i / (n - 1)); return cy - h / 2; }
+  function strike(i, h) {
+    light[i] = 1; shake[i] = 0;
+    const hm = ham[h]; hm.x = x0 + (i + 0.5) * kw; hm.y = keyTop(i) - 3; hm.vy = -H * 1.3; hm.rest = keyTop(i) - 22;
+    if (armed && sinceBeep >= 0.16) { beep(D.scale[i], 0.35, "sine"); sinceBeep = 0; }
+  }
+  return {
+    press(x, y) { armed = true; const i = clamp(Math.floor((x - x0) / kw), 0, n - 1); strike(i, x < W / 2 ? 0 : 1); },
+    frame(dt, t) {
+      stage();
+      sinceBeep += dt; stepT += dt;
+      const step = 60 / D.bpm;
+      if (stepT >= step) {                             // the music box turns one notch
+        stepT -= step; pos = (pos + 1) % D.tune.length;
+        const k = D.tune[pos];
+        if (k >= 0 && k < n) { strike(k, next); next = 1 - next; }
+      }
+      line(x0 - 6, cy - H * 0.13, x0 + n * kw + 6, cy - H * 0.13, BONE, 2);   // the rails
+      line(x0 - 6, cy + H * 0.13, x0 + n * kw + 6, cy + H * 0.13, BONE, 2);
+      const fade = Math.exp(-D.decay * dt);
+      for (let i = 0; i < n; i++) {
+        light[i] *= fade; shake[i] += dt;
+        const top = keyTop(i), h = (cy - top) * 2, x = x0 + i * kw + 2, w = kw - 4, wob = Math.sin(shake[i] * 40) * 3 * light[i];
+        rect(x, top + wob, w, h, "hsl(" + Math.round(i / n * 300) + ",65%,58%)");
+        if (light[i] > 0.02) rect(x, top + wob, w, h, "rgba(255,255,255," + light[i] * 0.6 + ")");
+        dot(x + w / 2, cy - H * 0.13 + wob, 1.8, "#131020"); dot(x + w / 2, cy + H * 0.13 + wob, 1.8, "#131020");
+        label(String(Math.round(D.scale[i])), x + w / 2, cy + h / 2 + 12, DIM, "center");
+      }
+      for (const hm of ham) {                          // two hammers on springs
+        if (!hm.rest) { hm.rest = keyTop(Math.round((hm.x - x0) / kw - 0.5)) - 22; hm.y = hm.rest; }
+        hm.vy += ((hm.rest - hm.y) * 300 - hm.vy * 12) * dt;
+        hm.y += hm.vy * dt;
+        line(hm.x, hm.y, hm.x, hm.y - 26, BONE, 2); dot(hm.x, hm.y, 5, BONE);
+      }
+      const tw = Math.min(W * 0.8, D.tune.length * 12), tx0 = (W - tw) / 2;   // the tune, as a piano roll
+      for (let j = 0; j < D.tune.length; j++) {
+        const k = D.tune[j], x = tx0 + (j + 0.5) * tw / D.tune.length;
+        if (k < 0) dot(x, H * 0.14, 1, DIM); else rect(x - 3, H * 0.14 - k * 2, 6, 3, j === pos ? INK : "rgba(232,229,244,0.35)");
+      }
+      label(armed ? "♪ " + D.bpm + " bpm" : "press a key to unmute · " + D.bpm + " bpm", W / 2, H * 0.09 - 6, armed ? TARGET : DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Xylophone", "Xylobox", "a minor pentatonic, a new tune and a brisker box — the same keys in a sadder key, the music box in the attic", { scale: [220, 246.94, 261.63, 329.63, 349.23, 440, 493.88, 523.25], tune: [5, 3, 2, 0, 2, 3, 5, -1, 6, 5, 3, 2, 3, 2, 0, -1], bpm: 220 });
+
+def("P", "Paint", "games", "a pixel canvas: a brush, a flood fill and a palette on a small grid; the picture tiles into a texture on the right — drag to paint, press the palette to pick", function (u) {
+  var D = { cols: 24, rows: 16,   // the canvas grid
+            brush: 2,             // brush size, in cells
+            palette: ["#F58A8A", "#F5C169", "#9BE28A", "#8AD9F5", "#C9A0F5", "#E8E5F4", "#2A2340"],
+            doodle: 6,            // the ghost brush's speed, cells per second
+            fillEvery: 6,         // seconds between the ghost's flood fills
+            label: "px[r][c] = colour · brush = a b×b square · fill = flood from the seed's colour" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, label, clamp, rand, noise, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // a PAINTING is a grid of palette indices, and a texture is the same
+  // grid repeated — ch02 made its tiles procedurally, this one hands you the
+  // brush. the BRUSH writes a b×b square; the FLOOD FILL is a stack of
+  // cells that spreads to four neighbours while they share the seed's
+  // colour; the pointer's cell is ⌊(x − x0)/cs⌋. drawing merges runs of
+  // equal cells into one rect so even a big grid stays cheap. the ghost
+  // brush doodles by noise and fills something every few seconds.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const px = new Uint8Array(N), stack = new Int32Array(N);
+  for (let i = 0; i < N; i++) px[i] = D.palette.length - 1;
+  const sw = Math.min(18, H * 0.085), palX = 6, palY = 10;
+  const cx0 = W * 0.16, cs = Math.min((W * 0.5) / cols, (H - 34) / rows), cy0 = (H - 20 - rows * cs) / 2 + 4;
+  const tx0 = cx0 + cols * cs + W * 0.04, tileW = (W - tx0 - 6) / 2, ps = tileW / cols;
+  const stride = Math.max(1, Math.ceil(cols / 16));
+  let colour = 0, tool = "brush", gx = cols / 2, gy = rows / 2, ga = 0, fillT = 0, colourT = 0, lastC = -1, lastR = -1, sinceP = 9;
+  function paint(c, r) {
+    const b = D.brush, o = Math.floor((b - 1) / 2);
+    for (let dy = 0; dy < b; dy++) for (let dx = 0; dx < b; dx++) {
+      const cc = c - o + dx, rr = r - o + dy;
+      if (cc >= 0 && cc < cols && rr >= 0 && rr < rows) px[rr * cols + cc] = colour;
+    }
+  }
+  function fill(c, r) {
+    const seed = px[r * cols + c];
+    if (seed === colour) return;
+    let sp = 0; stack[sp++] = r * cols + c; px[r * cols + c] = colour;
+    while (sp > 0) {
+      const i = stack[--sp], ic = i % cols, ir = (i - ic) / cols;
+      if (ic > 0 && px[i - 1] === seed) { px[i - 1] = colour; stack[sp++] = i - 1; }
+      if (ic < cols - 1 && px[i + 1] === seed) { px[i + 1] = colour; stack[sp++] = i + 1; }
+      if (ir > 0 && px[i - cols] === seed) { px[i - cols] = colour; stack[sp++] = i - cols; }
+      if (ir < rows - 1 && px[i + cols] === seed) { px[i + cols] = colour; stack[sp++] = i + cols; }
+    }
+  }
+  function drawGrid(x0, y0, s, st) {                   // runs of equal cells become one rect
+    for (let r = 0; r < rows; r += st) {
+      let c = 0;
+      while (c < cols) {
+        const v = px[r * cols + c]; let e = c + st;
+        while (e < cols && px[r * cols + e] === v) e += st;
+        rect(x0 + c / st * s, y0 + r / st * s, (e - c) / st * s + 0.3, s + 0.3, D.palette[v]);
+        c = e;
+      }
+    }
+  }
+  return {
+    drag: true,
+    press(x, y) {
+      if (x < palX + sw + 4) {                         // the palette and the two tools
+        const k = Math.floor((y - palY) / (sw + 4));
+        if (k >= 0 && k < D.palette.length) { colour = k; tool = "brush"; }
+        else if (k === D.palette.length) tool = "brush"; else if (k === D.palette.length + 1) tool = "fill";
+        sinceP = 0; return;
+      }
+      const c = Math.floor((x - cx0) / cs), r = Math.floor((y - cy0) / cs);
+      if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+      if (tool === "fill") fill(c, r);
+      else if (sinceP < 0.1 && lastC >= 0) {           // a drag: join the dots since the last press
+        const steps = Math.max(Math.abs(c - lastC), Math.abs(r - lastR), 1);
+        for (let i = 1; i <= steps; i++) paint(Math.round(lastC + (c - lastC) * i / steps), Math.round(lastR + (r - lastR) * i / steps));
+      } else paint(c, r);
+      lastC = c; lastR = r; sinceP = 0;
+    },
+    frame(dt, t) {
+      stage();
+      sinceP += dt; fillT += dt; colourT += dt;
+      ga += noise(t * 0.7) * 4 * dt;                   // the ghost brush wanders
+      gx += Math.cos(ga) * D.doodle * dt; gy += Math.sin(ga) * D.doodle * dt;
+      if (gx < 0 || gx >= cols) { gx = clamp(gx, 0, cols - 0.01); ga = Math.PI - ga; }
+      if (gy < 0 || gy >= rows) { gy = clamp(gy, 0, rows - 0.01); ga = -ga; }
+      if (sinceP > 1.5) {                              // it paints only while you are not
+        paint(Math.floor(gx), Math.floor(gy));
+        if (colourT >= 2.5) { colourT = 0; colour = Math.floor(rand(0, D.palette.length - 1)); }
+        if (fillT >= D.fillEvery) { fillT = 0; fill(Math.floor(rand(0, cols)), Math.floor(rand(0, rows))); }
+      }
+      for (let k = 0; k < D.palette.length; k++) {     // the palette column
+        rect(palX, palY + k * (sw + 4), sw, sw, D.palette[k]);
+        if (k === colour) poly([[palX - 2, palY + k * (sw + 4) - 2], [palX + sw + 2, palY + k * (sw + 4) - 2], [palX + sw + 2, palY + k * (sw + 4) + sw + 2], [palX - 2, palY + k * (sw + 4) + sw + 2]], INK, 1.5);
+      }
+      const ty = palY + D.palette.length * (sw + 4);
+      dot(palX + sw / 2, ty + sw / 2, sw * 0.28, tool === "brush" ? INK : DIM);
+      poly([[palX + sw * 0.2, ty + sw + 4 + sw * 0.35], [palX + sw * 0.8, ty + sw + 4 + sw * 0.35], [palX + sw * 0.7, ty + sw + 4 + sw * 0.85], [palX + sw * 0.3, ty + sw + 4 + sw * 0.85]], tool === "fill" ? INK : DIM);
+      label("fill", palX + sw / 2, ty + sw * 2 + 18, tool === "fill" ? INK : DIM, "center");
+      drawGrid(cx0, cy0, cs, 1);                       // the canvas
+      poly([[cx0, cy0], [cx0 + cols * cs, cy0], [cx0 + cols * cs, cy0 + rows * cs], [cx0, cy0 + rows * cs]], BONE, true);
+      if (sinceP > 1.5) ring(cx0 + (Math.floor(gx) + 0.5) * cs, cy0 + (Math.floor(gy) + 0.5) * cs, cs * D.brush * 0.7 + 2, D.palette[colour], 1.5);
+      for (let ty2 = 0; ty2 < 2; ty2++) for (let tx2 = 0; tx2 < 2; tx2++) drawGrid(tx0 + tx2 * tileW, cy0 + ty2 * rows * ps, ps * stride, stride);   // the texture: the grid, tiled
+      poly([[tx0, cy0], [tx0 + tileW * 2, cy0], [tx0 + tileW * 2, cy0 + rows * ps * 2], [tx0, cy0 + rows * ps * 2]], DIM, true);
+      label("tiled ×4", tx0 + tileW, cy0 + rows * ps * 2 + 12, DIM, "center");
+      label(cols + "×" + rows + " · brush " + D.brush + " · tool " + tool, cx0 + cols * cs / 2, cy0 - 5, DIM, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Paint", "Plotter", "a one-cell brush on a grid four times as big — pixel art proper, where the flood fill earns its keep", { cols: 48, rows: 32, brush: 1 });
+
+def("S", "Snapshot", "games", "photo mode: freeze the world's clock while the UI clock runs, free the camera to pan and zoom about the focus, a filter and a frame, a shutter flash — press to freeze, drag to pan", function (u) {
+  var D = { every: 4.5,        // seconds of play between the autopilot's photos
+            hold: 2.2,         // seconds a photo mode lasts after the last touch
+            zoom: 1.5,         // the photo zoom
+            filter: "none",    // "none" · "sepia" · "night"
+            frame: "corners",  // "corners" (a viewfinder) · "polaroid"
+            balls: 4, g: 1.8, e: 0.85,   // the little scene: bouncing balls, gravity ×H, restitution
+            label: "world dt = frozen ? 0 : dt · ui dt = dt · view = zoom·(p − focus) + centre" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, smooth, rng, rand, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // PHOTO MODE is §7's pause with the camera let off its leash: TWO CLOCKS
+  // in one frame — the world's dt is zeroed while the interface's dt keeps
+  // running (the corners breathe, the timer counts). the camera is a
+  // scale about a FOCUS point: translate to the centre, scale by zoom,
+  // translate by −focus; a drag moves the focus against the pointer. the
+  // filter is §8's grading done with one multiply rect; the frame is
+  // drawn last, unzoomed, because it belongs to the UI clock.
+  const seed = rng(11), balls = [];
+  for (let i = 0; i < D.balls; i++) balls.push({ x: W * (0.15 + seed() * 0.7), y: H * (0.2 + seed() * 0.3), vx: W * (seed() - 0.5) * 0.5, vy: 0, r: 5 + seed() * 5, c: [TARGET, GOOD, HOT, MAGIC][i % 4] });
+  let mx = W * 0.3, mvx = W * 0.18, my = GY - 9, mvy = 0, hopT = 0;
+  let frozen = false, everyT = 0, holdT = 0, frozenFor = 0, flash = 0, z = 1, fx = W / 2, fy = H / 2, tfx = W / 2, tfy = H / 2;
+  let sinceP = 9, ax = 0, ay = 0, afx = 0, afy = 0, manual = false, orbit = 0;
+  function clampFocus() { const hw = W / (2 * z), hh = H / (2 * z); tfx = clamp(tfx, hw, W - hw); tfy = clamp(tfy, hh, H - hh); }
+  function enter(x, y) { frozen = true; holdT = D.hold; frozenFor = 0; flash = 1; tfx = x; tfy = y; }
+  return {
+    drag: true,
+    press(x, y) {
+      if (sinceP > 0.25) {                             // a fresh click
+        if (!frozen) { enter(x, y); manual = true; }
+        ax = x; ay = y; afx = tfx; afy = tfy;
+      } else if (frozen) { tfx = afx - (x - ax) / z; tfy = afy - (y - ay) / z; }   // a drag: pan against the pointer
+      holdT = D.hold; sinceP = 0; clampFocus();
+    },
+    frame(dt, t) {
+      stage();
+      sinceP += dt; flash = Math.max(0, flash - 4 * dt);
+      const wdt = frozen ? 0 : dt;                     // the world's clock
+      if (frozen) {
+        frozenFor += dt;
+        if (sinceP > 0.3) holdT -= dt;
+        if (!manual) { orbit += dt; tfx = afx + Math.sin(orbit) * W * 0.08; tfy = afy + Math.cos(orbit * 0.7) * H * 0.05; clampFocus(); }
+        if (holdT <= 0) { frozen = false; manual = false; everyT = 0; }
+      } else { everyT += dt; if (everyT >= D.every) { const b = balls[Math.floor(rand(0, balls.length))]; enter(b.x, b.y); afx = tfx; afy = tfy; orbit = 0; } }
+      z += ((frozen ? D.zoom : 1) - z) * smooth(6, dt);
+      if (!frozen) { tfx = W / 2; tfy = H / 2; }
+      fx += (tfx - fx) * smooth(8, dt); fy += (tfy - fy) * smooth(8, dt);
+      const G = H * D.g;
+      for (const b of balls) {                         // the little scene, stepped by wdt
+        b.vy += G * wdt; b.x += b.vx * wdt; b.y += b.vy * wdt;
+        if (b.y > GY - b.r) { b.y = GY - b.r; b.vy = -Math.abs(b.vy) * D.e; if (Math.abs(b.vy) < 20) b.vy = -H * 0.9; }
+        if (b.x < W * 0.06 + b.r) { b.x = W * 0.06 + b.r; b.vx = Math.abs(b.vx); }
+        if (b.x > W * 0.94 - b.r) { b.x = W * 0.94 - b.r; b.vx = -Math.abs(b.vx); }
+      }
+      hopT += wdt; mvy += G * wdt; mx += mvx * wdt; my += mvy * wdt;
+      if (my > GY - 9) { my = GY - 9; mvy = 0; if (hopT > 1.1) { hopT = 0; mvy = -H * 0.7; } }
+      if (mx < W * 0.1) mvx = Math.abs(mvx); if (mx > W * 0.9) mvx = -Math.abs(mvx);
+      ctx.save();                                      // the camera: scale about the focus
+      ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-fx, -fy);
+      ground();
+      line(W * 0.06, 0, W * 0.06, GY, BONE); line(W * 0.94, 0, W * 0.94, GY, BONE);
+      for (let i = 0; i < 3; i++) { const x = W * (0.25 + i * 0.25); line(x, GY, x, GY - H * 0.2, BONE, 2); poly([[x - 8, GY - H * 0.18], [x + 8, GY - H * 0.18], [x, GY - H * 0.32]], GOOD); }
+      for (const b of balls) dot(b.x, b.y, b.r, b.c);
+      mote(mx, my, mvx < 0 ? Math.PI : 0);
+      if (frozen) ring(fx, fy, 6, "rgba(245,193,105,0.7)", 1);
+      ctx.restore();
+      if (frozen && D.filter === "sepia") { ctx.globalCompositeOperation = "multiply"; rect(0, 0, W, H, "rgba(255,205,140,0.6)"); ctx.globalCompositeOperation = "source-over"; rect(0, 0, W, H, "rgba(120,80,30,0.12)"); }
+      else if (frozen && D.filter === "night") { ctx.globalCompositeOperation = "multiply"; rect(0, 0, W, H, "rgba(70,90,210,0.7)"); ctx.globalCompositeOperation = "source-over"; }
+      if (frozen) {                                    // the frame belongs to the ui clock
+        if (D.frame === "polaroid") {
+          const m = W * 0.05, c = "rgba(240,236,230,0.92)";
+          rect(0, 0, W, m, c); rect(0, 0, m, H, c); rect(W - m, 0, m, H, c); rect(0, H - m * 3, W, m * 3, c);
+          label("frozen " + frozenFor.toFixed(1) + " s · " + D.filter, W / 2, H - m * 1.3, "rgba(60,50,40,0.7)", "center");
+        } else {
+          const m = 10 + Math.sin(t * 3) * 2, L = 14;
+          for (const s of [[m, m, 1, 1], [W - m, m, -1, 1], [m, H - m, 1, -1], [W - m, H - m, -1, -1]]) { line(s[0], s[1], s[0] + L * s[2], s[1], INK, 2); line(s[0], s[1], s[0], s[1] + L * s[3], INK, 2); }
+          for (let i = 1; i < 3; i++) { line(W * i / 3, 0, W * i / 3, H, DIM); line(0, H * i / 3, W, H * i / 3, DIM); }
+          label("● photo · zoom " + z.toFixed(2) + " · " + D.filter, W / 2, 24, TARGET, "center");
+        }
+      }
+      if (flash > 0) rect(0, 0, W, H, "rgba(255,255,255," + flash * 0.8 + ")");
+      const onCard = frozen && D.frame === "polaroid";  // captions over the cream border need dark ink
+      label("world dt " + Math.round(wdt * 1000) + " ms · ui dt " + Math.round(dt * 1000) + " ms" + (frozen ? " · frozen " + frozenFor.toFixed(1) + " s (unscaled)" : ""), 6, H - 22, onCard ? "rgba(140,60,50,0.9)" : frozen ? HOT : DIM);
+      label(D.label, W / 2, H - 8, onCard ? "rgba(60,50,40,0.75)" : null, "center");
+    }
+  };
+});
+rhymeOf("Snapshot", "Sepiabooth", "a sepia grade inside a polaroid border and a gentler zoom — the photo booth at the end of the pier", { filter: "sepia", frame: "polaroid", zoom: 1.25 });
+
+def("G", "Gems", "games", "match-3: swap two neighbours, runs of 3+ in a row or column clear with a flash, gravity fills from above, and the cascade repeats — press two adjacent gems to swap", function (u) {
+  var D = { cols: 7, rows: 6,     // the board
+            kinds: 4,             // gem types
+            thinkEvery: 1.1,      // the autopilot's pause between moves
+            fall: 9,              // gravity, in cells per second²
+            swapTime: 0.18,       // the swap animation
+            clearTime: 0.3,       // the clear flash
+            label: "match = run ≥ 3 in a row/col · clear → gravity → match again (cascade)" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, label, clamp, lerp, ease, rand, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // MATCH-3 is Grid with three verbs. SWAP two neighbours (undo it if
+  // nothing matched); MATCH: mark every horizontal or vertical run of three
+  // or more; GRAVITY: each column compacts downward and new gems fall in
+  // from above — and then match again, because falling makes new runs: the
+  // CASCADE. the pictures per cell are one number (yoff, how far above its
+  // home a gem still is) and one timer (the clear flash). the autopilot
+  // tests every neighbour swap in place and takes one that matches.
+  const cols = D.cols, rows = D.rows, N = cols * rows;
+  const cs = Math.min(W * 0.62 / cols, (H - 40) / rows), ox = (W - cols * cs) / 2, oy = (H - rows * cs) / 2 + 4;
+  const type = new Int8Array(N), yoff = new Float32Array(N), vy = new Float32Array(N), clr = new Float32Array(N), mark = new Uint8Array(N);
+  const COL = [HOT, TARGET, GOOD, MOVER, MAGIC, BONE], cand = new Int32Array(256);
+  let sel = -1, sa = -1, sb = -1, swapT = 0, back = false, score = 0, cascade = 0, thinkT = 0, hintT = 0, shuffleT = 0;
+  function at(c, r) { return type[r * cols + c]; }
+  function seedBoard() {
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      let k;
+      do { k = Math.floor(rand(0, D.kinds)); } while ((c >= 2 && at(c - 1, r) === k && at(c - 2, r) === k) || (r >= 2 && at(c, r - 1) === k && at(c, r - 2) === k));
+      type[r * cols + c] = k; yoff[r * cols + c] = 0; vy[r * cols + c] = 0; clr[r * cols + c] = 0;
+    }
+  }
+  seedBoard();
+  function runAt(c, r) {                               // is (c, r) inside a run of 3+?
+    const k = at(c, r); if (k < 0) return false;
+    let n = 1, i = c - 1; while (i >= 0 && at(i, r) === k) { n++; i--; } i = c + 1; while (i < cols && at(i, r) === k) { n++; i++; }
+    if (n >= 3) return true;
+    n = 1; i = r - 1; while (i >= 0 && at(c, i) === k) { n++; i--; } i = r + 1; while (i < rows && at(c, i) === k) { n++; i++; }
+    return n >= 3;
+  }
+  function findMatches() {
+    mark.fill(0); let count = 0;
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      const k = at(c, r); if (k < 0) continue;
+      if (c + 2 < cols && at(c + 1, r) === k && at(c + 2, r) === k) { let e = c; while (e < cols && at(e, r) === k) { mark[r * cols + e] = 1; e++; } }
+      if (r + 2 < rows && at(c, r + 1) === k && at(c, r + 2) === k) { let e = r; while (e < rows && at(c, e) === k) { mark[e * cols + c] = 1; e++; } }
+    }
+    for (let i = 0; i < N; i++) if (mark[i]) { count++; clr[i] = D.clearTime; }
+    return count;
+  }
+  function settled() {
+    if (swapT > 0) return false;
+    for (let i = 0; i < N; i++) if (yoff[i] > 0 || clr[i] > 0 || type[i] < 0) return false;
+    return true;
+  }
+  function swapTypes(a, b) { const k = type[a]; type[a] = type[b]; type[b] = k; }
+  function startSwap(a, b) { sa = a; sb = b; swapT = D.swapTime; back = false; sel = -1; }
+  return {
+    press(x, y) {
+      const c = Math.floor((x - ox) / cs), r = Math.floor((y - oy) / cs);
+      if (c < 0 || c >= cols || r < 0 || r >= rows || !settled()) return;
+      const i = r * cols + c;
+      if (sel < 0) sel = i;
+      else {
+        const sc = sel % cols, sr = (sel - sc) / cols;
+        if (Math.abs(sc - c) + Math.abs(sr - r) === 1) { startSwap(sel, i); thinkT = -3; }
+        else sel = i;
+      }
+    },
+    frame(dt, t) {
+      stage();
+      hintT -= dt; shuffleT -= dt;
+      if (swapT > 0) {                                 // the swap animation, forward or back
+        swapT -= dt;
+        if (swapT <= 0) {
+          swapTypes(sa, sb);
+          if (!back) {
+            const ac = sa % cols, ar = (sa - ac) / cols, bc = sb % cols, br = (sb - bc) / cols;
+            if (!(runAt(ac, ar) || runAt(bc, br))) { back = true; swapT = D.swapTime; }
+          } else back = false;
+        }
+      }
+      let clearing = false, empties = false;
+      for (let i = 0; i < N; i++) {
+        if (clr[i] > 0) { clr[i] -= dt; clearing = true; if (clr[i] <= 0) { clr[i] = 0; type[i] = -1; } }
+        if (type[i] < 0) empties = true;
+      }
+      if (!clearing && empties) {                      // gravity: compact each column, refill from above
+        for (let c = 0; c < cols; c++) {
+          let w = rows - 1;
+          for (let r = rows - 1; r >= 0; r--) {
+            const i = r * cols + c;
+            if (type[i] < 0) continue;
+            if (w !== r) { const j = w * cols + c; type[j] = type[i]; yoff[j] = yoff[i] + (w - r) * cs; vy[j] = vy[i]; type[i] = -1; }
+            w--;
+          }
+          for (let r = w; r >= 0; r--) { const i = r * cols + c; type[i] = Math.floor(rand(0, D.kinds)); yoff[i] = (w + 1) * cs; vy[i] = 0; }
+        }
+      }
+      let falling = false;
+      for (let i = 0; i < N; i++) if (yoff[i] > 0) {
+        vy[i] += D.fall * cs * dt; yoff[i] -= vy[i] * dt; falling = true;
+        if (yoff[i] <= 0) { yoff[i] = 0; vy[i] = 0; }
+      }
+      if (!falling && !clearing && !empties && swapT <= 0) {
+        const n = findMatches();
+        if (n > 0) { cascade++; score += n * 10 * cascade; }
+        else {
+          cascade = 0; thinkT += dt;
+          if (thinkT >= D.thinkEvery) {                // the autopilot: any neighbour swap that matches
+            thinkT = 0; let nc = 0;
+            for (let r = 0; r < rows && nc < 254; r++) for (let c = 0; c < cols && nc < 254; c++) for (let d = 0; d < 2; d++) {
+              const c2 = c + (d === 0 ? 1 : 0), r2 = r + (d === 1 ? 1 : 0);
+              if (c2 >= cols || r2 >= rows) continue;
+              const a = r * cols + c, b = r2 * cols + c2;
+              swapTypes(a, b); const ok = runAt(c, r) || runAt(c2, r2); swapTypes(a, b);
+              if (ok) { cand[nc++] = a; cand[nc++] = b; }
+            }
+            if (nc === 0) { seedBoard(); shuffleT = 1; }
+            else { const k = Math.floor(rand(0, nc / 2)) * 2; startSwap(cand[k], cand[k + 1]); hintT = 0.3; }
+          }
+        }
+      }
+      ctx.save(); ctx.beginPath(); ctx.rect(ox, oy, cols * cs, rows * cs); ctx.clip();
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const i = r * cols + c, k = type[i]; if (k < 0) continue;
+        let x = ox + (c + 0.5) * cs, y = oy + (r + 0.5) * cs - yoff[i];
+        if (swapT > 0 && (i === sa || i === sb)) {     // the two swapping gems slide past each other
+          const o = i === sa ? sb : sa, kk = 1 - swapT / D.swapTime;
+          x = lerp(x, ox + (o % cols + 0.5) * cs, ease(kk)); y = lerp(y, oy + (Math.floor(o / cols) + 0.5) * cs, ease(kk));
+        }
+        const s = cs * 0.36 * (clr[i] > 0 ? clr[i] / D.clearTime : 1), col = COL[k % COL.length];
+        if (k === 0) dot(x, y, s, col);
+        else if (k === 1) poly([[x, y - s], [x + s, y], [x, y + s], [x - s, y]], col);
+        else if (k === 2) rect(x - s * 0.85, y - s * 0.85, s * 1.7, s * 1.7, col);
+        else if (k === 3) poly([[x, y - s], [x + s, y + s * 0.8], [x - s, y + s * 0.8]], col);
+        else poly([[x + s, y], [x + s * 0.5, y + s * 0.87], [x - s * 0.5, y + s * 0.87], [x - s, y], [x - s * 0.5, y - s * 0.87], [x + s * 0.5, y - s * 0.87]], col);
+        if (clr[i] > 0) ring(x, y, cs * 0.5 * (1 - clr[i] / D.clearTime) + 2, "rgba(255,255,255," + clr[i] / D.clearTime + ")", 1.5);
+        if (i === sel || (hintT > 0 && (i === sa || i === sb))) ring(x, y, cs * 0.45, INK, 1.5);
+      }
+      ctx.restore();
+      poly([[ox, oy], [ox + cols * cs, oy], [ox + cols * cs, oy + rows * cs], [ox, oy + rows * cs]], BONE, true);
+      label("score " + score, 6, 14, TARGET);
+      if (cascade > 1) label("cascade ×" + cascade, W - 6, 14, GOOD, "right");
+      if (shuffleT > 0) label("no moves — shuffle", W - 6, 14, HOT, "right");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Gems", "Glitter", "five kinds on a bigger board — matches are rarer, cascades longer, and the autopilot has to look harder", { cols: 8, rows: 7, kinds: 5 });
+
+def("T", "Tetromino", "games", "tetromino gravity: the piece steps down one row per tick, locks when blocked, full rows flash and everything above shifts down — press beside the piece to move it, on it to rotate", function (u) {
+  var D = { cols: 10, rows: 14,   // the well
+            dropEvery: 0.35,      // seconds per gravity tick
+            moveEvery: 0.12,      // the autopilot's pace
+            flash: 0.35,          // the line-clear flash
+            label: "each tick y += 1 · blocked → lock · full row → flash, clear, shift down" };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, label, clamp, rand, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // TETRIS GRAVITY is Grid's tick: every dropEvery seconds the piece moves
+  // one row down if all four cells below are free; if not, it LOCKS — its
+  // cells are written into the well and a new piece spawns. a LINE CLEAR
+  // is a row with no gaps: it flashes, then every row above it copies
+  // down one. rotation turns each cell (x, y) into (n−1−y, x) inside the
+  // piece's box, with a small wall kick. the ghost outline is where the
+  // piece would land; the autopilot picks a random column and rotation.
+  const cols = D.cols, rows = D.rows, cs = Math.min(W * 0.5 / cols, (H - 30) / rows), ox = (W - cols * cs) / 2, oy = (H - rows * cs) / 2 + 2;
+  const BASE = [[4, [[0, 1], [1, 1], [2, 1], [3, 1]]], [2, [[0, 0], [1, 0], [0, 1], [1, 1]]], [3, [[0, 1], [1, 1], [2, 1], [1, 0]]],
+                [3, [[0, 1], [1, 1], [1, 0], [2, 0]]], [3, [[0, 0], [1, 0], [1, 1], [2, 1]]], [3, [[0, 0], [0, 1], [1, 1], [2, 1]]], [3, [[2, 0], [0, 1], [1, 1], [2, 1]]]];
+  const ROT = BASE.map(function (b) {                  // four rotations per piece
+    const out = []; let cells = b[1];
+    for (let r = 0; r < 4; r++) { out.push(cells); cells = cells.map(function (p) { return [b[0] - 1 - p[1], p[0]]; }); }
+    return out;
+  });
+  const COL = [MOVER, TARGET, MAGIC, GOOD, HOT, BONE, "#F5A0D0"];
+  const grid = new Uint8Array(cols * rows), full = new Uint8Array(rows);
+  let type = 0, rot = 0, px = 0, py = 0, dropT = 0, moveT = 0, flashT = 0, lines = 0, wantCol = 0, wantRot = 0, over = 0;
+  function fits(tp, r, x, y) {
+    for (const c of ROT[tp][r]) { const cx = x + c[0], cy = y + c[1]; if (cx < 0 || cx >= cols || cy >= rows) return false; if (cy >= 0 && grid[cy * cols + cx]) return false; }
+    return true;
+  }
+  function spawn() {
+    type = Math.floor(rand(0, 7)); rot = 0; px = Math.floor(cols / 2) - 2; py = -1;
+    wantRot = Math.floor(rand(0, 4)); wantCol = Math.floor(rand(0, cols - 1));
+    if (!fits(type, rot, px, py)) { over = 0.8; }
+  }
+  function rotate() { const r = (rot + 1) % 4; for (const k of [0, -1, 1, -2, 2]) if (fits(type, r, px + k, py)) { rot = r; px += k; return true; } return false; }
+  function lock() {
+    for (const c of ROT[type][rot]) { const cy = py + c[1]; if (cy >= 0) grid[cy * cols + px + c[0]] = type + 1; }
+    let any = false;
+    for (let r = 0; r < rows; r++) { let f = 1; for (let c = 0; c < cols; c++) if (!grid[r * cols + c]) { f = 0; break; } full[r] = f; if (f) any = true; }
+    if (any) flashT = D.flash; else spawn();
+  }
+  function clearRows() {
+    let w = rows - 1;
+    for (let r = rows - 1; r >= 0; r--) {
+      if (full[r]) { lines++; continue; }
+      if (w !== r) for (let c = 0; c < cols; c++) grid[w * cols + c] = grid[r * cols + c];
+      w--;
+    }
+    for (; w >= 0; w--) for (let c = 0; c < cols; c++) grid[w * cols + c] = 0;
+    full.fill(0); spawn();
+  }
+  spawn();
+  return {
+    press(x, y) {
+      if (flashT > 0 || over > 0) return;
+      let minC = 9, maxC = -1;
+      for (const c of ROT[type][rot]) { minC = Math.min(minC, px + c[0]); maxC = Math.max(maxC, px + c[0]); }
+      const col = (x - ox) / cs;
+      if (col < minC) { if (fits(type, rot, px - 1, py)) px--; }
+      else if (col > maxC + 1) { if (fits(type, rot, px + 1, py)) px++; }
+      else rotate();
+      moveT = -1.5;                                    // your hands, not the autopilot's, for a moment
+    },
+    frame(dt, t) {
+      stage();
+      if (over > 0) { over -= dt; if (over <= 0) { grid.fill(0); lines = 0; spawn(); } }
+      else if (flashT > 0) { flashT -= dt; if (flashT <= 0) clearRows(); }
+      else {
+        moveT += dt;
+        if (moveT >= D.moveEvery) {                    // the autopilot nudges toward its wish
+          moveT = 0;
+          if (rot !== wantRot) rotate();
+          else if (px < wantCol && fits(type, rot, px + 1, py)) px++;
+          else if (px > wantCol && fits(type, rot, px - 1, py)) px--;
+        }
+        dropT += dt;
+        if (dropT >= D.dropEvery) { dropT -= D.dropEvery; if (fits(type, rot, px, py + 1)) py++; else lock(); }
+      }
+      poly([[ox, oy], [ox + cols * cs, oy], [ox + cols * cs, oy + rows * cs], [ox, oy + rows * cs]], BONE, true);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        const v = grid[r * cols + c]; if (!v) continue;
+        rect(ox + c * cs + 1, oy + r * cs + 1, cs - 2, cs - 2, full[r] && flashT > 0 ? "rgba(255,255,255," + (0.5 + Math.sin(flashT * 40) * 0.5) + ")" : COL[v - 1]);
+      }
+      if (over <= 0 && flashT <= 0) {
+        let gy = py; while (fits(type, rot, px, gy + 1)) gy++;   // the ghost: where it lands
+        for (const c of ROT[type][rot]) {
+          const gx = ox + (px + c[0]) * cs, gyy = oy + (gy + c[1]) * cs;
+          if (gy + c[1] >= 0) poly([[gx + 1, gyy + 1], [gx + cs - 1, gyy + 1], [gx + cs - 1, gyy + cs - 1], [gx + 1, gyy + cs - 1]], DIM, true);
+          const y = oy + (py + c[1]) * cs;
+          if (py + c[1] >= 0) rect(gx + 1, y + 1, cs - 2, cs - 2, COL[type]);
+        }
+      }
+      const bx = ox + cols * cs + 8;                   // the tick timer, drawn
+      rect(bx, oy, 4, rows * cs, "rgba(232,229,244,0.08)"); rect(bx, oy + rows * cs * (1 - dropT / D.dropEvery), 4, rows * cs * dropT / D.dropEvery, TARGET);
+      label("tick", bx + 8, oy + 10, DIM); label(D.dropEvery + " s", bx + 8, oy + 22, DIM);
+      label("lines " + lines, ox - 8, oy + 10, GOOD, "right");
+      if (over > 0) label("top out — reset", W / 2, oy - 6, HOT, "center");
+      else if (flashT > 0) label("line clear!", W / 2, oy - 6, INK, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Tetromino", "Tinygrid", "a six-wide well and gravity two and a half times faster — pieces pile up before the autopilot has finished thinking", { cols: 6, rows: 12, dropEvery: 0.14 });
+
+def("R", "Rhythm", "games", "rhythm judgement: notes ride a highway toward the hit line; a press is Perfect, Good or Miss by its distance to the note's beat; combo and feedback text — press on the beat (sound after the first press)", function (u) {
+  var D = { bpm: 110,            // the song's tempo
+            perfect: 0.05, good: 0.12,   // judgement windows, seconds
+            speed: 0.35,         // highway speed, ×W per second
+            pattern: [1, 1, 0.5, 0.5, 1, 2],   // beats between notes, looped
+            err: 0.09,           // the autopilot's timing error, ± seconds
+            label: "Δ = |tPress − tNote| · perfect ≤ " };
+  const { ctx, W, H, GY, TAU, stage, dot, ring, line, rect, poly, label, clamp, lerp, ease, rand, beep, MOVER, TARGET, GOOD, HOT, MAGIC, BONE, INK, DIM } = u;
+  // RHYTHM is Kickdrum's beat clock with a ruler: every note owns a time,
+  // and a press is scored by |tPress − tNote| against two WINDOWS — inside
+  // the small one is Perfect, inside the big one Good, a note that drifts
+  // past the big one unpressed is a Miss. the highway is that same
+  // arithmetic drawn: x = hitLine + (tNote − now)·speed, so distance on
+  // screen IS distance in time. the feedback text pops in like the
+  // grimoire's Pop-in, and a Miss resets the COMBO. beeps follow a press.
+  const hitX = W * 0.22, laneY = H * 0.5, pxPerS = W * D.speed;
+  const notes = [];
+  let song = 0, lastNote = 1, pi = 0, combo = 0, best = 0, fb = "", fbC = DIM, fbT = 0, fbD = 0, armed = false, sinceBeep = 9, manualT = 0;
+  function judge(n, delta) {
+    const a = Math.abs(delta);
+    n.j = a <= D.perfect ? 0 : a <= D.good ? 1 : 2; n.jt = 0;
+    if (n.j === 2) combo = 0; else { combo++; best = Math.max(best, combo); }
+    fb = ["PERFECT", "GOOD", "MISS"][n.j]; fbC = [GOOD, TARGET, HOT][n.j]; fbT = 0.6; fbD = delta;
+    if (n.j < 2 && armed && sinceBeep >= 0.16) { beep(n.j === 0 ? 880 : 660, 0.1, "square"); sinceBeep = 0; }
+  }
+  function hit() {
+    let bestN = null, bestA = 1e9;
+    for (const n of notes) if (n.j < 0) { const a = Math.abs(n.t - song); if (a < bestA) { bestA = a; bestN = n; } }
+    if (bestN && bestA <= D.good * 2.5) judge(bestN, song - bestN.t);
+  }
+  return {
+    press() { armed = true; manualT = 2.5; hit(); },
+    frame(dt, t) {
+      stage();
+      song += dt; sinceBeep += dt; manualT -= dt; fbT -= dt;
+      const horizon = (W - hitX) / pxPerS + 0.5;
+      while (lastNote < song + horizon) {              // write the chart ahead of the eye
+        lastNote += D.pattern[pi % D.pattern.length] * 60 / D.bpm; pi++;
+        notes.push({ t: lastNote, j: -1, jt: 0, err: rand(-D.err, D.err) * (rand(0, 1) < 0.12 ? 3 : 1) });
+      }
+      for (let i = notes.length - 1; i >= 0; i--) {
+        const n = notes[i];
+        if (n.j < 0 && song - n.t > D.good) judge(n, song - n.t);          // drifted past: a miss
+        else if (n.j < 0 && manualT <= 0 && song >= n.t + n.err) judge(n, song - n.t);   // the autopilot's press
+        if (n.j >= 0) { n.jt += dt; if (n.jt > 0.7) notes.splice(i, 1); }
+      }
+      const beat = 60 / D.bpm, phase = (song / beat) % 1;
+      rect(0, laneY - 16, W, 32, "rgba(232,229,244,0.05)");   // the highway and the windows
+      rect(hitX - D.good * pxPerS, laneY - 16, D.good * pxPerS * 2, 32, "rgba(245,193,105,0.18)");
+      rect(hitX - D.perfect * pxPerS, laneY - 16, D.perfect * pxPerS * 2, 32, "rgba(155,226,138,0.3)");
+      line(hitX, laneY - 22, hitX, laneY + 22, INK, 2);
+      for (let b = Math.ceil((song - 1) / beat); b * beat < song + horizon; b++) { const x = hitX + (b * beat - song) * pxPerS; if (x > -5 && x < W + 5) line(x, laneY + 18, x, laneY + 24, DIM); }
+      for (const n of notes) {
+        const x = hitX + (n.t - song) * pxPerS;
+        if (x < -20 || x > W + 20) continue;
+        if (n.j < 0) dot(x, laneY, 8, MOVER);
+        else { const k = 1 - n.jt / 0.7; ctx.globalAlpha = k; dot(x, laneY - (n.j === 2 ? 0 : (1 - k) * 30), 8 * (n.j === 2 ? k : 1), [GOOD, TARGET, HOT][n.j]); ctx.globalAlpha = 1; }
+      }
+      dot(W * 0.9, H * 0.2, 8 + (1 - phase) * 8, "rgba(245,193,105," + (0.25 + (1 - phase) * 0.5) + ")");   // the beat lamp
+      label(D.bpm + " bpm", W * 0.9, H * 0.2 + 26, DIM, "center");
+      if (fbT > 0) {
+        const s = fbT > 0.45 ? 1.4 - ease((0.6 - fbT) / 0.15) * 0.4 : 1;
+        ctx.save(); ctx.translate(hitX, laneY - 36); ctx.scale(s, s); label(fb, 0, 0, fbC, "center"); ctx.restore();
+        if (fb !== "MISS" || Math.abs(fbD) < 1) label((fbD > 0 ? "+" : "") + Math.round(fbD * 1000) + " ms " + (fbD > 0 ? "late" : "early"), hitX, laneY - 50, DIM, "center");
+      }
+      label("combo " + combo, 6, 16, combo >= 10 ? GOOD : INK); label("best " + best, 6, 28, DIM);
+      label(manualT > 0 ? "your hands" : "autopilot ± " + Math.round(D.err * 1000) + " ms", W - 6, 16, manualT > 0 ? TARGET : DIM, "right");
+      label(D.label + Math.round(D.perfect * 1000) + " ms · good ≤ " + Math.round(D.good * 1000) + " ms", W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Rhythm", "Relentless", "a fast chart with windows squeezed to 30 and 70 ms — the expert difficulty where the autopilot starts to miss", { bpm: 170, perfect: 0.03, good: 0.07 });
+
+def("W", "Windup", "games", "the cartoon wind-up: legs blur in place while a timer fills, then a delayed launch with a dust cloud and speed lines — goofy locomotion and VFX in one — press to wind it up", function (u) {
+  var D = { windup: 0.8,      // seconds of legs spinning in place
+            delay: 0.15,      // the pause between "ready" and actually leaving
+            speed: 2.2,       // the run, ×W per second
+            spin: 40,         // the leg blur, radians per second
+            dustR: 0.12,      // the dust cloud's puff radius, ×H
+            every: 3.2,       // the autopilot's rest between runs
+            label: "legs spin for `windup` s · wait `delay` · then x += speed·dt, dust at the start" };
+  const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, poly, mote, label, clamp, lerp, ease, rand, MOVER, TARGET, GOOD, HOT, BONE, INK, DIM } = u;
+  // the WIND-UP is anticipation made silly: the body leans back and
+  // shakes while a fan of leg lines spins in place (a BLUR is many faint
+  // copies at different phases), the timer fills, and then — after a
+  // deliberate DELAY, the joke's beat — the body is gone in one frame,
+  // leaving a dust cloud (the codex's Landing dust, borrowed for a
+  // take-off) and speed lines. Cat's squash and stretch does the rest:
+  // long on the run, flat on the wall.
+  const x0 = W * 0.16, y = GY - 9;
+  const dust = [];
+  for (let i = 0; i < 30; i++) dust.push({ x: 0, y: 0, vx: 0, vy: 0, r: 0, life: 0 });
+  let x = x0, phase = "idle", pt = D.every * 0.4, puffT = 0;
+  function puff(px, py, r, vx, vy, life) { for (const d of dust) if (d.life <= 0) { d.x = px; d.y = py; d.r = r; d.vx = vx; d.vy = vy; d.life = life; return; } }
+  function wind() { if (phase === "idle" || phase === "back") { phase = "wind"; pt = 0; } }
+  return {
+    press() { wind(); },
+    frame(dt, t) {
+      stage(); ground();
+      pt += dt;
+      if (phase === "idle" && pt >= D.every) wind();
+      else if (phase === "wind") {
+        puffT += dt; if (puffT > 0.08) { puffT = 0; puff(x - 12, GY - 3, 3, -rand(20, 50), -rand(5, 15), 0.5); }
+        if (pt >= D.windup) { phase = "launch"; pt = 0; }
+      } else if (phase === "launch" && pt >= D.delay) {
+        phase = "run"; pt = 0;
+        for (let i = 0; i < 16; i++) puff(x + rand(-16, 6), GY - rand(0, 14), H * D.dustR * rand(0.2, 0.7), -rand(10, 70), -rand(5, 35), rand(0.5, 1.1));
+      } else if (phase === "run") {
+        x += W * D.speed * dt;
+        if (x >= W * 0.9) { x = W * 0.9; phase = "hit"; pt = 0; for (let i = 0; i < 6; i++) puff(x + 8, GY - rand(0, 24), 5, -rand(10, 30), -rand(10, 40), 0.5); }
+      } else if (phase === "hit" && pt >= 0.35) { phase = "back"; pt = 0; }
+      else if (phase === "back") { x -= W * 0.4 * dt; if (x <= x0) { x = x0; phase = "idle"; pt = 0; } }
+      for (const d of dust) if (d.life > 0) {          // the dust: puffs that grow and fade
+        d.life -= dt; d.x += d.vx * dt; d.y += d.vy * dt; d.r += 8 * dt;
+        dot(d.x, d.y, d.r, "rgba(201,196,228," + Math.max(0, d.life * 0.28) + ")");
+      }
+      let sx = 1, sy = 1, ang = 0, jx = 0, blur = false;
+      if (phase === "wind" || phase === "launch") { ang = -0.4; jx = Math.sin(t * 50) * 2; sx = 0.92; sy = 1.08; blur = true; }
+      else if (phase === "run") { sx = 1.45; sy = 0.7; blur = true; for (let i = 0; i < 4; i++) line(x - 20 - i * 9, y - 6 + i * 4, x - 44 - i * 9, y - 6 + i * 4, "rgba(232,229,244," + (0.4 - i * 0.08) + ")", 1.5); }
+      else if (phase === "hit") { sx = 0.55; sy = 1.45; for (let i = 0; i < 3; i++) dot(x + Math.cos(t * 9 + i * 2.1) * 16, y - 18 + Math.sin(t * 9 + i * 2.1) * 6, 2, TARGET); }
+      else if (phase === "back") { ang = Math.PI; sy = 1 + Math.abs(Math.sin(t * 14)) * 0.08; }
+      if (blur) {                                      // the leg blur: a fan of faint lines
+        ctx.fillStyle = "rgba(138,217,245,0.12)"; ctx.beginPath(); ctx.ellipse(x + jx, GY - 6, 14, 7, 0, 0, TAU); ctx.fill();
+        for (let i = 0; i < 8; i++) { const a = t * D.spin + i / 8 * TAU; line(x + jx, y + 6, x + jx + Math.cos(a) * 11, GY - 1 + Math.sin(a) * 3, "rgba(138,217,245,0.35)", 2); }
+      } else { line(x - 4, y + 7, x - 5, GY, MOVER, 2); line(x + 4, y + 7, x + 5, GY, MOVER, 2); }
+      ctx.save(); ctx.translate(x + jx, y - (sy - 1) * 9); ctx.scale(sx, sy); mote(0, 0, ang); ctx.restore();
+      if (phase === "wind") {                          // the wind-up timer over the head
+        rect(x - 16, y - 26, 32, 5, "rgba(232,229,244,0.1)"); rect(x - 16, y - 26, 32 * clamp(pt / D.windup, 0, 1), 5, TARGET);
+        label("wind " + pt.toFixed(2) + " / " + D.windup + " s", x, y - 30, TARGET, "center");
+      } else if (phase === "launch") label("delay " + D.delay + " s…", x, y - 30, HOT, "center");
+      else if (phase === "run") label("x += " + D.speed + "·W·dt", x, y - 30, MOVER, "center");
+      label(D.label, W / 2, H - 8, null, "center");
+    }
+  };
+});
+rhymeOf("Windup", "Whoosh", "a wind-up twice as long with no pause at all and a cloud three times the size — the gag where only the dust is left", { windup: 1.8, delay: 0, dustR: 0.32 });
 /* ============================== the page runner ============================== */
 
 var grid = document.getElementById("lexicon");

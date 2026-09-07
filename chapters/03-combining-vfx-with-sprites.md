@@ -80,6 +80,10 @@ One character sprite, many colour schemes: a shader looks up each pixel's colour
 
 Godot's `PointLight2D` and Unity's *Light 2D* (URP) make sprites respond to light. Give sprites a **normal map** — a second image encoding which way each pixel "faces" — and flat art gains believable depth. On the web, the honest equivalent is additive/multiply light blobs, which is also exactly how consoles did it for decades.
 
+## Where the seven go next — the stagecraft almanac
+
+A **shader** is a loop over pixels: a small program run once per pixel that answers "what colour am I?" On a canvas you can write that loop by hand over the frame's bytes, and the **[stagecraft almanac](https://esorhizome.github.io/sparks-and-sprites/stagecraft.html)**'s *screen* and *skin* families do exactly that with the seven verbs above, aimed at the whole scene instead of one sprite: **Crt** bends every pixel's sample position and darkens alternate rows; **Ordered** compares brightness against a 4×4 threshold tile for the one-bit look; **Frozen** is the palette swap given a state (frozen, petrified, gilded, ghost) and a sweep from the feet up; **Xray** is the outline recipe drawn only where a wall hides the hero. The Godot port spells the screen family as thirteen small `canvas_item` shaders. One page holds them all: the [stagecraft cheatsheet](../cheatsheets/stagecraft.md).
+
 ---
 
 *Stack, tint, add, mask, outline, dissolve, relight. Seven verbs — the entire "how did they make it look like that" toolbox.*

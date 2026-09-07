@@ -23,7 +23,7 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 ## How demos work here
 
 - **Web + Godot get direct, runnable demos.**
-  - Web: open any page in **[the live demo gallery](https://esorhizome.github.io/sparks-and-sprites/)** — each one shows editable code next to its visual result. Change a number, press *Run*, watch it change. No installs, no build step.
+  - Web: open any page in **[the live demo gallery](https://esorhizome.github.io/sparks-and-sprites/)** — each one shows editable code next to its visual result. Change a number, press *Run*, watch it change. No installs, no build step. The eight card galleries — the elemental button bestiary, the cube codex, the glyph grimoire, the locomotion lexicon (208), the flipbook folio, the depth atlas, the stagecraft almanac and the world workshop — hold over a thousand effects between them, every one with its code a click away.
   - Godot: open [`demos/godot/`](demos/godot/) as a Godot 4.x project. **Every web demo has a Godot twin** — each builds its whole scene *from code* in `_ready()`, so the script **is** the demo — heavily commented, tweak and re-run. Each gallery page also links its `.gd` file directly, so you can download one demo without cloning anything.
 - **Unity + Unreal get script templates + explained code.** Each chapter shows the equivalent Unity/Unreal code or editor recipe and explains *why* it produces the same result — and the repo now carries starter folders for both: [`demos/unity/`](demos/unity/) (a self-contained C# script per demo) and [`demos/unreal/`](demos/unreal/) (C++ actor templates for the code-natural demos, exact-value editor recipes for the Niagara/material ones — **each covering both Unreal 2D and 3D**: every recipe names its UMG/Paper2D spelling alongside the 3D one). Assets are being imported gradually; until then the scripts are working recipes, not committed projects. The concepts transfer one-to-one; only the syntax changes accent.
 
@@ -45,9 +45,12 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 | 11 | [three.js & Babylon.js](chapters/11-three-and-babylon.md) | 3D, 2D, and every hybrid in the browser — plus Node.js disentangled |
 | 12 | [Responsive cursors & living buttons](chapters/12-cursors-and-living-buttons.md) | Glowing buttons, cursor trails, custom cursors — alive at rest, grateful when touched |
 | 13 | [Text that moves](chapters/13-text-that-moves.md) | Programmatic text animation: typewriters, glows, scrambles, waves — the fourteen families |
-| 14 | [Procedural animation & the maths of movement](chapters/14-procedural-animation.md) | Springs, steering, vehicles, IK, verlet, paths, gaits, cameras and clocks — every movement recipe and its maths, in plain words; 104 live styles A–Z ×4, each with a rhyme |
+| 14 | [Procedural animation & the maths of movement](chapters/14-procedural-animation.md) | Springs, steering, vehicles, IK, verlet, paths, gaits, cameras and clocks — every movement recipe and its maths, in plain words; 208 live styles A–Z ×8, each with a rhyme |
 | 15 | [Transparent flipbooks](chapters/15-transparent-flipbooks.md) | VFX as pre-baked frames: bake once, copy a rectangle — across all four platforms |
 | 16 | [Depth without a third dimension](chapters/16-depth-without-a-third-dimension.md) | Gradients, shading, atmospheric perspective, shadows, focus — the cheap illusion of 3D in 2D, and gradients on 3D wireframes |
+| 17 | [Input & intent](chapters/17-input-and-intent.md) | The code between the hand and the character: coyote time, jump buffers, dead zones, acceleration curves, taps and holds, flings, swipes, motion inputs, virtual sticks, mouse-look |
+| 18 | [Collision & contact](chapters/18-collision-and-contact.md) | What touches what: boxes and circles, sweeps, tilemaps one axis at a time, one-way platforms, slopes, step-up, sensors, broad phase, triggers, hitboxes, elastic hits, rotated boxes |
+| 19 | [Worlds from arithmetic](chapters/19-worlds-from-arithmetic.md) | Procedural generation: Poisson scatter, noise terrain, Voronoi, L-systems, cellular caves, BSP rooms, mazes, wave function collapse, autotiling, loot tables, spawn directors, saves, and the seed |
 
 ## The cheatsheets
 
@@ -64,6 +67,10 @@ One-page quick references for the days you just need the answer:
 - [Flipbooks](cheatsheets/flipbooks.md) — the four index lines, the A–Z×4 of baked VFX (teaching laps + genre laps), engine spellings for sheet → play
 - [VFX around the flipbook (Godot)](cheatsheets/godot-flipbook-vfx.md) — the long form: four clocks + signals, dressing one playing loop with shaders, tweens, particles, and triggers
 - [Depth](cheatsheets/depth.md) — the three gradient calls, the eight depth cues one line each, the A–Z×4 of the depth atlas, wanted-picture → card
+- [Stagecraft](cheatsheets/stagecraft.md) — the scene-level shelf: screen passes, sprite shaders, lighting, impacts, weather, particle machinery, HUD, audio — the A–Z×4 of the stagecraft almanac, wanted-effect → card, every engine's spelling
+- [Input](cheatsheets/input.md) — coyote and buffer timers, dead zones, curves, gestures — the thirteen input mechanisms one line each
+- [Collision](cheatsheets/collision.md) — shape → test → resolve, the load-bearing snippets, engine spellings
+- [Worlds](cheatsheets/worlds.md) — generator → rule → card, the seed, saves, engine spellings
 - [Browsers](cheatsheets/browsers.md) — the pre-release checklist + engine families
 - [Licenses & sources](cheatsheets/licenses-and-sources.md) — the source table + license glossary
 - [Node vs three vs Babylon](cheatsheets/three-vs-babylon.md) — the three names, modes of use, genre recipes
