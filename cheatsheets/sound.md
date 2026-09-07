@@ -24,6 +24,22 @@ Stack with ±20% volume variation and 3-variant round-robin → any repeated sou
 
 **Mix:** route through named buses ("Music"/"SFX"); fade linear gain (not dB) with a tween; duck music under dialogue.
 
+**Beyond the three blips** — the audio family of [the stagecraft almanac](https://esorhizome.github.io/sparks-and-sprites/stagecraft.html) (13 cards, each drawn; no sound until clicked) and cheatsheet [stagecraft](stagecraft.md):
+| Wanted | Card | Mechanism |
+|---|---|---|
+| footsteps by surface | **Footsteps** | the surface under the foot picks the recipe; the foot-plant event fires it |
+| beep-speak dialogue | **Natter** | a blip per letter, pitched by character; vowels sine, consonants square |
+| engine hum | **Engine** | oscillator pitch + volume follow speed |
+| wind / rain / surf beds | **Noisebed** | filtered noise, slow LFOs on cutoff and gain |
+| muffle (underwater, pause, behind a wall) | **Quiet** | a lowpass whose cutoff drops |
+| reverb / echo zones | **Yodel** | a feedback delay whose mix rises inside the zone |
+| adaptive music | **Jukebox** | layers fade by intensity; switch on the bar; stingers on the beat |
+| tight timing | **Lookahead** | book notes ahead on the audio clock, never on a frame timer |
+| too many voices | **Quota** | cap per sound; steal the oldest or quietest |
+| haptics | **Rumble** | two motors (low / high) with intensity envelopes |
+| positional / Doppler | **Positional** | pan by x, gain by distance, pitch by relative speed |
+| synth recipes, visuals from sound | **Envelopes**, **Analyser** | shaped sweeps; the spectrum drives bars and a glow |
+
 **Free sources:** [Kenney audio](https://kenney.nl/assets/category:Audio) (CC0) · [freesound.org](https://freesound.org/) (filter CC0!) · [Sonniss GDC](https://sonniss.com/gameaudiogdc) (free commercial) · [Pixabay SFX](https://pixabay.com/sound-effects/).
 
 **Web rule:** no audio before the first user interaction — hence every web game's "click to start" screen.

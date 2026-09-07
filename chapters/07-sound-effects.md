@@ -83,6 +83,10 @@ blip(880);            // coin-ish. blip(220) = thud-ish. Sweep freq downward = l
 - **Fade with a tween** (animating a value over time — volume is just another value): fade music out over 2 s instead of cutting it. Decibels are logarithmic; fading the *linear* gain (0–1) sounds more natural than fading dB directly.
 - **Ducking** — auto-lower music while dialogue/SFX plays: built into Unity's mixer (*Duck Volume* effect) and Unreal (*Sound Class* passive mix modifiers); in Godot/Web, tween the music bus down and back.
 
+## Beyond the three blips — the almanac's audio family
+
+The **[stagecraft almanac](https://esorhizome.github.io/sparks-and-sprites/stagecraft.html)**'s *SFX & audio* family takes the oscillator-and-envelope above and builds the thirteen things a shipped game does with it. Five to start with: **Footsteps** (the surface under the foot picks the recipe), **Natter** (a blip per typed letter, pitched by character), **Quiet** (a lowpass — a filter that lets only the low frequencies through — for underwater and pause), **Jukebox** (music layers that fade in by intensity and switch on the bar) and **Lookahead** (notes booked slightly ahead on the audio clock, never on a frame timer); Positional, Envelopes, Engine, Noisebed, Yodel, Quota, Analyser and Rumble fill the rest of the shelf. The page keeps the autoplay rule honestly: it makes **no sound until you click a card**, and every card draws its meter, envelope or filter so it is worth watching muted. Engine spellings per card: the [stagecraft cheatsheet](../cheatsheets/stagecraft.md).
+
 ## Free & legal sound sources
 
 | Source | What | License | Cost |

@@ -1,7 +1,7 @@
 extends SceneTree
 ## Headless test for the full locomotion lexicon (not a demo).
-## Checks the 104 defs across the nine family files (every letter exactly
-## four styles, unique names, every card carrying dials and a rhyme whose
+## Checks the 208 defs across the seventeen family files (every letter exactly
+## eight styles, unique names, every card carrying dials and a rhyme whose
 ## dials only override existing keys), then runs every style AND every
 ## rhyme through setup → 120 ticks → two presses → 120 ticks → a coarse
 ## tick (dt 0.05) — long enough for steppers, springs, and verlet piles to
@@ -72,11 +72,11 @@ func _initialize() -> void:
 				assert((def.dials as Dictionary).has(key), "%s ⇄ %s: rhyme dial '%s' is not an original dial" % [def.name, rh.name, key])
 			_run_one(fam, def, false)
 			_run_one(fam, def, true)
-	assert(total == 104, "expected 104 styles, found %d" % total)
+	assert(total == 208, "expected 208 styles, found %d" % total)
 	assert(letters.size() == 26, "the alphabet has a gap: %d distinct letters" % letters.size())
 	for l in letters:
-		assert(letters[l] == 4, "letter %s owns %d styles, wanted exactly 4" % [l, letters[l]])
-	print("lexicon logic pass: %d styles + %d rhymes ticked and pressed, A to Z four times, families %s" % [total, total, str(sizes)])
+		assert(letters[l] == 8, "letter %s owns %d styles, wanted exactly 8" % [l, letters[l]])
+	print("lexicon logic pass: %d styles + %d rhymes ticked and pressed, A to Z eight times, families %s" % [total, total, str(sizes)])
 	change_scene_to_file("res://scenes/locomotion.tscn")
 	process_frame.connect(_tick)
 
@@ -131,6 +131,6 @@ func _tick() -> void:
 		k.pressed = true
 		Input.parse_input_event(k)
 		page += 1
-		if page > 16:                                     # 15 window pages + wrap slack
+		if page > 32:                                     # 31 window pages + wrap slack
 			print("LEXICON TEST COMPLETE — %d styles + %d rhymes, all pages drawn, clicked, dragged, rhymed and enlarged" % [total, total])
 			quit()

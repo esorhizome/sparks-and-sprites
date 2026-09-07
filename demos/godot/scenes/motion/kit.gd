@@ -21,6 +21,8 @@ extends RefCounted
 ##          re-runs init().
 ##   b.t  — seconds since this card (or its rhyme) woke
 
+const StageKit := preload("res://scenes/stage/kit.gd")   # the almanac's synthesizer, borrowed for beeps
+
 const INK := Color(0.91, 0.898, 0.957)
 const DIM := Color(0.91, 0.898, 0.957, 0.25)
 const MOVER := Color(0.541, 0.851, 0.961)   ## the mote — every demo's protagonist blue
@@ -132,3 +134,9 @@ static func noise(x: float) -> float:
 	var f := x - i
 	var k := f * f * (3.0 - 2.0 * f)
 	return (_hash(i) + (_hash(i + 1.0) - _hash(i)) * k) * 2.0 - 1.0
+
+## A short synthesized tone — the web kit's beep(freq, dur, type). Silent
+## until a card has been pressed (the cards keep that promise), routed
+## through the stagecraft kit's shared generator so nothing sings unasked.
+static func beep(freq: float, dur: float = 0.12, type: String = "triangle") -> void:
+	StageKit.beep(freq, dur, type)

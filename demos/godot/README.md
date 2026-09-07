@@ -37,11 +37,13 @@ has its Godot twin here:
 | Elemental buttons (all 104) | `scenes/elemental_buttons.gd` + `scenes/elements/` | elemental-buttons | 12 |
 | Cube codex (all 104) | `scenes/cube_vfx.gd` + `scenes/cubefx/` | cube-vfx | 06 |
 | Glyph grimoire (all 104) | `scenes/text_fx.gd` + `scenes/textfx/` | text-fx | 13 |
-| Locomotion lexicon (all 104 + 104 rhymes) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14 |
+| Locomotion lexicon (all 208 + 208 rhymes) | `scenes/locomotion.gd` + `scenes/motion/` | locomotion | 14, 17, 18 |
 | Flipbook folio (all 104) | `scenes/flipbook.gd` | flipbook | 15 |
 | Flipbook VFX (Godot-only) | `scenes/flipbook_vfx.gd` + `shaders/rim_glow.gdshader`, `shaders/circuit_flow.gdshader` | — | 15 (also 03, 06, 12) |
 | Depth atlas (all 104 + 104 rhymes) | `scenes/depth.gd` + `scenes/depth/` | depth | 16 |
 | Depth-fade wireframe (3D, Godot-only) | `scenes/depth_wire_3d.gd` + `shaders/depth_fade.gdshader` | — | 16 |
+| Stagecraft almanac (all 104 + 104 rhymes) | `scenes/stagecraft.gd` + `scenes/stage/` + `shaders/stage/` | stagecraft | 06 (03, 07, 12, 16) |
+| World workshop (all 13 + 13 rhymes) | `scenes/worlds.gd` + `scenes/world/` | worlds | 19 |
 
 One demo has no web twin: **Flipbook VFX** is a PNG-sequence loop (frames generated in code — swap in your own) wearing rim glow, a breathing aura, a circuit track, an orbiting mote, click-bursts and a right-click light/dark ground swap, all conducted by tweens, timers and signals. Where the folio (key **G**) is the *breadth* demo — 104 baked sheets, and **clicking any card opens it 3.4× larger in the middle of the window** (the big sprite mirrors the card's frames, so the specials show exactly what the small card is doing) — this one (key **H**) is the *depth* demo: one loop, fully dressed. Long-form companion: [`cheatsheets/godot-flipbook-vfx.md`](../../cheatsheets/godot-flipbook-vfx.md).
 
@@ -220,3 +222,25 @@ godot --headless --path . -s res://lexicon_test.gd   # all 104 movement styles +
 godot --headless --path . -s res://motion_family_check.gd -- res://scenes/motion/clocks.gd 14   # one lexicon family, originals + rhymes, two sizes
 godot --headless --path . -s res://flipbook_test.gd  # all 104 sheets: defs census (A–Z ×4) + the bake→slice→play pipeline + the specials
 ```
+
+## The stagecraft almanac and the world workshop
+
+`scenes/stagecraft.gd` (key **L**) pages through the almanac's eight
+families — screen & post-process, sprite & material shaders, lighting &
+visibility, weapons & impacts, water & weather, particle mechanics, HUD,
+audio — one file per family in `scenes/stage/`, eight cards to a page;
+click to fire, poke or scrub, right-click for the rhyme (a dials swap),
+double-click to enlarge, 1/2/4 for tempo. Two cards (lightning, muzzle
+fire) are **opt-in**: a static notice until clicked. The one honest change
+of spelling from the web page: where the browser rewrites pixels in a
+loop, Godot lays a `canvas_item` shader over the card — small files in
+`shaders/stage/`, each reading the screen through `hint_screen_texture`
+and doing the same arithmetic; the runner feeds each one the card's dials
+as uniforms every frame. The audio family plays through one shared
+`AudioStreamGenerator` (`scenes/stage/kit.gd`'s Synth) and, like the web
+page, makes no sound until a card is clicked.
+
+`scenes/worlds.gd` (key **Z**) is the procedural-generation gallery:
+thirteen generators in three families in `scenes/world/`, every one seeded
+(`RandomNumberGenerator.seed`), so the same seed draws the same world here
+and in the browser.

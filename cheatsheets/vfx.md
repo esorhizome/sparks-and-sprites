@@ -27,6 +27,8 @@ Every effect is one of two mechanisms: **spawn small things with simple rules** 
 
 **Depth in 2D** (shaded balls and cubes, smoke/flame/sparkle sorted near → far, cast and contact shadows, blur as focus) has its own chapter [16](../chapters/16-depth-without-a-third-dimension.md) and cheatsheet [depth](depth.md) — demo: [the depth atlas](https://esorhizome.github.io/sparks-and-sprites/depth.html) (104 pictures A–Z ×4, +104 rhymes, editable)
 
+**Scene-level VFX** (whole-frame CRT / dither / palette passes, sprite state shaders, visibility polygons and fog of war, muzzle flashes and decals, spring water and weather, particle pools / sub-emitters / budgets, HUD feedback, and the sound half) lives in [chapter 06](../chapters/06-vfx-cookbook.md)'s *stagecraft almanac* section and cheatsheet [stagecraft](stagecraft.md) — demo: [the stagecraft almanac](https://esorhizome.github.io/sparks-and-sprites/stagecraft.html) (104 effects A–Z ×4, +104 rhymes, editable; Godot key L)
+
 **UI feedback** (glowing buttons, cursor trails, responsive cursors) has its own chapter: [12](../chapters/12-cursors-and-living-buttons.md) — demos: [living buttons](https://esorhizome.github.io/sparks-and-sprites/glow-buttons.html) · [responsive cursor](https://esorhizome.github.io/sparks-and-sprites/cursor-sparkle.html)
 
 **Cross-engine authoring:** [Effekseer](https://effekseer.github.io/en/) — free MIT VFX editor with Godot/Unity/Unreal runtimes.

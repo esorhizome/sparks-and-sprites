@@ -1,6 +1,6 @@
 # Cheatsheet · Procedural animation & movement maths
 
-Everything = **want − have, closed a little each frame.** Full chapter: [14](../chapters/14-procedural-animation.md). Live demos: [the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html) (104 styles A–Z ×4, each with a rhyme = 208, all editable; Godot menu key F).
+Everything = **want − have, closed a little each frame.** Full chapter: [14](../chapters/14-procedural-animation.md). Live demos: [the locomotion lexicon](https://esorhizome.github.io/sparks-and-sprites/locomotion.html) (208 styles A–Z ×8 in 17 families, each with a rhyme = 416, all editable; Godot menu key F, right-click for the rhyme). Two of the new families have sheets of their own: [input](input.md) and [collision](collision.md).
 
 ## The first lap, one line each
 
@@ -33,11 +33,22 @@ Everything = **want − have, closed a little each frame.** Full chapter: [14](.
 | Y | Yaw | heading += clamped `wrapAngle(atan2 − heading)`; turn radius = speed/turnRate |
 | Z | Zigzag | waypoints + easing + corner pauses — the schedule *is* the menace |
 
-## The other three laps — wanted motion → card
+## The other seven laps — wanted motion → card
 
 **Lap 2 (teaching):** A·Astar · B·Bezier · C·Camera · D·Dash · E·Ease · F·Flee · G·Grapple · H·Hitstop · I·Inertia · J·Jitter · K·Keyframe · L·Lookat · M·Motor · N·Nest · O·Obstacle · P·Path · Q·Queue · R·Rope · S·Substep · T·Timescale · U·Upright · V·Vehicle · W·Weight · X·Xfade · Y·Yank · Z·Zones
 **Lap 3 (genre):** A·Asteroids · B·Bullethell · C·Cat · D·Drone · E·Elevator · F·Firefly · G·Ghost · H·Homing · I·Invaders · J·Jelly · K·Kart · L·Lag · M·Mech · N·Ninja · O·Octopus · P·Platform · Q·Quantize · R·Rocket · S·Slime · T·Tractorbeam · U·Ufo · V·Vine · W·Whirlpool · X·Xhair · Y·Yacht · Z·Zap
 **Lap 4 (genre):** A·Avalanche · B·Butterfly · C·Conveyor · D·Dragon · E·Echo · F·Frog · G·Grid · H·Herd · I·Idle · J·Juggle · K·Kite · L·Leaf · M·Mirror · N·Newton · O·Orrery · P·Pinball · Q·Quicksand · R·Rubberband · S·Spider · T·Tank · U·Umbrella · V·Volley · W·Worm · X·Xing · Y·Yoyo · Z·Zombies
+
+Laps 5–8 are eight families of thirteen (the coverage laps); the letters run A–Z four more times across them:
+
+**Input & intent:** C·Coyote · J·Jumpbuffer · V·Variable · D·Deadzone · N·Normalize · A·Accelerate · M·Multitap · C·Charge · F·Fling · S·Swipe · Q·Quartercircle · V·Virtualstick · M·Mouselook — *[sheet](input.md)*
+**Collision & contact:** A·Aabb · O·Overlap · T·Tunnel · X·Xaxis · O·Oneway · O·Oblique · K·Kerb · W·Whiskers · Q·Quadtree · V·Volume · I·Iframes · E·Elastic · O·Obb — *[sheet](collision.md)*
+**Platformer verbs:** M·Mantle · L·Ladder · W·Wallrun · K·Kneel · D·Dodge · G·Glide · J·Jetpack · U·Underwater · G·Gravity · Z·Zipline · M·Minecart · B·Brittle · B·Bouncepad
+**Wheels, wings & ballast:** D·Donuts · U·Uphill · H·Hovercraft · L·Lean · B·Boost · R·Road · P·Perspective · Z·Zerog · Q·Quadcopter · U·Uboat · Y·Yak · L·Locomotive · Y·Yoke
+**Squads & maps:** F·Formation · E·Escort · I·Interpose · H·Hide · H·Hug · J·Judge · F·Flowfield · D·Dijkstra · I·Influence · N·Nodes · U·Utility · E·Edge · V·Villager
+**Joints, cloth & grains:** R·Robotarm · Q·Quadruped · J·Jangle · C·Cloth · B·Bridge · T·Torque · H·Hinge · Y·Yield · G·Grab · A·Artillery · Y·Yardstick · S·Sand · L·Liquid
+**Rewinds, rooms & beats:** R·Rewind · X·Xtrapolate · I·Initiative · K·Kickdrum · P·Pause · C·Cooldown · X·Xtents · P·Pan · N·Nudge · Z·Zoompunch · T·Tracking · Z·Zenith · W·Wrap
+**Game verbs:** A·Angler · F·Farm · K·Kitchen · S·Sokoban · N·Needs · E·Emote · X·Xylophone · P·Paint · S·Snapshot · G·Gems · T·Tetromino · R·Rhythm · W·Windup
 
 | I want… | Card | The maths in one breath |
 |---|---|---|
@@ -57,6 +68,22 @@ Everything = **want − have, closed a little each frame.** Full chapter: [14](.
 | aim assist | X·Xhair | friction inside a target's radius + a pull toward the nearest |
 | network lag / rubber-banding | L·Lag, R·Rubberband | interpolate a packet behind, or extrapolate; snap or lerp to the server |
 | a Frogger / Pac-Man / Invaders | F·Frog, G·Grid, I·Invaders | grid hops with an arc; lane movement with buffered turns; a formation on a beat |
+| a jump that forgives | C·Coyote, J·Jumpbuffer, V·Variable | a grace timer after the ledge; an early press stored and fired on landing; release cuts `vy` |
+| a stick that isn't twitchy | D·Deadzone, N·Normalize | test the vector's length, not each axis; rescale `(len − dz) ÷ (1 − dz)`; `if len > 1, v /= len` |
+| a bullet that never skips a wall | T·Tunnel | swept AABB: time of impact `t` in 0..1, stop there |
+| a platform you can drop through | O·Oneway | collide only when falling and the feet were above the top last frame; down+jump ignores it for N frames |
+| a slope | O·Oblique | project `v` onto the ground's tangent; steeper than `maxAngle` = slide down it |
+| a wall run | W·Wallrun | airborne + against a wall + fast enough → gravity ×`wallG` for `runTime`; jump off along the normal |
+| a drift car | D·Donuts | split `v` into forward and sideways; grip removes the sideways part; the handbrake lowers grip |
+| a formation | F·Formation, E·Escort | slots hung off the leader's heading; each follower Arrives at its slot (or Chases a predicted one) |
+| a flow field for a thousand units | F·Flowfield | one flood from the goal writes a distance per cell; every unit steps to its smallest neighbour |
+| a behaviour tree | N·Nodes, U·Utility | selector / sequence nodes ticked top-down; or score every action with a curve and take the highest |
+| cloth | C·Cloth | a verlet lattice with structural, shear and bend constraints, pinned at the top; wind = noise |
+| a rewind | R·Rewind | a ring buffer of snapshots at 30 Hz; hold to step backward, let go to resume |
+| the same physics smooth at any fps | X·Xtrapolate | a fixed `hz` step; draw a blend of the last two states by `α = acc ÷ step` |
+| a beat-synced hop | K·Kickdrum, R·Rhythm | `beat = t·bpm/60`; judge a press by its distance to the nearest beat — Perfect / Good / Miss |
+| a fishing minigame | A·Angler | a bobber on a wave, a random bite delay, a tug, then keep the bar inside the moving zone |
+| a match-3 | G·Gems | swap two neighbours; runs of 3+ clear; gravity fills from above; repeat until nothing matches |
 
 ## The four load-bearing snippets
 
@@ -83,6 +110,8 @@ want = mote + vel*lookAhead;  if (|want - cam| > deadZone) cam spring→ want (�
 x += (target - x) * 0.1               // wrong: 10 fps and 60 fps disagree
 x += (target - x) * (1 - exp(-k*dt))  // right: identical curves
 ```
+
+The collision snippets (AABB, swept box, tile pass, one-way, slopes, SAT) and the input snippets (coyote, buffer, dead zone, multitap, fling) are written out in full on their own sheets: **[collision](collision.md)** and **[input](input.md)**.
 
 ## Enemy brains, cheapest first
 

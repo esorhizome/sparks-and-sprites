@@ -27,11 +27,13 @@ const DEMOS := [
 	["A", "Elemental buttons — all 104, paged by family", "res://scenes/elemental_buttons.tscn"],
 	["S", "Cube codex — one hero, 104 character effects", "res://scenes/cube_vfx.tscn"],
 	["D", "Glyph grimoire — one phrase, 104 text effects", "res://scenes/text_fx.tscn"],
-	["F", "Locomotion lexicon — 104 movement styles, A to Z four times (+104 rhymes)", "res://scenes/locomotion.tscn"],
+	["F", "Locomotion lexicon — 208 movement styles, A to Z eight times (+208 rhymes)", "res://scenes/locomotion.tscn"],
 	["G", "Flipbook folio — 104 baked VFX sheets, A to Z four times", "res://scenes/flipbook.tscn"],
 	["H", "Flipbook VFX — one loop, wearing its effects", "res://scenes/flipbook_vfx.tscn"],
 	["J", "Depth atlas — 104 illusions of depth in 2D (+104 rhymes)", "res://scenes/depth.tscn"],
 	["K", "Depth-fade wireframe (3D) — one line mesh, three materials", "res://scenes/depth_wire_3d.tscn"],
+	["L", "Stagecraft almanac — 104 scene & screen effects, A to Z four times (+104 rhymes)", "res://scenes/stagecraft.tscn"],
+	["Z", "World workshop — 13 generators, 26 worlds (procedural generation)", "res://scenes/worlds.tscn"],
 ]
 
 func _ready() -> void:
@@ -39,15 +41,17 @@ func _ready() -> void:
 	title.text = "SPARKS & SPRITES — Godot demos\nClick a demo (or press its key).  Esc returns here.  Each scene builds itself in _ready() — open the script and read it."
 	title.position = Vector2(40, 24)
 	add_child(title)
-	# two columns of real, clickable buttons
-	var half := int(ceil(DEMOS.size() / 2.0))
+	# three columns of real, clickable buttons (30 demos fit a 960×540 window)
+	var per_col := int(ceil(DEMOS.size() / 3.0))
 	for i in DEMOS.size():
 		var d: Array = DEMOS[i]
 		var btn := Button.new()
 		btn.text = "[%s]  %s" % [d[0], d[1]]
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.position = Vector2(40 + floorf(i / float(half)) * 450.0, 90 + (i % half) * 38.0)
-		btn.size = Vector2(430, 32)
+		btn.clip_text = true
+		btn.tooltip_text = d[1]
+		btn.position = Vector2(24 + floorf(i / float(per_col)) * 306.0, 84 + (i % per_col) * 40.0)
+		btn.size = Vector2(298, 34)
 		btn.pressed.connect(func(): get_tree().change_scene_to_file(d[2]))
 		add_child(btn)
 

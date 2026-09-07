@@ -72,6 +72,9 @@ table in `recipes/` holds in both dimensions unless a row says otherwise.
 | Glyph grimoire (text FX) | `Source/.../SSTextFx.*` + `recipes/text-fx.md` | C++ per-letter TextRender actor + a 2D (UMG) & 3D family map |
 | Flipbook folio (baked VFX sheets) | `Source/.../SSFlipbookVfx.*` + `recipes/flipbook-vfx.md` | C++ runtime-baked SubUV sheet + the three flipbook routes (Paper2D / Niagara / material) |
 | Depth atlas (the illusion of depth in 2D) | `recipes/depth-atlas.md` | material recipe: LinearGradient / RadialGradientExponential / CameraDepthFade / Fresnel per depth cue, with the atlas's numbers, in UMG and 3D |
+| Contact & intent (lexicon laps 5–8: input, collision) | `recipes/contact-and-intent.md` | Enhanced Input modifiers/triggers, coyote + buffer timers on `ACharacter`, CMC floor angle / step height / braking, sweeps, overlaps, hit/hurt channels, the one-way trick — 26 cards, Paper Character for 2D |
+| Stagecraft almanac (screen, skin, light, impact, weather, particles, HUD, audio) | `recipes/stagecraft.md` | Post Process materials (+ UMG Retainer Box), sprite materials, 2D lighting (darkness quad vs real lights), Niagara mechanics, decals, Water, UMG HUD, MetaSounds / submixes / Quartz / concurrency — 104 cards by family |
+| World workshop (procedural generation) | `recipes/worlds.md` | PCG (Surface Sampler → Density Filter → Static Mesh Spawner), `FRandomStream`, Landscape from `PerlinNoise2D`, Blueprint cellular automata / BSP / mazes / WFC over a `TArray<uint8>`, Paper Tile Map autotiling by bitmask, `USaveGame` with a version int — 13 cards |
 
 The full 104-button bestiary lives on
 [the web page](https://esorhizome.github.io/sparks-and-sprites/elemental-buttons.html)
