@@ -3600,14 +3600,17 @@ def("B", "Blobshadow", "light", "the blob sits where a GROUND RAYCAST under the 
 });
 rhymeOf("Blobshadow", "Brightnoon", "half the blob, nearly gone at the apex, with a hard edge — the sun straight overhead", { size: 0.55, shrink: 0.85, soft: 0.1 });
 
-def("B", "Bloom", "light", "a GLOW MASK: only bulbs and the laser go to a layer, blurred by offset copies and added back; the scene stays crisp (ch06 glow) — press to hang a bulb", function (u) {
+def("B", "Bloom", "light", "a GLOW MASK: only bulbs and the laser go to a layer, blurred by offset copies and added back; the scene stays crisp (ch06 glow) — press to hang a bulb: it swings in on its wire and rings down, halo and all", function (u) {
   var D = { radius: 5,          // blur radius, px (scaled to the card)
             strength: 1,        // how much of the blur is added back
             mask: "emitters",   // "emitters": only the light sources bloom · "all": the whole frame does
             laser: true,        // a sweeping laser among the emitters
             max: 8,             // hung bulbs kept (the oldest falls when a new one comes)
-            label: "mask → Σ offset copies (r, then 2r) → lighter × strength" };
-  const { ctx, W, H, GY, TAU, stage, hero, lamp, tree, layer, line, rect, label, rgba, SUN, HOT, SPARK, INK, DIM } = u;
+            g: 2.0,             // gravity, in H per second² — a hung bulb is a pendulum on its wire: θ'' = −(g/L)·sin θ − damp·θ'
+            damp: 1.0,          // the wire's drag, per second: the swing's envelope is e^(−damp·t/2), so it rings down in a few seconds
+            swing: 1.6,         // the angular speed a bulb is let go with, rad/s — the hand that hung it
+            label: "mask → Σ offset copies (r, then 2r) → lighter × strength · bulb: θ'' = −(g/L)·sin θ − damp·θ'" };
+  const { ctx, W, H, GY, TAU, stage, hero, lamp, tree, layer, line, rect, label, rgba, clamp, SUN, HOT, SPARK, INK, DIM } = u;
   // SELECTIVE BLOOM is a question of WHAT gets blurred. chapter 06 glowed a
   // whole sprite; a real bloom pass would blur everything above a brightness
   // threshold, and the cheap 2D answer is to skip the threshold: draw only
@@ -3615,13 +3618,18 @@ def("B", "Bloom", "light", "a GLOW MASK: only bulbs and the laser go to a layer,
   // that — eight offset copies at 1/8 alpha, twice — and add it back with
   // "lighter". the scene underneath never blurs. mask: "all" shows the
   // difference: the whole frame goes to the blur, and everything overexposes.
+  // a hung bulb is a PENDULUM: its wire is the length L, the press lets it go
+  // with a push, and θ'' = −(g/L)·sin θ − damp·θ' swings it in and rings it
+  // down. the emitter moves, so its bloom moves with it — the mask is drawn
+  // from the same swung positions as the scene.
   const S = H / 170, r = D.radius * S;
-  const posts = [W * 0.25, W * 0.75], postY = GY - H * 0.3 - 8, bulbs = [];
+  const posts = [W * 0.25, W * 0.75], postY = GY - H * 0.3 - 8, bulbs = [];   // a bulb: { ax: the wire's anchor x, L: its length, th: the angle from hanging straight, w: its angular speed }
   const lx0 = W * 0.06, ly0 = H * 0.12;
+  function bulbAt(b) { return [b.ax + Math.sin(b.th) * b.L, Math.cos(b.th) * b.L]; }   // where the bulb hangs now
   function emitters(c, hitX) {                         // ONLY the light sources
     c.fillStyle = SUN;
     for (let i = 0; i < posts.length; i++) { c.beginPath(); c.arc(posts[i], postY, 5, 0, TAU); c.fill(); }
-    for (let i = 0; i < bulbs.length; i++) { c.beginPath(); c.arc(bulbs[i][0], bulbs[i][1], 3.5 * S, 0, TAU); c.fill(); }
+    for (let i = 0; i < bulbs.length; i++) { const p = bulbAt(bulbs[i]); c.beginPath(); c.arc(p[0], p[1], 3.5 * S, 0, TAU); c.fill(); }
     if (D.laser) {
       c.strokeStyle = HOT; c.lineWidth = 1.5 * S;
       c.beginPath(); c.moveTo(lx0, ly0); c.lineTo(hitX, GY); c.stroke();
@@ -3636,15 +3644,24 @@ def("B", "Bloom", "light", "a GLOW MASK: only bulbs and the laser go to a layer,
     c.globalAlpha = 1; c.globalCompositeOperation = "source-over";
   }
   return {
-    press(x, y) { if (bulbs.length >= D.max) bulbs.shift(); bulbs.push([x, Math.min(y, GY - 6 * S)]); },
+    press(x, y) {                                    // hang a bulb at the click, let go with a push toward the middle of the stage
+      if (bulbs.length >= D.max) bulbs.shift();
+      bulbs.push({ ax: x, L: Math.max(H * 0.08, Math.min(y, GY - 6 * S)), th: 0, w: (x < W / 2 ? 1 : -1) * D.swing });
+    },
     frame(dt, t) {
+      const gH = H * D.g, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // every bulb's pendulum, symplectic euler in ≤ 20 ms steps
+      for (let i = 0; i < bulbs.length; i++) {
+        const b = bulbs[i], gL = gH / b.L;
+        for (let j = 0; j < sub; j++) { b.w += (-gL * Math.sin(b.th) - D.damp * b.w) * h; b.th += b.w * h; }
+        if (Math.abs(b.th) > 2.5) { b.th = clamp(b.th, -2.5, 2.5); b.w = 0; }
+      }
       stage({ night: 0.75 });
       tree(W * 0.55, GY, H * 0.3);
       for (let i = 0; i < posts.length; i++) lamp(posts[i], GY, true);
       hero(W * 0.42, GY, { face: 1 });
       const ang = 0.9 + Math.sin(t * 0.7) * 0.45, hitX = lx0 + Math.cos(ang) * (GY - ly0) / Math.sin(ang);   // the laser turret's floor hit
       rect(lx0 - 5 * S, ly0 - 4 * S, 10 * S, 8 * S, "#3A3355");
-      for (let i = 0; i < bulbs.length; i++) line(bulbs[i][0], 0, bulbs[i][0], bulbs[i][1], rgba(INK, 0.35));
+      for (let i = 0; i < bulbs.length; i++) { const p = bulbAt(bulbs[i]); line(bulbs[i].ax, 0, p[0], p[1], rgba(INK, 0.35)); }   // the wire, swung with the bulb
       emitters(ctx, hitX);                             // crisp, in the scene
       const E = layer("emit"), B1 = layer("blur1"), B2 = layer("blur2");
       E.ctx.globalCompositeOperation = "source-over"; E.ctx.globalAlpha = 1; E.ctx.clearRect(0, 0, W, H);
@@ -3811,27 +3828,40 @@ def("M", "Muzzle", "impact", "one fire() spawns a 2-frame flash, a 1-frame light
             flashFrames: 2,     // the flash sprite lives this many frames
             size: 1,            // flash size multiplier
             light: 0.28,        // the one-frame light: alpha of the whole-screen wash
-            recoil: 0.4,        // barrel kick, as a fraction of its length
-            spring: 22,         // how fast the barrel returns, per second
+            recoil: 0.4,        // the kick's first peak, as a fraction of the barrel's length
+            spring: 600,        // the recoil spring's stiffness (ω = √spring ≈ 24 /s: a 4 Hz barrel)
+            damp: 0.35,         // its damping as a fraction of critical (2√spring) — under 1, so the barrel overshoots forward before it settles
             smoke: 14,          // puffs per shot
             smokeLife: 1.0,     // seconds a puff lives
-            label: "fire() → flash sprite · 1-frame light · recoil · smoke" };
-  const { ctx, W, H, GY, TAU, stage, hero, crate, tree, glow, dot, ring, line, rect, label, text, rand, clamp, smooth, noiseBurst, SUN, SPARK, FIRE, DIM, BONE } = u;
+            label: "fire() → flash sprite · 1-frame light · recoil: kv += v₀, kick'' = −spring·kick − c·kick' · smoke" };
+  const { ctx, W, H, GY, TAU, stage, hero, crate, tree, glow, dot, ring, line, rect, label, text, rand, clamp, noiseBurst, SUN, SPARK, FIRE, DIM, BONE } = u;
   // a MUZZLE FLASH is not one thing: fire() is an EVENT that spawns four
   // short-lived things at once — a flash SPRITE that lives two frames (big,
   // then small), a LIGHT that lives one frame and paints the ground, a smoke
-  // puff that lives a second, and a RECOIL that kicks the barrel back and
-  // springs it home. chapter 06's sparks were the smoke; the strip at the top
-  // is the timeline of one shot, so you can see how short "short" is.
+  // puff that lives a second, and a RECOIL — a real spring on the barrel: the
+  // shot adds VELOCITY (never position), the spring pulls the barrel back
+  // toward rest and, being under-damped, carries it forward PAST rest before
+  // it settles — that overshoot is what reads as weight. chapter 06's sparks
+  // were the smoke; the strip at the top is the timeline of one shot, so you
+  // can see how short "short" is — the recoil row is the spring's real settle.
   const s = Math.max(2, Math.round(H / 60)), hx = W * 0.26, L = 8 * s;
-  let timer = D.every * 0.6, shotT = 9, kick = 0, aim = -0.2, rot = 0, armed = false;
+  let timer = D.every * 0.6, shotT = 9, kick = 0, kv = 0, aim = -0.2, rot = 0, armed = false;   // kick: the barrel's offset back (negative = past rest) · kv: its velocity
   let tx = W * 0.8, ty = GY - H * 0.15;
   const pool = [];
   for (let i = 0; i < 60; i++) pool.push({ on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, r: 1 });
   let pi = 0;
   function muzzle() { const px = hx + 4 * s, py = GY - 9 * s; return [px + Math.cos(aim) * (L - kick), py + Math.sin(aim) * (L - kick), px, py]; }
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position. from rest, x'' = −k·x − c·x' with x' = v₀ peaks at v₀/√k · e^(−ζφ/√(1−ζ²)), φ = atan(√(1−ζ²)/ζ) — so this v₀ puts the first peak at exactly peak px
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   function fire() {
-    shotT = 0; rot = rand(0, TAU); kick = L * D.recoil;
+    shotT = 0; rot = rand(0, TAU); recoilKick(L * D.recoil);
     const m = muzzle();
     for (let i = 0; i < D.smoke; i++) {
       const p = pool[pi]; pi = (pi + 1) % pool.length;
@@ -3851,7 +3881,7 @@ def("M", "Muzzle", "impact", "one fire() spawns a 2-frame flash, a 1-frame light
         timer = 0; tx = rand(W * 0.55, W * 0.95); ty = rand(H * 0.2, GY);
         const m = muzzle(); aim = Math.atan2(ty - m[3], tx - m[2]); fire();
       }
-      kick -= kick * smooth(D.spring, dt);
+      recoilStep(dt);
       stage({ night: 0.6 });
       tree(W * 0.9, GY, H * 0.28); crate(W * 0.7, GY, s * 5);
       const m = muzzle();
@@ -3888,7 +3918,8 @@ def("M", "Muzzle", "impact", "one fire() spawns a 2-frame flash, a 1-frame light
       ring(tx, ty, s * 1.2, shotT < 0.12 ? SPARK : DIM, 1);
       if (shotT < 0.12) dot(tx, ty, s * 0.8 * (1 - shotT * 6), SPARK);
       const x0 = W * 0.09, x1 = W * 0.92, span = Math.max(D.smokeLife, D.frameLen * D.flashFrames * 4, 0.5), y0 = 10;   // the TIMELINE of one shot
-      const rows = [["flash", D.frameLen * D.flashFrames, SPARK], ["light", D.frameLen, SUN], ["recoil", 3 / D.spring, BONE], ["smoke", D.smokeLife, "#9A96B0"]];
+      const recoilT = 3 / (Math.max(0.02, D.damp) * Math.sqrt(Math.max(1, D.spring)));   // the spring's envelope e^(−ζ·ω·t) is under 5% after 3 / (ζ·ω): its real settle
+      const rows = [["flash", D.frameLen * D.flashFrames, SPARK], ["light", D.frameLen, SUN], ["recoil", recoilT, BONE], ["smoke", D.smokeLife, "#9A96B0"]];
       for (let i = 0; i < rows.length; i++) {
         const y = y0 + i * 8;
         text(rows[i][0], x0 - 3, y + 4, 7, DIM, "right");
@@ -3913,8 +3944,10 @@ def("E", "Eject", "impact", "casings are tiny bodies: thrown sideways, they boun
             eject: 0.22,        // ejection speed sideways, in W per second
             spin: 30,           // max spin, radians per second
             settle: 2.5,        // seconds a resting casing stays before it fades
+            spring: 600,        // the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+            damp: 0.35,         // its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
             label: "on ground: vy ← −e·vy · vx ← μ·vx · ω ← μ·ω" };
-  const { ctx, W, H, GY, TAU, stage, hero, ground, dot, line, rect, arrow, label, text, rand, tone, SUN, SPARK, DIM, BONE } = u;
+  const { ctx, W, H, GY, TAU, stage, hero, ground, dot, line, rect, arrow, label, text, rand, clamp, tone, SUN, SPARK, DIM, BONE } = u;
   // every SHELL CASING is a small rigid body with three numbers: a velocity,
   // a spin, and a RESTITUTION e. the ground flips the vertical speed and
   // multiplies it by e (lexicon Bounce), friction μ eats the sideways speed
@@ -3924,19 +3957,28 @@ def("E", "Eject", "impact", "casings are tiny bodies: thrown sideways, they boun
   const s = Math.max(2, Math.round(H / 60)), hx = W * 0.3, L = 8 * s, G = H * D.g;
   const pool = [];
   for (let i = 0; i < 40; i++) pool.push({ on: false, x: 0, y: 0, vx: 0, vy: 0, rot: 0, vr: 0, bounces: 0, restT: 0, age: 0 });
-  let pi = 0, timer = 0, kick = 0, flash = 0, armed = false, tinkGap = 0, fired = 0, last = null;
+  let pi = 0, timer = 0, kick = 0, kv = 0, flash = 0, armed = false, tinkGap = 0, fired = 0, last = null;
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position — the impulse that puts the first peak at peak px (Muzzle has the derivation)
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   function fire() {
     const p = pool[pi]; pi = (pi + 1) % pool.length;
     p.on = true; p.x = hx + 5 * s; p.y = GY - 10 * s; p.vx = -W * D.eject * rand(0.6, 1.1); p.vy = -H * rand(0.6, 0.95);
     p.rot = 0; p.vr = rand(-D.spin, D.spin); p.bounces = 0; p.restT = 0; p.age = 0;
-    kick = L * 0.3; flash = 0.04; fired++; last = p;
+    recoilKick(L * 0.3); flash = 0.04; fired++; last = p;
   }
   return {
     press() { armed = true; fire(); timer = 0; },
     frame(dt, t) {
       timer += dt; tinkGap += dt;
       if (timer > D.every) { timer = 0; fire(); }
-      kick *= Math.max(0, 1 - 18 * dt); flash -= dt;
+      recoilStep(dt); flash -= dt;
       stage({ night: 0.35 }); ground();
       hero(hx - kick * 0.2, GY, { face: 1, pose: "stand", frame: t });
       ctx.fillStyle = "#2B2440"; ctx.fillRect(hx + 4 * s - kick, GY - 10 * s, L, 2 * s); ctx.fillRect(hx + 5.5 * s - kick, GY - 8 * s, 2 * s, 3 * s);
@@ -3980,8 +4022,10 @@ def("T", "Tracer", "impact", "instant hits made visible: a line from the muzzle 
             glowEvery: 0,       // every n-th shot glows and lingers (0 = never)
             linger: 0.8,        // seconds a glowing tracer takes to fade
             spread: 0.04,       // aim error, radians
+            spring: 600,        // the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+            damp: 0.35,         // its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
             label: "hit = nearest t over segments · plain tracer: alpha = frames left / 3" };
-  const { ctx, W, H, GY, TAU, stage, hero, crate, wall, ground, dot, ring, line, rect, arrow, glow, label, text, rand, len, SUN, SPARK, HOT, DIM, BONE } = u;
+  const { ctx, W, H, GY, TAU, stage, hero, crate, wall, ground, dot, ring, line, rect, arrow, glow, label, text, rand, len, clamp, SUN, SPARK, HOT, DIM, BONE } = u;
   // a hitscan shot arrives the same frame it leaves, so there is nothing to
   // see. the TRACER is the fix: cast one RAY against every terrain segment
   // (lexicon Xmarks), keep the nearest hit, and draw a line from muzzle to
@@ -3994,7 +4038,16 @@ def("T", "Tracer", "impact", "instant hits made visible: a line from the muzzle 
                 [wx, GY - wh, wx + ww, GY - wh], [wx, GY - wh, wx, GY], [0, 0, W, 0], [W, 0, W, H], [0, 0, 0, H]];
   const tracers = [], sparks = [];
   for (let i = 0; i < 24; i++) sparks.push({ on: false, x: 0, y: 0, vx: 0, vy: 0, life: 0 });
-  let si = 0, timer = 0, aim = -0.1, kick = 0, shots = 0, cand = [], candT = 9, tx = W * 0.7, ty = GY - H * 0.2;
+  let si = 0, timer = 0, aim = -0.1, kick = 0, kv = 0, shots = 0, cand = [], candT = 9, tx = W * 0.7, ty = GY - H * 0.2;
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position — the impulse that puts the first peak at peak px (Muzzle has the derivation)
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   function muzzle() { const px = hx + 4 * s, py = GY - 9 * s; return [px + Math.cos(aim) * (L - kick), py + Math.sin(aim) * (L - kick), px, py]; }
   function hitSeg(px, py, dx, dy, g) {
     const x3 = g[0], y3 = g[1], x4 = g[2], y4 = g[3], den = dx * (y4 - y3) - dy * (x4 - x3);
@@ -4014,12 +4067,12 @@ def("T", "Tracer", "impact", "instant hits made visible: a line from the muzzle 
     tracers.push({ x1: m[0], y1: m[1], x2: m[0] + dx * best, y2: m[1] + dy * best, left: D.frames, age: 0, glow: glowing, nx: nx, ny: ny });
     if (tracers.length > 8) tracers.shift();
     for (let i = 0; i < 6; i++) { const p = sparks[si]; si = (si + 1) % sparks.length; const v = rand(0.1, 0.3) * W, ang = Math.atan2(ny, nx) + rand(-0.9, 0.9); p.on = true; p.x = m[0] + dx * best; p.y = m[1] + dy * best; p.vx = Math.cos(ang) * v; p.vy = Math.sin(ang) * v; p.life = 1; }
-    kick = L * 0.25; candT = 0;
+    recoilKick(L * 0.25); candT = 0;
   }
   return {
     press(x, y) { const m = muzzle(); aim = Math.atan2(y - m[3], x - m[2]); tx = x; ty = y; fire(); timer = 0; },
     frame(dt, t) {
-      timer += dt; candT += dt; kick *= Math.max(0, 1 - 16 * dt);
+      timer += dt; candT += dt; recoilStep(dt);
       if (timer > D.every) { timer = 0; tx = rand(W * 0.4, W * 0.98); ty = rand(H * 0.15, GY); const m = muzzle(); aim = Math.atan2(ty - m[3], tx - m[2]); fire(); }
       stage({ night: 0.5 }); ground();
       crate(cx, GY, cs); wall(wx, GY - wh, ww, wh);
@@ -4063,6 +4116,8 @@ def("I", "Impact", "impact", "the hit normal and a material lookup pick the effe
             count: 14,          // particles per hit (scaled per effect)
             g: 1.8,             // gravity, in H per second²
             night: 0.2,
+            spring: 600,        // the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+            damp: 0.35,         // its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
             label: "ray → hit point + normal n · table[material] → effect" };
   const { ctx, W, H, GY, TAU, stage, hero, dot, ring, line, rect, arrow, poly, label, text, rand, len, clamp, mix, shade, SPARK, SUN, DIM, BONE, INK } = u;
   // an IMPACT is two facts and a table. the ray gives a HIT POINT and the
@@ -4084,7 +4139,16 @@ def("I", "Impact", "impact", "the hit normal and a material lookup pick the effe
   for (let i = 0; i < 120; i++) pool.push({ on: false, kind: "", x: 0, y: 0, vx: 0, vy: 0, life: 0, rot: 0, vr: 0, c: "", r: 1 });
   let pi = 0;
   const rings = [];
-  let timer = 0.4, aim = 0.5, kick = 0, lastHit = null, hitT = 9, lastRow = -1, trace = 0, tr = [0, 0, 0, 0];
+  let timer = 0.4, aim = 0.5, kick = 0, kv = 0, lastHit = null, hitT = 9, lastRow = -1, trace = 0, tr = [0, 0, 0, 0];
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position — the impulse that puts the first peak at peak px (Muzzle has the derivation)
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   function muzzle() { const px = hx + 4 * s, py = ly - 9 * s; return [px + Math.cos(aim) * (L - kick), py + Math.sin(aim) * (L - kick), px, py]; }
   function spawn(kind, x, y, nx, ny, mat) {
     const na = Math.atan2(ny, nx);
@@ -4101,7 +4165,7 @@ def("I", "Impact", "impact", "the hit normal and a material lookup pick the effe
     px = clamp(px, x0 + 2, W - 2);
     const idx = Math.min(3, Math.floor((px - x0) / pw)), P = panels[idx], mat = D.materials[idx] || D.materials[0];
     const k = (px - P.a) / (P.b - P.a), hy = P.ya + (P.yb - P.ya) * k;
-    const m = muzzle(); aim = Math.atan2(hy - m[3], px - m[2]); kick = L * 0.25;
+    const m = muzzle(); aim = Math.atan2(hy - m[3], px - m[2]); recoilKick(L * 0.25);
     const m2 = muzzle(); tr = [m2[0], m2[1], px, hy]; trace = 2;
     lastHit = { x: px, y: hy, nx: P.nx, ny: P.ny, fx: mat.fx }; hitT = 0; lastRow = idx;
     if (mat.fx === "ring") { rings.push({ x: px, y: hy, age: 0, c: mat.c }); if (rings.length > 6) rings.shift(); spawn("dust", px, hy, P.nx, P.ny, { c: mat.c }); }
@@ -4110,7 +4174,7 @@ def("I", "Impact", "impact", "the hit normal and a material lookup pick the effe
   return {
     press(x, y) { shoot(x); timer = 0; },
     frame(dt, t) {
-      timer += dt; hitT += dt; kick *= Math.max(0, 1 - 16 * dt);
+      timer += dt; hitT += dt; recoilStep(dt);
       if (timer > D.every) { timer = 0; shoot(rand(x0, W)); }
       stage({ night: D.night });
       for (let i = 0; i < 4; i++) {                    // the four panels, each its own material
@@ -4170,6 +4234,8 @@ def("D", "Decals", "impact", "holes and scorch marks in a ring buffer of N — n
             kind: "bullet",     // "bullet": holes and scorch marks · "chalk": chalk scribbles
             scorchEvery: 4,     // every n-th bullet stamp is a scorch mark
             size: 1,
+            spring: 600,        // the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+            damp: 0.35,         // its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
             label: "slot = head mod N · head++ · alpha by age rank" };
   const { ctx, W, H, GY, TAU, stage, hero, wall, crate, layer, dot, ring, line, rect, arrow, label, text, rand, rng, clamp, smooth, SUN, HOT, DIM, BONE, INK } = u;
   // decals are cheap to draw and expensive to keep, so a game keeps N of
@@ -4182,7 +4248,16 @@ def("D", "Decals", "impact", "holes and scorch marks in a ring buffer of N — n
   const N = Math.max(1, Math.round(D.n));
   const slots = [];
   for (let i = 0; i < N; i++) slots.push({ on: false, x: 0, y: 0, kind: "hole", seed: 0, a: 0, seq: 0 });
-  let head = 0, stamped = 0, timer = 0.3, aim = -0.1, kick = 0, trace = 0, tr = [0, 0, 0, 0], dirty = true;
+  let head = 0, stamped = 0, timer = 0.3, aim = -0.1, kick = 0, kv = 0, trace = 0, tr = [0, 0, 0, 0], dirty = true;
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position — the impulse that puts the first peak at peak px (Muzzle has the derivation)
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   const Lr = layer("decals");
   function muzzle() { const px = hx + 4 * s, py = GY - 9 * s; return [px + Math.cos(aim) * (L - kick), py + Math.sin(aim) * (L - kick), px, py]; }
   function stamp(x, y) {
@@ -4190,7 +4265,7 @@ def("D", "Decals", "impact", "holes and scorch marks in a ring buffer of N — n
     stamped++; head++;
     sl.on = true; sl.x = x; sl.y = y; sl.seq = stamped; sl.seed = stamped * 31 + 7; sl.a = 0;
     sl.kind = D.kind === "chalk" ? (stamped % 2 ? "circle" : "cross") : (stamped % D.scorchEvery === 0 ? "scorch" : "hole");
-    const m = muzzle(); aim = Math.atan2(y - m[3], x - m[2]); kick = L * 0.25;
+    const m = muzzle(); aim = Math.atan2(y - m[3], x - m[2]); recoilKick(L * 0.25);
     const m2 = muzzle(); tr = [m2[0], m2[1], x, y]; trace = 2; dirty = true;
   }
   function draw(c, sl) {
@@ -4214,7 +4289,7 @@ def("D", "Decals", "impact", "holes and scorch marks in a ring buffer of N — n
   return {
     press(x, y) { stamp(clamp(x, wx, W - 2), clamp(y, wy, H - 2)); timer = 0; },
     frame(dt, t) {
-      timer += dt; kick *= Math.max(0, 1 - 16 * dt);
+      timer += dt; recoilStep(dt);
       if (timer > D.every) { timer = 0; stamp(rand(wx + s, W - s), rand(wy + s, GY + (H - GY) * 0.7)); }
       const count = Math.min(stamped, N), oldest = stamped - count + 1;   // ranks: 0 = the oldest kept
       let moving = false;
@@ -4338,6 +4413,8 @@ def("I", "Ink", "impact", "a blob on the far side of the hit normal, drips that 
             drip: 1.0,          // drip growth, in H per second
             dry: 14,            // seconds for the layer to wash back to clean
             every: 1.3,         // autopilot: seconds between splats
+            spring: 600,        // the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+            damp: 0.35,         // its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
             label: "centre = hit − n · push · drip: y += rate·dt, width ↓" };
   const { ctx, W, H, GY, TAU, stage, hero, layer, dot, line, rect, arrow, label, text, rand, len, clamp, rgba, SUN, DIM, BONE } = u;
   // a SPLAT has two halves. the stamp: a cluster of circles whose centre
@@ -4350,11 +4427,20 @@ def("I", "Ink", "impact", "a blob on the far side of the hit normal, drips that 
   const Lr = layer("ink");
   const drips = [];
   for (let i = 0; i < 40; i++) drips.push({ on: false, x: 0, y: 0, w: 0, rate: 0, remain: 0 });
-  let di = 0, timer = 0.5, aim = -0.1, kick = 0, last = null, hitT = 9, splats = 0;
+  let di = 0, timer = 0.5, aim = -0.1, kick = 0, kv = 0, last = null, hitT = 9, splats = 0;
+  function recoilKick(peak) {                          // a shot adds VELOCITY to the recoil spring, never position — the impulse that puts the first peak at peak px (Muzzle has the derivation)
+    const w = Math.sqrt(Math.max(1, D.spring)), z = clamp(D.damp, 0, 0.99), q = Math.sqrt(1 - z * z);
+    kv += peak * w * Math.exp(z * Math.atan2(q, z) / q);
+  }
+  function recoilStep(dt) {                            // kick'' = −spring·kick − c·kick', c = damp·2√spring — symplectic euler at ≤ 5 ms (stiff, and one number costs nothing); under-damped, so the barrel overshoots forward past rest
+    const sub = Math.max(1, Math.ceil(dt * 200)), h = dt / sub, kS = Math.max(1, D.spring), c = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+    for (let i = 0; i < sub; i++) { kv += (-kS * kick - c * kv) * h; kick += kv * h; }
+    kick = clamp(kick, -L, L);
+  }
   function muzzle() { const px = hx + 4 * s, py = GY - 9 * s; return [px + Math.cos(aim) * (L - kick), py + Math.sin(aim) * (L - kick), px, py]; }
   function splat(x, y) {
     x = clamp(x, s * 2, W - s * 2); y = clamp(y, wy + s, GY - s);
-    const m = muzzle(); aim = Math.atan2(y - m[3], x - m[2]); kick = L * 0.25;
+    const m = muzzle(); aim = Math.atan2(y - m[3], x - m[2]); recoilKick(L * 0.25);
     let dx = x - m[2], dy = y - m[3]; const dl = len(dx, dy) || 1; dx /= dl; dy /= dl;
     const nx = -dx, ny = -dy;                          // the wall's normal faces the shooter
     const cx = x - nx * W * D.push, cy = y - ny * W * D.push, r = s * 1.6 * D.size;
@@ -4377,7 +4463,7 @@ def("I", "Ink", "impact", "a blob on the far side of the hit normal, drips that 
   return {
     press(x, y) { splat(x, y); timer = 0; },
     frame(dt, t) {
-      timer += dt; hitT += dt; kick *= Math.max(0, 1 - 16 * dt);
+      timer += dt; hitT += dt; recoilStep(dt);
       if (timer > D.every) { timer = 0; splat(rand(W * 0.35, W * 0.95), rand(wy + H * 0.08, GY - H * 0.08)); }
       const c = Lr.ctx;
       c.globalCompositeOperation = "destination-out"; c.fillStyle = "rgba(0,0,0," + clamp(dt / D.dry, 0, 1) + ")"; c.fillRect(0, 0, W, H);   // drying: the layer washes itself out
@@ -4509,23 +4595,30 @@ def("K", "Kaboom", "impact", "a blast radius lights every barrel inside it after
             fuse: 0.7,          // seconds a hand-lit barrel takes
             respawn: 4,         // seconds after the last blast before the field resets
             dominoes: 8,
-            tip: 0.12,          // seconds between one domino's fall and the next
+            tip: 0.12,          // seconds from a falling domino touching the next to the next one going — the shove's latency
+            g: 2.0,             // gravity, in H per second² — a domino is a rod on its base corner: θ'' = (3g / 2L)·sin θ
+            shove: 2.5,         // the angular speed a blast gives the first domino, rad/s; each hands 0.6 of its own to the next
             every: 3.5,         // autopilot: seconds between lightings
             night: 0.4,
-            label: "d(b, blast) < R → queue(now + delay) · domino i+1 at t_i + tip" };
+            label: "d(b, blast) < R → queue(now + delay) · domino: θ'' = (3g/2L)·sin θ · touches i+1 → queue(now + tip)" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, glow, label, text, rand, rng, len, clamp, ease, rgba, FIRE, SPARK, SUN, HOT, DIM, BONE } = u;
   // a CHAIN REACTION is a queue. a blast at (x, y) with radius R asks every
   // barrel "are you inside?" and the ones that are get an entry — barrel,
-  // time = now + delay — in a list sorted by time. dominoes are the same
-  // list with a fixed tip interval instead of a radius test: a QUEUE OF TIMED
-  // FALLS (lexicon Knock and Newton did the shove; this is the scheduling).
-  // the queue is drawn at the top, so you can read the doom before it lands.
+  // time = now + delay — in a list sorted by time. dominoes join the same
+  // list by CONTACT instead of a radius test: each is a rod pivoting on its
+  // base corner, θ'' = (3g/2L)·sin θ — slow to start, fast to arrive — and the
+  // moment its top reaches the next one's face the next is queued (now + tip)
+  // with a share of its angular speed: the shove (lexicon Knock and Newton).
+  // it lands on its neighbour at 1.25 rad, bounces a little, and rests. the
+  // queue is drawn at the top, so you can read the doom before it lands.
   const s = Math.max(2, Math.round(H / 60)), bw = s * 3, bh = s * 4.5, R = W * D.radius;
   const seed = rng(3), NB = Math.max(1, Math.round(D.barrels)), ND = Math.max(1, Math.round(D.dominoes));
   const barrels = [], dominoes = [];
   for (let i = 0; i < NB; i++) barrels.push({ x: W * (0.05 + 0.58 * (i + 0.5) / NB) + (seed() - 0.5) * W * 0.03, alive: true, fuse: -1 });
   const dx0 = W * 0.7, dw = (W * 0.95 - dx0) / ND, dh = s * 5;
-  for (let i = 0; i < ND; i++) dominoes.push({ x: dx0 + i * dw, k: 0, going: false });
+  for (let i = 0; i < ND; i++) dominoes.push({ x: dx0 + i * dw, th: 0, w: 0, w0: 0, going: false, touched: false, rested: false });   // th, w: the pivot's angle and angular speed · w0: the shove it was handed
+  const fallA = 3 * (H * D.g) / (2 * dh);                                    // θ'' = fallA·sin θ: a uniform rod about its end (I = mL²/3, torque = mg·L/2·sin θ)
+  const thC = Math.asin(clamp((dw - s * 0.5) / dh, 0.05, 1));               // the angle at which a domino's top reaches the next one's face
   const queue = [], blasts = [], smoke = [];
   for (let i = 0; i < 40; i++) smoke.push({ on: false, x: 0, y: 0, vy: 0, life: 0, r: 1 });
   let si = 0, timer = 1.5, quiet = 0, fadeIn = 1;
@@ -4537,24 +4630,24 @@ def("K", "Kaboom", "impact", "a blast radius lights every barrel inside it after
     blasts.push({ x: x, y: y, age: 0 });
     for (let i = 0; i < 6; i++) { const p = smoke[si]; si = (si + 1) % smoke.length; p.on = true; p.x = x + rand(-bw, bw); p.y = y - rand(0, bh); p.vy = -rand(0.03, 0.09) * H; p.life = 1; p.r = s * rand(1, 2); }
     for (let i = 0; i < NB; i++) { const b = barrels[i]; if (b.alive && len(b.x - x, GY - bh / 2 - y) < R) enqueue("barrel", i, D.delay); }   // the radius test
-    if (!dominoes[0].going && len(dominoes[0].x - x, GY - dh / 2 - y) < R) enqueue("domino", 0, D.delay);
+    if (!dominoes[0].going && len(dominoes[0].x - x, GY - dh / 2 - y) < R) { dominoes[0].w0 = D.shove; enqueue("domino", 0, D.delay); }   // the blast shoves the first domino
     quiet = 0;
   }
   function light(i) { if (barrels[i].alive && barrels[i].fuse < 0) { enqueue("barrel", i, D.fuse); barrels[i].fuse = D.fuse; quiet = 0; } }
-  function reset() { for (const b of barrels) { b.alive = true; b.fuse = -1; } for (const d of dominoes) { d.k = 0; d.going = false; } queue.length = 0; fadeIn = 0; }
+  function reset() { for (const b of barrels) { b.alive = true; b.fuse = -1; } for (const d of dominoes) { d.th = 0; d.w = 0; d.w0 = 0; d.going = false; d.touched = false; d.rested = false; } queue.length = 0; fadeIn = 0; }
   return {
     press(x) { let best = -1, bd = Infinity; for (let i = 0; i < NB; i++) { const d = Math.abs(barrels[i].x - x); if (barrels[i].alive && d < bd) { bd = d; best = i; } } if (best >= 0) light(best); timer = 0; },
     frame(dt, t) {
       timer += dt; quiet += dt; fadeIn = Math.min(1, fadeIn + dt * 2);
       const anyAlive = barrels.some(b => b.alive);
       if (timer > D.every && queue.length === 0 && anyAlive) { timer = 0; const alive = []; for (let i = 0; i < NB; i++) if (barrels[i].alive) alive.push(i); light(alive[Math.floor(rand(0, alive.length)) % alive.length]); }
-      if (queue.length === 0 && quiet > D.respawn && (!anyAlive || dominoes[ND - 1].going)) reset();
+      if (queue.length === 0 && quiet > D.respawn && (!anyAlive || dominoes[ND - 1].rested)) reset();
       for (let i = queue.length - 1; i >= 0; i--) {   // the queue: fire whatever is due
         const q = queue[i]; q.left -= dt;
         if (q.left > 0) continue;
         queue.splice(i, 1);
         if (q.kind === "barrel") { const b = barrels[q.i]; if (b.alive) { b.alive = false; b.fuse = -1; blast(b.x, GY - bh / 2); } }
-        else { const d = dominoes[q.i]; if (!d.going) { d.going = true; if (q.i + 1 < ND) enqueue("domino", q.i + 1, D.tip); } }
+        else { const d = dominoes[q.i]; if (!d.going) { d.going = true; d.w = Math.max(0.3, d.w0); quiet = 0; } }   // a domino goes: it starts with the shove it was handed
       }
       for (const b of barrels) if (b.fuse > 0) b.fuse -= dt;
       stage({ night: D.night }); ground();
@@ -4567,10 +4660,21 @@ def("K", "Kaboom", "impact", "a blast radius lights every barrel inside it after
         let due = -1; for (const q of queue) if (q.kind === "barrel" && q.i === barrels.indexOf(b)) due = q.left;
         if (due >= 0) { const w = bw * 1.4; rect(b.x - w / 2, GY - bh - s * 1.6, w, s * 0.6, "rgba(232,229,244,0.2)"); rect(b.x - w / 2, GY - bh - s * 1.6, w * clamp(due / Math.max(D.delay, D.fuse), 0, 1), s * 0.6, HOT); if (t * 12 % 2 < 1) dot(b.x, GY - bh - s * 0.4, s * 0.5, SPARK); }
       }
-      for (let i = 0; i < ND; i++) {                   // dominoes fall about their base corner
+      for (let i = 0; i < ND; i++) {                   // dominoes: rods pivoting on their base corner, integrated (symplectic euler, ≤ 20 ms steps)
         const d = dominoes[i];
-        if (d.going) d.k = Math.min(1, d.k + dt / 0.35);
-        ctx.save(); ctx.translate(d.x + s * 0.5, GY); ctx.rotate(ease(d.k) * 1.25); ctx.globalAlpha = fadeIn;
+        if (d.going && !d.rested) {
+          const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+          for (let j = 0; j < sub; j++) {
+            d.w += fallA * Math.sin(d.th) * h; d.th += d.w * h;
+            if (d.th >= 1.25) {                        // the stop: it lands on its neighbour, bounces a little, and rests once the bounce is small
+              d.th = 1.25; d.w = -d.w * 0.25;
+              if (-d.w < 0.6) { d.w = 0; d.rested = true; }
+            }
+          }
+          d.th = clamp(d.th, 0, 1.25); d.w = clamp(d.w, -50, 50);
+          if (!d.touched && d.th >= thC) { d.touched = true; if (i + 1 < ND) { dominoes[i + 1].w0 = d.w * 0.6; enqueue("domino", i + 1, D.tip); } }   // its top reaches the next: the shove is queued
+        }
+        ctx.save(); ctx.translate(d.x + s * 0.5, GY); ctx.rotate(d.th); ctx.globalAlpha = fadeIn;
         ctx.fillStyle = BONE; ctx.fillRect(-s * 0.5, -dh, s, dh); ctx.fillStyle = "#2B2440"; ctx.fillRect(-s * 0.15, -dh * 0.55, s * 0.3, s * 0.3);
         ctx.restore();
       }
@@ -4934,7 +5038,11 @@ def("T", "Tell", "impact", "before each swing the enemy flashes white and leans 
             every: 1.6,         // seconds between attacks
             dodgeLen: 0.35,     // seconds a dodge's safe window lasts
             react: 0.25,        // the hero's reaction time (± a little noise)
-            label: "tell → strike → recover · safe if dodge ≤ land ≤ dodge + dodgeLen" };
+            k: 350,             // the body's lean spring: stiffness (ω = √k ≈ 19 /s — quick enough to track a 0.2 s tell)
+            damp: 0.45,         // its damping as a fraction of critical — under 1, so the recovery overshoots upright: the follow-through
+            armK: 0.5,          // the arm's stiffness as a multiple of the body's — under 1, so the arm lags the body and whips through after it
+            armDamp: 0.5,       // the arm's damping, as a fraction of ITS OWN critical — under 1, so it whips past the strike pose and comes back
+            label: "tell → strike → recover set the targets · lean, arm: θ'' = k·(target − θ) − c·θ' · safe if dodge ≤ land ≤ dodge + dodgeLen" };
   const { ctx, W, H, GY, TAU, stage, hero, ground, dot, ring, line, rect, label, text, rand, clamp, ease, lerp, mix, shade, rgba, HOT, SUN, GOOD, DIM, BONE, INK } = u;
   // a TELL is the attack's promise: for D.tell seconds before the swing the
   // enemy's body goes white (chapter 03's hit-flash, worn early) and LEANS
@@ -4945,8 +5053,13 @@ def("T", "Tell", "impact", "before each swing the enemy flashes white and leans 
   // closed again (lexicon Cat's i-frames). the hero here has a REACTION
   // TIME, so with a short tell it is often late, and with a long one it can
   // wait and time the hop; the bar at the top shows where each dodge fell.
+  // the lean and the arm are not tweened: the phase machine only moves their
+  // TARGETS, and each chases its target on an under-damped spring — so the
+  // body swings past upright as it recovers (the follow-through), and the
+  // arm's softer, slower spring lags the body's and whips through after it.
   const s = Math.max(2, Math.round(H / 60)), hx = W * 0.36, ex = W * 0.62, body = "#6E4A8A";
   let phase = "idle", pt = D.every * 0.4, clock = 0, tellStart = -99, plan = 0, planned = false;
+  let leanA = 0, leanV = 0, armA = 0.3, armV = 0;      // the two springs: the body's lean and the arm's angle, radians, with their velocities
   let dodgeT = 0, dodgeStart = -99, hurtT = 0, shake = 0, hits = 0, dodged = 0, lastRes = "", lastAt = 0, lastWhy = "", lastManual = false;
   function startDodge(manual) { if (dodgeT > 0) return; dodgeT = D.dodgeLen; dodgeStart = clock; lastManual = manual; if (manual) planned = false; }
   return {
@@ -4966,15 +5079,22 @@ def("T", "Tell", "impact", "before each swing the enemy flashes white and leans 
         phase = "recover"; pt = 0; planned = false;
       }
       else if (phase === "recover" && pt > D.recover) { phase = "idle"; pt = 0; }
-      const k = phase === "tell" ? ease(pt / D.tell) : phase === "strike" ? 1 - pt / D.strike * 1.4 : phase === "recover" ? lerp(-0.4, 0, ease(pt / D.recover)) : 0;
-      const armA = phase === "tell" ? lerp(0.3, -2.4, ease(pt / D.tell)) : phase === "strike" ? lerp(-2.4, 1.3, clamp(pt / D.strike, 0, 1)) : phase === "recover" ? lerp(1.3, 0.3, ease(pt / D.recover)) : 0.3;
+      const kT = phase === "tell" ? ease(pt / D.tell) : phase === "strike" ? 1 - pt / D.strike * 1.4 : phase === "recover" ? lerp(-0.4, 0, ease(pt / D.recover)) : 0;   // the TARGETS: what the phase machine asks for
+      const armT = phase === "tell" ? lerp(0.3, -2.4, ease(pt / D.tell)) : phase === "strike" ? lerp(-2.4, 1.3, clamp(pt / D.strike, 0, 1)) : phase === "recover" ? lerp(1.3, 0.3, ease(pt / D.recover)) : 0.3;
+      // two springs chase them (symplectic euler, substepped to ≤ 10 ms): the body's, and the arm's — softer (k · armK) and less damped, so it lags and whips
+      const kb = Math.max(1, D.k), cb = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kb), ka = kb * Math.max(0.05, D.armK), ca = 2 * clamp(D.armDamp, 0, 0.99) * Math.sqrt(ka);
+      const sub = Math.max(1, Math.ceil(dt * 100)), h = dt / sub;
+      for (let i = 0; i < sub; i++) {
+        leanV += (kb * (D.lean * kT - leanA) - cb * leanV) * h; leanA = clamp(leanA + leanV * h, -3, 3);
+        armV += (ka * (armT - armA) - ca * armV) * h; armA = clamp(armA + armV * h, -6, 6);
+      }
       const tintK = phase === "tell" ? (pt < 0.034 ? 1 : 0.85) : 0;
       const fill = tintK > 0 ? mix(body, D.tint === "red" ? HOT : "#FFFFFF", tintK) : body;
       stage({ night: 0.4 }); ground();
       const dk = dodgeT > 0 ? 1 - dodgeT / D.dodgeLen : 1, hop = Math.sin(Math.PI * clamp(dk, 0, 1)), sx = (rand(-1, 1) * shake * 2);
       if (dodgeT > 0) ring(hx, GY, s * 3, rgba(GOOD, 0.5), 1);
       hero(hx - hop * s * 7 + sx, GY - hop * s * 3, { face: 1, pose: hurtT > 0 ? "hurt" : dodgeT > 0 ? "crouch" : "stand", frame: t });
-      ctx.save(); ctx.translate(ex, GY); ctx.rotate(D.lean * k);   // the enemy leans about its feet
+      ctx.save(); ctx.translate(ex, GY); ctx.rotate(leanA);   // the enemy leans about its feet — where its spring has carried it
       ctx.fillStyle = shade(body, -0.3); ctx.fillRect(-3 * s, -3 * s, 2 * s, 3 * s); ctx.fillRect(s, -3 * s, 2 * s, 3 * s);
       ctx.fillStyle = fill; ctx.beginPath(); ctx.ellipse(0, -8 * s, 4.5 * s, 6 * s, 0, 0, TAU); ctx.fill();
       ctx.fillStyle = tintK > 0 ? HOT : "#FFFFFF"; ctx.beginPath(); ctx.arc(-1.6 * s, -9.5 * s, s * 0.9, 0, TAU); ctx.fill();
@@ -4983,7 +5103,7 @@ def("T", "Tell", "impact", "before each swing the enemy flashes white and leans 
       ctx.fillStyle = fill; ctx.fillRect(-s * 0.7, 0, s * 1.4, 6 * s);
       ctx.fillStyle = "#5A3E2B"; ctx.fillRect(-s * 1.3, 5 * s, s * 2.6, 3 * s);
       ctx.restore();
-      if (phase === "tell") { text("tell " + (pt).toFixed(2) + " / " + D.tell + " s", ex, GY - s * 17, 8, INK, "center"); text("lean " + (D.lean * k).toFixed(2) + " rad", ex, GY - s * 15.4, 7, DIM, "center"); }
+      if (phase === "tell") { text("tell " + (pt).toFixed(2) + " / " + D.tell + " s", ex, GY - s * 17, 8, INK, "center"); text("lean " + leanA.toFixed(2) + " rad", ex, GY - s * 15.4, 7, DIM, "center"); }
       if (phase === "recover" && pt < 0.5) text(lastRes === "hit" ? "hit!" : "miss", hx + s * 2, GY - s * 19, 10, lastRes === "hit" ? HOT : GOOD, "center");
       const x0 = W * 0.08, x1 = W * 0.92, y0 = 8, total = D.tell + D.strike + D.recover, px = (x1 - x0) / total;   // the attack as a bar, and the dodge window under it
       rect(x0, y0, D.tell * px, 5, "rgba(232,229,244,0.85)"); rect(x0 + D.tell * px, y0, D.strike * px, 5, HOT); rect(x0 + (D.tell + D.strike) * px, y0, D.recover * px, 5, "rgba(232,229,244,0.15)");
@@ -6169,13 +6289,15 @@ def("P", "Pool", "particles", "OBJECT POOLING: N particles made once, lent out b
 });
 rhymeOf("Pool", "Puddlepool", "a pool of twelve that starves in one burst — every newcomer steals the oldest slot, so the tail of each burst eats its head", { size: 12, burst: 10, steal: true });
 
-def("D", "Disintegrate", "particles", "EMIT FROM A SPRITE'S PIXELS: pixelsOf reads the hero's opaque pixels; each becomes a particle that flies off and reassembles — press to send it there", function (u) {
+def("D", "Disintegrate", "particles", "EMIT FROM A SPRITE'S PIXELS: pixelsOf reads the hero's opaque pixels; each becomes a particle on a spring chasing its flight path — lagging on the way out, overshooting and snapping home as it reassembles — press to send it there", function (u) {
   var D = { mode: "disintegrate",   // "disintegrate" (feet first, blown away) / "teleport" (a vertical streak) / "assemble" (rain in, top first)
             hold: 1.6,     // seconds whole between trips
             fly: 1.2,      // seconds for the pixels to leave, and again to arrive
             scatter: 0.45, // how far the pixels roam, ×H
             wind: 0.5,     // the disintegrate drift, ×W
-            label: "pixelsOf(sprite): one particle per opaque pixel · k = ease(p·1.8 − delay)" };
+            spring: 80,    // each pixel's position spring: stiffness (ω = √spring ≈ 9 /s)
+            damp: 0.3,     // its damping as a fraction of critical — under 1, so pixels overshoot and snap home
+            label: "pixelsOf(sprite): one particle per opaque pixel · target: k = ease(p·1.8 − delay) · x'' = spring·(target − x) − c·x'" };
   const { ctx, W, H, GY, stage, hero, heroSprite, pixelsOf, rect, label, rand, clamp, ease, noise, BONE, DIM } = u;
   // the sprite is drawn once to a tiny offscreen canvas at UNIT size 1 (14 × 19
   // px) and pixelsOf() reads it back: every opaque pixel becomes a particle
@@ -6185,6 +6307,10 @@ def("D", "Disintegrate", "particles", "EMIT FROM A SPRITE'S PIXELS: pixelsOf rea
   // its own DELAY, ordered by row (feet first to disintegrate, top first to
   // assemble), and the mode decides where "scattered" is. the codex's Teleport
   // blink and the grimoire's Dust burst are this trick with one mode each.
+  // the eased clock is only the TARGET: every pixel is a particle with a
+  // position and a velocity, on an under-damped spring toward that target —
+  // so it lags behind on the way out, and on the way home it overshoots and
+  // snaps into place, and the whole sprite rings for a moment after it lands.
   const sp = heroSprite({ s: 1 }), img = pixelsOf(sp.cv), s = Math.max(2, Math.round(H / 60));
   const px = [];
   for (let y = 0; y < img.height; y++) for (let x = 0; x < img.width; x++) {
@@ -6194,6 +6320,9 @@ def("D", "Disintegrate", "particles", "EMIT FROM A SPRITE'S PIXELS: pixelsOf rea
               c: "rgb(" + img.data[o] + "," + img.data[o + 1] + "," + img.data[o + 2] + ")" });
   }
   let hx = W * 0.3, phase = 0, p = 0, timer = 0, nextX = W * 0.7;   // phase 0 whole · 1 leaving · 2 arriving
+  const n = px.length, X = new Float32Array(n), Y = new Float32Array(n), VX = new Float32Array(n), VY = new Float32Array(n);   // each pixel's sprung position and velocity
+  for (let i = 0; i < n; i++) { X[i] = hx + px[i].ox * s; Y[i] = GY + px[i].oy * s; }
+  let ring = 0;                                        // the fastest pixel, px/s: while any still moves at home, the hero is drawn from its pixels
   function plan() {                                    // every pixel's scattered spot and delay for this trip
     for (const q of px) {
       if (D.mode === "teleport") { q.sx = q.ox * s * 0.4; q.sy = -H * D.scatter - q.j * H * 0.3; q.d = q.j * 0.2; }
@@ -6209,14 +6338,34 @@ def("D", "Disintegrate", "particles", "EMIT FROM A SPRITE'S PIXELS: pixelsOf rea
       stage({ night: 0.4 });
       timer += dt;
       if (phase === 0 && timer > D.hold) go();
-      if (phase === 1) { p = Math.min(1, p + dt / D.fly); if (p >= 1) { phase = 2; hx = nextX; nextX = rand(W * 0.15, W * 0.85); } }
+      if (phase === 1) {
+        p = Math.min(1, p + dt / D.fly);
+        if (p >= 1) {                                  // the home moves while the cloud is invisible (alpha = 1 − k = 0 up here): the cloud moves with it, offsets and velocities kept, so the springs never see the jump
+          phase = 2; const jump = nextX - hx;
+          for (let i = 0; i < n; i++) X[i] += jump;
+          hx = nextX; nextX = rand(W * 0.15, W * 0.85);
+        }
+      }
       else if (phase === 2) { p = Math.max(0, p - dt / D.fly); if (p <= 0) { phase = 0; timer = 0; } }
-      if (phase === 0) hero(hx, GY, { pose: "stand", frame: t });
+      // every pixel's spring chases its target — home → scattered by the eased clock — in substeps of ≤ 20 ms
+      const kS = Math.max(1, D.spring), cS = 2 * clamp(D.damp, 0, 0.99) * Math.sqrt(kS);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      ring = 0;
+      for (let i = 0; i < n; i++) {
+        const q = px[i], k = phase === 0 ? 0 : ease(p * 1.8 - q.d);
+        const tx = hx + q.ox * s + (q.sx - q.ox * s) * k, ty = GY + q.oy * s + (q.sy - q.oy * s) * k;
+        for (let j = 0; j < sub; j++) {
+          VX[i] += (kS * (tx - X[i]) - cS * VX[i]) * h; VY[i] += (kS * (ty - Y[i]) - cS * VY[i]) * h;
+          X[i] += VX[i] * h; Y[i] += VY[i] * h;
+        }
+        X[i] = clamp(X[i], -W, 2 * W); Y[i] = clamp(Y[i], -H, 2 * H);
+        ring = Math.max(ring, Math.abs(VX[i]), Math.abs(VY[i]));
+      }
+      if (phase === 0 && ring < 2) hero(hx, GY, { pose: "stand", frame: t });
       else {
-        for (const q of px) {                          // each pixel between home and scattered by its own eased clock
-          const k = ease(p * 1.8 - q.d);
-          if (k <= 0 && D.mode !== "teleport") { rect(hx + q.ox * s, GY + q.oy * s, s, s, q.c); continue; }
-          const x = hx + q.ox * s + (q.sx - q.ox * s) * k, y = GY + q.oy * s + (q.sy - q.oy * s) * k;
+        for (let i = 0; i < n; i++) {                  // each pixel where its spring has carried it, fading by its target's clock
+          const q = px[i], k = phase === 0 ? 0 : ease(p * 1.8 - q.d);
+          const x = X[i], y = Y[i];
           ctx.globalAlpha = clamp(1 - k, 0, 1);
           if (D.mode === "teleport") rect(x, y - s * 5 * k * (1 - k), s, s * (1 + 10 * k * (1 - k)), q.c);
           else rect(x, y, s, s, q.c);

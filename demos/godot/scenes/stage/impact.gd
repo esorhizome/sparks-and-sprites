@@ -36,11 +36,12 @@ const DEFS := [
 			"flashFrames": 2,            # the flash sprite lives this many frames
 			"size": 1,                   # flash size multiplier
 			"light": 0.28,               # the one-frame light: alpha of the whole-screen wash
-			"recoil": 0.4,               # barrel kick, as a fraction of its length
-			"spring": 22,                # how fast the barrel returns, per second
+			"recoil": 0.4,               # the kick's first peak, as a fraction of the barrel's length
+			"spring": 600,               # the recoil spring's stiffness (ω = √spring ≈ 24 /s: a 4 Hz barrel)
+			"damp": 0.35,                # its damping as a fraction of critical (2√spring) — under 1, so the barrel overshoots forward before it settles
 			"smoke": 14,                 # puffs per shot
 			"smokeLife": 1.0,            # seconds a puff lives
-			"label": "fire() → flash sprite · 1-frame light · recoil · smoke" },
+			"label": "fire() → flash sprite · 1-frame light · recoil: kv += v₀, kick'' = −spring·kick − c·kick' · smoke" },
 		"rhyme": { "name": "Musket", "hint": "one big slow flash — four frames at twice the length — and a cloud of smoke that hangs: black powder",
 			"dials": { "size": 1.9, "frameLen": 0.06, "smoke": 40 } } },
 	{ "id": "eject", "letter": "E", "name": "Eject",
@@ -52,6 +53,8 @@ const DEFS := [
 			"eject": 0.22,               # ejection speed sideways, in W per second
 			"spin": 30,                  # max spin, radians per second
 			"settle": 2.5,               # seconds a resting casing stays before it fades
+			"spring": 600,               # the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+			"damp": 0.35,                # its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
 			"label": "on ground: vy ← −e·vy · vx ← μ·vx · ω ← μ·ω" },
 		"rhyme": { "name": "Empties", "hint": "a belt-fed stream — a shot every tenth of a second — and casings that never fade, so the pool of forty piles up and steals its oldest",
 			"dials": { "every": 0.09, "settle": 40, "rest": 0.3 } } },
@@ -62,6 +65,8 @@ const DEFS := [
 			"glowEvery": 0,              # every n-th shot glows and lingers (0 = never)
 			"linger": 0.8,               # seconds a glowing tracer takes to fade
 			"spread": 0.04,              # aim error, radians
+			"spring": 600,               # the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+			"damp": 0.35,                # its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
 			"label": "hit = nearest t over segments · plain tracer: alpha = frames left / 3" },
 		"rhyme": { "name": "Tracerfire", "hint": "every third round is a real tracer — it glows orange and lingers a second while the plain rounds still vanish in three frames",
 			"dials": { "glowEvery": 3, "linger": 1.0, "every": 0.35 } } },
@@ -75,6 +80,8 @@ const DEFS := [
 			"count": 14,                 # particles per hit (scaled per effect)
 			"g": 1.8,                    # gravity, in H per second²
 			"night": 0.2,
+			"spring": 600,               # the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+			"damp": 0.35,                # its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
 			"label": "ray → hit point + normal n · table[material] → effect" },
 		"rhyme": { "name": "Icefield", "hint": "the same ray and the same table with cold rows: ice throws shards, frost and snow puff white, slush rings — a winter level's lookup",
 			"dials": { "materials": [ { "name": "ice", "fx": "chips", "c": "#BFE6F7" }, { "name": "frost", "fx": "dust", "c": "#DDE9F2" }, { "name": "snow", "fx": "dust", "c": "#F1F5F9" }, { "name": "slush", "fx": "ring", "c": "#8FB9D4" } ], "night": 0.5 } } },
@@ -86,6 +93,8 @@ const DEFS := [
 			"kind": "bullet",            # "bullet": holes and scorch marks · "chalk": chalk scribbles
 			"scorchEvery": 4,            # every n-th bullet stamp is a scorch mark
 			"size": 1,
+			"spring": 600,               # the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+			"damp": 0.35,                # its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
 			"label": "slot = head mod N · head++ · alpha by age rank" },
 		"rhyme": { "name": "Doodles", "hint": "chalk circles and crosses in a buffer of only five — the limit shows: the sixth scribble wipes the first",
 			"dials": { "kind": "chalk", "n": 5, "every": 0.6 } } },
@@ -112,6 +121,8 @@ const DEFS := [
 			"drip": 1.0,                 # drip growth, in H per second
 			"dry": 14,                   # seconds for the layer to wash back to clean
 			"every": 1.3,                # autopilot: seconds between splats
+			"spring": 600,               # the recoil spring's stiffness (Muzzle's idiom: ω = √spring ≈ 24 /s)
+			"damp": 0.35,                # its damping as a fraction of critical — under 1, so the barrel overshoots forward before it settles
 			"label": "centre = hit − n · push · drip: y += rate·dt, width ↓" },
 		"rhyme": { "name": "Inkwell", "hint": "black ink on cream paper with drips twice as eager — a calligrapher's accident",
 			"dials": { "colour": "#14121A", "paper": "#EFE6D0", "drip": 2.2 } } },
@@ -138,10 +149,12 @@ const DEFS := [
 			"fuse": 0.7,                 # seconds a hand-lit barrel takes
 			"respawn": 4,                # seconds after the last blast before the field resets
 			"dominoes": 8,
-			"tip": 0.12,                 # seconds between one domino's fall and the next
+			"tip": 0.12,                 # seconds from a falling domino touching the next to the next one going — the shove's latency
+			"g": 2.0,                    # gravity, in H per second² — a domino is a rod on its base corner: θ'' = (3g / 2L)·sin θ
+			"shove": 2.5,                # the angular speed a blast gives the first domino, rad/s; each hands 0.6 of its own to the next
 			"every": 3.5,                # autopilot: seconds between lightings
 			"night": 0.4,
-			"label": "d(b, blast) < R → queue(now + delay) · domino i+1 at t_i + tip" },
+			"label": "d(b, blast) < R → queue(now + delay) · domino: θ'' = (3g/2L)·sin θ · touches i+1 → queue(now + tip)" },
 		"rhyme": { "name": "Krakatoa", "hint": "a radius half the stage and a second's delay before each barrel answers — the slow doom you can count down",
 			"dials": { "radius": 0.5, "delay": 1.1, "respawn": 6 } } },
 	{ "id": "wick", "letter": "W", "name": "Wick",
@@ -196,7 +209,11 @@ const DEFS := [
 			"every": 1.6,                # seconds between attacks
 			"dodgeLen": 0.35,            # seconds a dodge's safe window lasts
 			"react": 0.25,               # the hero's reaction time (± a little noise)
-			"label": "tell → strike → recover · safe if dodge ≤ land ≤ dodge + dodgeLen" },
+			"k": 350,                    # the body's lean spring: stiffness (ω = √k ≈ 19 /s — quick enough to track a 0.2 s tell)
+			"damp": 0.45,                # its damping as a fraction of critical — under 1, so the recovery overshoots upright: the follow-through
+			"armK": 0.5,                 # the arm's stiffness as a multiple of the body's — under 1, so the arm lags the body and whips through after it
+			"armDamp": 0.5,              # the arm's damping, as a fraction of ITS OWN critical — under 1, so it whips past the strike pose and comes back
+			"label": "tell → strike → recover set the targets · lean, arm: θ'' = k·(target − θ) − c·θ' · safe if dodge ≤ land ≤ dodge + dodgeLen" },
 		"rhyme": { "name": "Telegraphed", "hint": "a tutorial boss: a tell three times as long with a deep lean — the hero has time to wait and hop just before the swing, and nearly always does",
 			"dials": { "tell": 0.6, "lean": 0.7, "every": 2.4 } } },
 ]
@@ -274,6 +291,34 @@ static func _barrel(n: CanvasItem, b: Dictionary, base: Vector2, aim: float, kic
 	n.draw_rect(Rect2(-kick, -1.1 * u, L, 2.1 * u), INK_DARK)
 	n.draw_rect(Rect2(1.5 * u - kick, 0.0, 2.0 * u, 3.0 * u), INK_DARK)
 	n.draw_set_transform(origin, 0.0, Vector2.ONE)
+
+## The recoil spring's impulse: a shot adds VELOCITY to the barrel, never
+## position. From rest, kick'' = −k·kick − c·kick' with kick' = v₀ peaks at
+## v₀/√k · e^(−ζφ/√(1−ζ²)), φ = atan(√(1−ζ²)/ζ) — so this v₀ puts the first
+## peak at exactly peak px (ζ = damp, the fraction of critical).
+static func _recoil_kick(b: Dictionary, peak: float) -> void:
+	var D: Dictionary = b.D
+	var w := sqrt(maxf(1.0, float(D.spring)))
+	var z := clampf(float(D.damp), 0.0, 0.99)
+	var q := sqrt(1.0 - z * z)
+	b.kv += peak * w * exp(z * atan2(q, z) / q)
+
+## The recoil spring, stepped: kick'' = −spring·kick − c·kick', c = damp·2√spring,
+## symplectic euler at ≤ 5 ms (it is stiff, and one number costs nothing).
+## Under-damped, so the barrel overshoots forward past rest before it settles.
+static func _recoil_step(b: Dictionary, dt: float) -> void:
+	var D: Dictionary = b.D
+	var k: float = maxf(1.0, float(D.spring))
+	var c: float = 2.0 * clampf(float(D.damp), 0.0, 0.99) * sqrt(k)
+	var sub := maxi(1, ceili(dt * 200.0))
+	var h := dt / float(sub)
+	var kick: float = b.kick
+	var kv: float = b.kv
+	for _s in sub:
+		kv += (-k * kick - c * kv) * h
+		kick += kv * h
+	b.kick = clampf(kick, -float(b.L), float(b.L))
+	b.kv = kv
 
 ## A ray from p along d against one segment [x1, y1, x2, y2]: the distance
 ## t of the hit, or -1 when it misses (the web's hitSeg, Infinity → -1 so
@@ -450,14 +495,18 @@ static func init(b: Dictionary) -> void:
 			# a MUZZLE FLASH is not one thing: fire() is an EVENT that spawns four
 			# short-lived things at once — a flash SPRITE that lives two frames (big,
 			# then small), a LIGHT that lives one frame and paints the ground, a smoke
-			# puff that lives a second, and a RECOIL that kicks the barrel back and
-			# springs it home. chapter 06's sparks were the smoke; the strip at the top
-			# is the timeline of one shot, so you can see how short "short" is.
+			# puff that lives a second, and a RECOIL — a real spring on the barrel: the
+			# shot adds VELOCITY (never position), the spring pulls the barrel back
+			# toward rest and, being under-damped, carries it forward PAST rest before
+			# it settles — that overshoot is what reads as weight. chapter 06's sparks
+			# were the smoke; the strip at the top is the timeline of one shot, so you
+			# can see how short "short" is — the recoil row is the spring's real settle.
 			b.hx = W * 0.26
 			b.L = 8.0 * u
 			b.timer = D.every * 0.6
 			b.shotT = 9.0
 			b.kick = 0.0
+			b.kv = 0.0
 			b.aim = -0.2
 			b.rot = 0.0
 			b.armed_sound = false
@@ -479,6 +528,7 @@ static func init(b: Dictionary) -> void:
 			b.pi = 0
 			b.timer = 0.0
 			b.kick = 0.0
+			b.kv = 0.0
 			b.flash = 0.0
 			b.armed_sound = false
 			b.tinkGap = 0.0
@@ -511,6 +561,7 @@ static func init(b: Dictionary) -> void:
 			b.timer = 0.0
 			b.aim = -0.1
 			b.kick = 0.0
+			b.kv = 0.0
 			b.shots = 0
 			b.cand = []
 			b.candT = 9.0
@@ -549,6 +600,7 @@ static func init(b: Dictionary) -> void:
 			b.timer = 0.4
 			b.aim = 0.5
 			b.kick = 0.0
+			b.kv = 0.0
 			b.lastHit = {}
 			b.hitT = 9.0
 			b.lastRow = -1
@@ -575,6 +627,7 @@ static func init(b: Dictionary) -> void:
 			b.timer = 0.3
 			b.aim = -0.1
 			b.kick = 0.0
+			b.kv = 0.0
 			b.trace = 0
 			b.tr0 = Vector2.ZERO
 			b.tr1 = Vector2.ZERO
@@ -616,6 +669,7 @@ static func init(b: Dictionary) -> void:
 			b.timer = 0.5
 			b.aim = -0.1
 			b.kick = 0.0
+			b.kv = 0.0
 			b.last = {}
 			b.hitT = 9.0
 			b.splats = 0
@@ -643,10 +697,13 @@ static func init(b: Dictionary) -> void:
 		"kaboom":
 			# a CHAIN REACTION is a queue. a blast at (x, y) with radius R asks every
 			# barrel "are you inside?" and the ones that are get an entry — barrel,
-			# time = now + delay — in a list sorted by time. dominoes are the same
-			# list with a fixed tip interval instead of a radius test: a QUEUE OF TIMED
-			# FALLS (lexicon Knock and Newton did the shove; this is the scheduling).
-			# the queue is drawn at the top, so you can read the doom before it lands.
+			# time = now + delay — in a list sorted by time. dominoes join the same
+			# list by CONTACT instead of a radius test: each is a rod pivoting on its
+			# base corner, θ'' = (3g/2L)·sin θ — slow to start, fast to arrive — and the
+			# moment its top reaches the next one's face the next is queued (now + tip)
+			# with a share of its angular speed: the shove (lexicon Knock and Newton).
+			# it lands on its neighbour at 1.25 rad, bounces a little, and rests. the
+			# queue is drawn at the top, so you can read the doom before it lands.
 			b.bw = u * 3.0
 			b.bh = u * 4.5
 			b.R = W * D.radius
@@ -665,8 +722,10 @@ static func init(b: Dictionary) -> void:
 			b.dh = u * 5.0
 			var dominoes: Array = []
 			for i in ND:
-				dominoes.append({ "x": dx0 + i * dw, "k": 0.0, "going": false })
+				dominoes.append({ "x": dx0 + i * dw, "th": 0.0, "w": 0.0, "w0": 0.0, "going": false, "touched": false, "rested": false })   # th, w: the pivot's angle and angular speed · w0: the shove it was handed
 			b.dominoes = dominoes
+			b.fallA = 3.0 * (H * float(D.g)) / (2.0 * float(b.dh))   # θ'' = fallA·sin θ: a uniform rod about its end (I = mL²/3, torque = mg·L/2·sin θ)
+			b.thC = asin(clampf((dw - u * 0.5) / float(b.dh), 0.05, 1.0))   # the angle at which a domino's top reaches the next one's face
 			b.queue = []
 			b.blasts = []
 			b.smoke = _pool(40, { "on": false, "x": 0.0, "y": 0.0, "vy": 0.0, "life": 0.0, "r": 1.0 })
@@ -798,6 +857,10 @@ static func init(b: Dictionary) -> void:
 			# closed again (lexicon Cat's i-frames). the hero here has a REACTION
 			# TIME, so with a short tell it is often late, and with a long one it can
 			# wait and time the hop; the bar at the top shows where each dodge fell.
+			# the lean and the arm are not tweened: the phase machine only moves their
+			# TARGETS, and each chases its target on an under-damped spring — so the
+			# body swings past upright as it recovers (the follow-through), and the
+			# arm's softer, slower spring lags the body's and whips through after it.
 			b.hx = W * 0.36
 			b.ex = W * 0.62
 			b.phase = "idle"
@@ -817,6 +880,10 @@ static func init(b: Dictionary) -> void:
 			b.lastAt = 0.0
 			b.lastWhy = ""
 			b.lastManual = false
+			b.leanA = 0.0                                # the two springs: the body's lean and the arm's angle, radians, with their velocities
+			b.leanV = 0.0
+			b.armA = 0.3
+			b.armV = 0.0
 
 # ---------------------------------------------------------------- events
 
@@ -830,7 +897,7 @@ static func _muzzle_fire(b: Dictionary) -> void:
 	var u: float = b.u
 	b.shotT = 0.0
 	b.rot = randf_range(0.0, TAU)
-	b.kick = b.L * D.recoil
+	_recoil_kick(b, b.L * D.recoil)
 	var m := _tip(Vector2(b.hx + 4.0 * u, GY - 9.0 * u), b.aim, b.kick, b.L)
 	var pool: Array = b.pool
 	for _i in int(D.smoke):
@@ -869,7 +936,7 @@ static func _eject_fire(b: Dictionary) -> void:
 	p.bounces = 0
 	p.restT = 0.0
 	p.age = 0.0
-	b.kick = b.L * 0.3
+	_recoil_kick(b, b.L * 0.3)
 	b.flash = 0.04
 	b.fired += 1
 	b.last = idx
@@ -921,7 +988,7 @@ static func _tracer_fire(b: Dictionary) -> void:
 		p.vx = cos(ang) * v
 		p.vy = sin(ang) * v
 		p.life = 1.0
-	b.kick = b.L * 0.25
+	_recoil_kick(b, b.L * 0.25)
 	b.candT = 0.0
 
 ## Impact's spawn(): the table's effect as particles off the normal.
@@ -981,7 +1048,7 @@ static func _impact_shoot(b: Dictionary, px: float) -> void:
 	var hy: float = P.ya + (P.yb - P.ya) * k
 	var base := Vector2(b.hx + 4.0 * u, b.ly - 9.0 * u)
 	b.aim = atan2(hy - base.y, px - base.x)
-	b.kick = b.L * 0.25
+	_recoil_kick(b, b.L * 0.25)
 	b.tr0 = _tip(base, b.aim, b.kick, b.L)
 	b.tr1 = Vector2(px, hy)
 	b.trace = 3
@@ -1043,7 +1110,7 @@ static func _decal_stamp(b: Dictionary, x: float, y: float) -> void:
 	sl.shape = shape
 	var base := Vector2(b.hx + 4.0 * u, GY - 9.0 * u)
 	b.aim = atan2(y - base.y, x - base.x)
-	b.kick = b.L * 0.25
+	_recoil_kick(b, b.L * 0.25)
 	b.tr0 = _tip(base, b.aim, b.kick, b.L)
 	b.tr1 = Vector2(x, y)
 	b.trace = 3
@@ -1060,7 +1127,7 @@ static func _ink_splat(b: Dictionary, x: float, y: float) -> void:
 	y = clampf(y, b.wy + u, GY - u)
 	var base := Vector2(b.hx + 4.0 * u, GY - 9.0 * u)
 	b.aim = atan2(y - base.y, x - base.x)
-	b.kick = b.L * 0.25
+	_recoil_kick(b, b.L * 0.25)
 	var d := Vector2(x, y) - base
 	d = d / (d.length() if d.length() > 0.0 else 1.0)
 	var nv := -d                                         # the wall's normal faces the shooter
@@ -1186,6 +1253,7 @@ static func _kaboom_blast(b: Dictionary, x: float, y: float) -> void:
 			_kaboom_enqueue(b, "barrel", i, D.delay)
 	var d0: Dictionary = b.dominoes[0]
 	if not d0.going and Vector2(d0.x - x, GY - b.dh / 2.0 - y).length() < R:
+		d0.w0 = float(D.shove)                       # the blast shoves the first domino
 		_kaboom_enqueue(b, "domino", 0, D.delay)
 	b.quiet = 0.0
 
@@ -1459,7 +1527,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 				var base := Vector2(b.hx + 4.0 * u, GY - 9.0 * u)
 				b.aim = atan2(b.ty - base.y, b.tx - base.x)
 				_muzzle_fire(b)
-			b.kick -= b.kick * Kit.smooth(D.spring, dt)
+			_recoil_step(b, dt)
 			for pv in b.pool:                            # the SMOKE: the longest-lived part of the shot
 				var p: Dictionary = pv
 				if not p.on:
@@ -1479,7 +1547,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 			if b.timer > D.every:
 				b.timer = 0.0
 				_eject_fire(b)
-			b.kick *= maxf(0.0, 1.0 - 18.0 * dt)
+			_recoil_step(b, dt)
 			b.flash -= dt
 			var G: float = b.G
 			var pool: Array = b.pool
@@ -1519,7 +1587,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 		"tracer":
 			b.timer += dt
 			b.candT += dt
-			b.kick *= maxf(0.0, 1.0 - 16.0 * dt)
+			_recoil_step(b, dt)
 			if b.timer > D.every:
 				b.timer = 0.0
 				b.tx = randf_range(W * 0.4, W * 0.98)
@@ -1555,7 +1623,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 		"impact":
 			b.timer += dt
 			b.hitT += dt
-			b.kick *= maxf(0.0, 1.0 - 16.0 * dt)
+			_recoil_step(b, dt)
 			if b.timer > D.every:
 				b.timer = 0.0
 				_impact_shoot(b, randf_range(b.x0, W))
@@ -1595,7 +1663,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 					p.vr = 0.0
 		"decals":
 			b.timer += dt
-			b.kick *= maxf(0.0, 1.0 - 16.0 * dt)
+			_recoil_step(b, dt)
 			if b.timer > D.every:
 				b.timer = 0.0
 				_decal_stamp(b, randf_range(b.wx + u, W - u), randf_range(b.wy + u, GY + (H - GY) * 0.7))
@@ -1664,7 +1732,7 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 		"ink":
 			b.timer += dt
 			b.hitT += dt
-			b.kick *= maxf(0.0, 1.0 - 16.0 * dt)
+			_recoil_step(b, dt)
 			if b.timer > D.every:
 				b.timer = 0.0
 				_ink_splat(b, randf_range(W * 0.35, W * 0.95), randf_range(b.wy + H * 0.08, GY - H * 0.08))
@@ -1785,13 +1853,17 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 						alive.append(i)
 				_kaboom_light(b, alive[randi_range(0, alive.size() - 1)])
 			var lastD: Dictionary = dominoes[ND - 1]
-			if queue.is_empty() and b.quiet > D.respawn and (not anyAlive or lastD.going):
+			if queue.is_empty() and b.quiet > D.respawn and (not anyAlive or lastD.rested):
 				for br in barrels:                       # reset: the field comes back
 					br.alive = true
 					br.fuse = -1.0
 				for dm in dominoes:
-					dm.k = 0.0
+					dm.th = 0.0
+					dm.w = 0.0
+					dm.w0 = 0.0
 					dm.going = false
+					dm.touched = false
+					dm.rested = false
 				queue.clear()
 				b.fadeIn = 0.0
 			var i := queue.size() - 1
@@ -1808,18 +1880,44 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 							_kaboom_blast(b, br.x, GY - b.bh / 2.0)
 					else:
 						var dm: Dictionary = dominoes[q.i]
-						if not dm.going:
+						if not dm.going:                  # a domino goes: it starts with the shove it was handed
 							dm.going = true
-							if q.i + 1 < ND:
-								_kaboom_enqueue(b, "domino", q.i + 1, D.tip)
+							dm.w = maxf(0.3, float(dm.w0))
+							b.quiet = 0.0
 				i -= 1
 			for br in barrels:
 				if br.fuse > 0.0:
 					br.fuse -= dt
-			for dv in dominoes:                          # dominoes fall about their base corner
-				var dm: Dictionary = dv
-				if dm.going:
-					dm.k = minf(1.0, dm.k + dt / 0.35)
+			var fallA: float = b.fallA
+			var thC: float = b.thC
+			var dsub := maxi(1, ceili(dt * 50.0))
+			var hh := dt / float(dsub)
+			for di in ND:                                # dominoes: rods pivoting on their base corner, integrated (symplectic euler, ≤ 20 ms steps)
+				var dm: Dictionary = dominoes[di]
+				if not dm.going or dm.rested:
+					continue
+				var th: float = dm.th
+				var w: float = dm.w
+				var rested := false
+				for _s in dsub:
+					w += fallA * sin(th) * hh
+					th += w * hh
+					if th >= 1.25:                       # the stop: it lands on its neighbour, bounces a little, and rests once the bounce is small
+						th = 1.25
+						w = -w * 0.25
+						if -w < 0.6:
+							w = 0.0
+							rested = true
+				dm.th = clampf(th, 0.0, 1.25)
+				dm.w = clampf(w, -50.0, 50.0)
+				if rested:
+					dm.rested = true
+				if not dm.touched and dm.th >= thC:      # its top reaches the next: the shove is queued
+					dm.touched = true
+					if di + 1 < ND:
+						var nx: Dictionary = dominoes[di + 1]
+						nx.w0 = dm.w * 0.6
+						_kaboom_enqueue(b, "domino", di + 1, D.tip)
 			for pv in b.smoke:
 				var p: Dictionary = pv
 				if not p.on:
@@ -2086,6 +2184,32 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 			elif phase == "recover" and b.pt > D.recover:
 				b.phase = "idle"
 				b.pt = 0.0
+			var ph: String = b.phase                     # the TARGETS: what the phase machine asks for (read after it ran)
+			var pt: float = b.pt
+			var kT: float = _ease(pt / D.tell) if ph == "tell" else (1.0 - pt / D.strike * 1.4 if ph == "strike" else (lerpf(-0.4, 0.0, _ease(pt / D.recover)) if ph == "recover" else 0.0))
+			var armT: float = lerpf(0.3, -2.4, _ease(pt / D.tell)) if ph == "tell" else (lerpf(-2.4, 1.3, clampf(pt / D.strike, 0.0, 1.0)) if ph == "strike" else (lerpf(1.3, 0.3, _ease(pt / D.recover)) if ph == "recover" else 0.3))
+			# two springs chase them (symplectic euler, substepped to ≤ 10 ms): the body's,
+			# and the arm's — softer (k · armK) and less damped, so it lags and whips
+			var kb: float = maxf(1.0, float(D.k))
+			var cb: float = 2.0 * clampf(float(D.damp), 0.0, 0.99) * sqrt(kb)
+			var ka: float = kb * maxf(0.05, float(D.armK))
+			var ca: float = 2.0 * clampf(float(D.armDamp), 0.0, 0.99) * sqrt(ka)
+			var sub := maxi(1, ceili(dt * 100.0))
+			var h := dt / float(sub)
+			var leanA: float = b.leanA
+			var leanV: float = b.leanV
+			var armA: float = b.armA
+			var armV: float = b.armV
+			var lean: float = D.lean
+			for _s in sub:
+				leanV += (kb * (lean * kT - leanA) - cb * leanV) * h
+				leanA = clampf(leanA + leanV * h, -3.0, 3.0)
+				armV += (ka * (armT - armA) - ca * armV) * h
+				armA = clampf(armA + armV * h, -6.0, 6.0)
+			b.leanA = leanA
+			b.leanV = leanV
+			b.armA = armA
+			b.armV = armV
 
 # ================================================================ draw
 
@@ -2141,7 +2265,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var x1 := W * 0.92
 			var span: float = maxf(D.smokeLife, maxf(D.frameLen * D.flashFrames * 4.0, 0.5))
 			var y0 := 10.0 * S
-			var rows: Array = [["flash", D.frameLen * D.flashFrames, Kit.SPARK], ["light", D.frameLen, Kit.SUN], ["recoil", 3.0 / D.spring, Kit.BONE], ["smoke", D.smokeLife, Color("9A96B0")]]
+			var recoilT := 3.0 / (maxf(0.02, float(D.damp)) * sqrt(maxf(1.0, float(D.spring))))   # the spring's envelope e^(−ζ·ω·t) is under 5% after 3 / (ζ·ω): its real settle
+			var rows: Array = [["flash", D.frameLen * D.flashFrames, Kit.SPARK], ["light", D.frameLen, Kit.SUN], ["recoil", recoilT, Kit.BONE], ["smoke", D.smokeLife, Color("9A96B0")]]
 			for i in rows.size():
 				var row: Array = rows[i]
 				var y := y0 + i * 8.0 * S
@@ -2529,7 +2654,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 						Kit.dot(n, Vector2(bx, GY - bh - u * 0.4), u * 0.5, Kit.SPARK)
 			for dv in b.dominoes:                        # dominoes fall about their base corner
 				var dm: Dictionary = dv
-				n.draw_set_transform(origin + Vector2(dm.x + u * 0.5, GY), _ease(dm.k) * 1.25, Vector2.ONE)
+				n.draw_set_transform(origin + Vector2(dm.x + u * 0.5, GY), float(dm.th), Vector2.ONE)
 				n.draw_rect(Rect2(-u * 0.5, -dh, u, dh), _al(Kit.BONE, fadeIn))
 				n.draw_rect(Rect2(-u * 0.15, -dh * 0.55, u * 0.3, u * 0.3), _al(INK_DARK, fadeIn))
 				n.draw_set_transform(origin, 0.0, Vector2.ONE)
@@ -2772,8 +2897,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var hurtT: float = b.hurtT
 			var lastRes: String = b.lastRes
 			var body := Color("6E4A8A")
-			var k: float = _ease(pt / D.tell) if phase == "tell" else (1.0 - pt / D.strike * 1.4 if phase == "strike" else (lerpf(-0.4, 0.0, _ease(pt / D.recover)) if phase == "recover" else 0.0))
-			var armA: float = lerpf(0.3, -2.4, _ease(pt / D.tell)) if phase == "tell" else (lerpf(-2.4, 1.3, clampf(pt / D.strike, 0.0, 1.0)) if phase == "strike" else (lerpf(1.3, 0.3, _ease(pt / D.recover)) if phase == "recover" else 0.3))
+			var leanA: float = b.leanA                   # the lean and the arm: where their springs have carried them (stepped in tick)
+			var armA: float = b.armA
 			var tintK: float = (1.0 if pt < 0.034 else 0.85) if phase == "tell" else 0.0
 			var fill := body.lerp(Kit.HOT if D.tint == "red" else Color.WHITE, tintK) if tintK > 0.0 else body
 			Kit.stage(n, b, 0.4)
@@ -2784,7 +2909,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			if dodgeT > 0.0:
 				Kit.ring(n, Vector2(hx, GY), u * 3.0, _al(Kit.GOOD, 0.5), 1.0)
 			Kit.hero(n, b, Vector2(hx - hop * u * 7.0 + sx, GY - hop * u * 3.0), { "face": 1, "pose": "hurt" if hurtT > 0.0 else ("crouch" if dodgeT > 0.0 else "stand"), "frame": t })
-			var xf := Transform2D(D.lean * k, origin + Vector2(ex, GY))   # the enemy leans about its feet
+			var xf := Transform2D(leanA, origin + Vector2(ex, GY))   # the enemy leans about its feet — where its spring has carried it
 			n.draw_set_transform_matrix(xf)
 			var legs := Kit.shade(body, -0.3)
 			n.draw_rect(Rect2(-3.0 * u, -3.0 * u, 2.0 * u, 3.0 * u), legs)
@@ -2798,7 +2923,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_set_transform(origin, 0.0, Vector2.ONE)
 			if phase == "tell":
 				Kit.text(n, "tell %.2f / %s s" % [pt, str(D.tell)], Vector2(ex, GY - u * 17.0), _fs(S, 8.0), Kit.INK, true)
-				Kit.text(n, "lean %.2f rad" % (D.lean * k), Vector2(ex, GY - u * 15.4), _fs(S, 7.0), Kit.DIM, true)
+				Kit.text(n, "lean %.2f rad" % leanA, Vector2(ex, GY - u * 15.4), _fs(S, 7.0), Kit.DIM, true)
 			if phase == "recover" and pt < 0.5:
 				Kit.text(n, "hit!" if lastRes == "hit" else "miss", Vector2(hx + u * 2.0, GY - u * 19.0), _fs(S, 10.0), Kit.HOT if lastRes == "hit" else Kit.GOOD, true)
 			var x0 := W * 0.08                           # the attack as a bar, and the dodge window under it
