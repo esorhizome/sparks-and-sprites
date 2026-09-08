@@ -6,7 +6,7 @@ const Base := preload("res://scenes/cubefx/earth.gd")
 
 const RHYMES := {
 	"rock_throw": { "name": "Snowball throw", "hint": "it splats instead of shattering, and leaves a mark" },
-	"vine_snare": { "name": "Chain snare", "hint": "cold iron — links, not leaves, and no sway" },
+	"vine_snare": { "name": "Chain snare", "hint": "cold iron, critically damped (damp 0.45 → 1) — it rises and stops dead: links, no sway" },
 	"leaf_whirl": { "name": "Stone belt", "hint": "pebbles — heavier, lower, slower" },
 	"boulder_shield": { "name": "Leaf shield", "hint": "foliage — lighter, higher, briefer" },
 	"bloom_trail": { "name": "Frost trail", "hint": "six-point frost stars instead of flowers" },
@@ -22,6 +22,9 @@ static func init(b: Dictionary) -> void:
 			l.v *= 0.5
 	if b.id == "rock_throw":
 		b.marks = []
+	if b.id == "vine_snare":
+		# dials: damp 0.45 → 1 and tipdamp 0.4 → 1 (critical: no overshoot, no sway) · k 60 → 90 (rise faster) · life 1.6 → 1.4
+		b.D.merge({ "damp": 1.0, "tipdamp": 1.0, "k": 90.0, "life": 1.4 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -105,18 +108,24 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"vine_snare":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
+			# dial: vines → chain links laid along each segment of the same chains
+			var J: int = b.D.joints
+			var L: float = c.s * float(b.D.len)
 			for p in b.parts:
-				# dial: sinuous vines → straight chain links, no sway
-				var up: float = sin(minf(1.0, (1.6 - p.life) * 2.0) * PI * 0.5) * minf(1.0, p.life * 1.8)
-				for v in range(-1, 2):
-					var top := Vector2(p.x + v * 6.0, b.G - up * c.s * 1.8)
+				var th: PackedFloat32Array = p.th
+				var col := Color(0.55, 0.59, 0.67, clampf(p.life + 0.4, 0.0, 1.0))
+				for v in 3:
+					var pt := Vector2(p.x + (v - 1) * 6.0, b.G)
 					var k := 0
-					var y: float = b.G
-					while y > top.y:
-						CubeKit.ellipse(n, Vector2(p.x + v * 6.0 + (1.5 if k % 2 == 0 else -1.5), y),
-							2.2, 3.2, Color(0.55, 0.59, 0.67, minf(1.0, p.life)), 1.2, 0, TAU, 8)
-						y -= 6.0
-						k += 1
+					for j in J:
+						var a: float = th[v * J + j]
+						var along := Vector2(sin(a), -cos(a))
+						for q in [0.25, 0.75]:               # two links a segment, alternately tilted
+							n.draw_set_transform(pt + along * L * q, -a + (0.5 if k % 2 == 0 else -0.5), Vector2.ONE)
+							CubeKit.ellipse(n, Vector2.ZERO, 2.2, 3.2, col, 1.2, 0, TAU, 8)
+							n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+							k += 1
+						pt += along * L
 		"leaf_whirl":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)

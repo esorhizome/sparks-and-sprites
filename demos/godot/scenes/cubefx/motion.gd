@@ -12,7 +12,7 @@ const DEFS := [
 	{ "id": "skid", "name": "Skid smoke", "hint": "watch its turns — every U-turn skids; press for a burnout" },
 	{ "id": "speed_lines", "name": "Speed lines", "hint": "lines stream behind it as it moves; press: sonic sprint" },
 	{ "id": "teleport", "name": "Teleport blink", "hint": "press: it implodes into motes and reappears where you clicked" },
-	{ "id": "backflip", "name": "Backflip", "hint": "press: a full backflip with a ribbon of trail" },
+	{ "id": "backflip", "name": "Backflip", "hint": "press: a ballistic backflip — speed and spin set at take-off, gravity and the floor do the rest" },
 	{ "id": "wall_kick", "name": "Wall kick", "hint": "it runs wall to wall, kicking off each; press: super wall-jump" },
 ]
 
@@ -38,7 +38,22 @@ static func init(b: Dictionary) -> void:
 			b.target = 0.0
 			b.flash = 0.0
 		"backflip":
-			b.flip = -1.0
+			# the old flip parked y on a sine and rotation on the clock. now the press
+			# sets two velocities and nothing else: an upward one, and an angular one
+			# sized so `turns` rotations fit the ballistic hang time (a gymnast's trick
+			# too — spin is chosen at take-off, it cannot be changed in the air).
+			# gravity integrates the height, the floor is a contact that kills both
+			# velocities, and the impact speed becomes a squash the spring resolves.
+			b.D = { "jump": 214.0,           # launch speed, px/s — the peak is jump²/2g, about 1.7 cube-sides
+				"g": 620.0,                  # gravity, px/s²
+				"turns": 1.0,                # rotations to complete before the floor: the spin is chosen at take-off to fit the hang time 2·jump/g
+				"squashK": 400.0,            # the landing squash's spring stiffness
+				"squashDamp": 0.35,          # its damping as a fraction of critical — under 1, so it rebounds into a stretch
+				"squashKick": 0.05 }         # squash velocity bought per px/s of landing speed
+			b.vy = 0.0
+			b.omega = 0.0
+			b.air = false
+			b.sqv = 0.0
 		"wall_kick":
 			b.vy = 0.0
 			b.boost = 0.0
@@ -78,8 +93,11 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 						c.y - randf_range(0, c.s)), "life": 1.0 })
 				c.alpha = 0.0
 		"backflip":
-			if b.flip < 0.0:
-				b.flip = 0.0
+			if not b.air:
+				var D: Dictionary = b.D
+				b.air = true
+				b.vy = -float(D.jump)
+				b.omega = -c.face * float(D.turns) * TAU * float(D.g) / (2.0 * float(D.jump))   # against travel: a BACKflip
 		"wall_kick":
 			b.boost = 1.0
 
@@ -159,16 +177,26 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					c.alpha = 1.0
 					b.flash = 1.0
 		"backflip":
-			if b.flip >= 0.0:
-				b.flip += dt * 1.6
-				var k: float = minf(1.0, b.flip)
-				c.y = b.G - sin(k * PI) * c.s * 1.7
-				c.spin = -c.face * k * TAU
+			var D: Dictionary = b.D
+			if b.air:
+				b.vy += float(D.g) * dt
+				c.y += b.vy * dt
+				c.spin += b.omega * dt
 				b.parts.append({ "pos": Vector2(c.x, c.y - c.s * 0.5), "life": 1.0 })
-				if b.flip >= 1.0:
-					b.flip = -1.0
+				if c.y >= b.G:                    # contact: the feet find the floor, the spin is done
 					c.y = b.G
+					b.air = false
 					c.spin = 0.0
+					b.omega = 0.0
+					b.sqv += b.vy * float(D.squashKick)
+					b.vy = 0.0
+			var sk: float = D.squashK
+			var sd: float = float(D.squashDamp) * 2.0 * sqrt(sk)
+			var sub := maxi(1, ceili(dt * 50.0))   # the spring's substep guard
+			var h := dt / float(sub)
+			for _s in sub:
+				b.sqv += (sk * (0.0 - c.squash) - sd * b.sqv) * h
+				c.squash = clampf(c.squash + b.sqv * h, -0.5, 0.5)
 			for p in b.parts:
 				p.life -= dt * 2.0
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)

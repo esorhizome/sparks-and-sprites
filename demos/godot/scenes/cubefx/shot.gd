@@ -9,7 +9,7 @@ const DEFS := [
 	{ "id": "energy_ball", "name": "Energy ball", "hint": "a palm-flicker while it waits; press to throw the classic orb" },
 	{ "id": "beam", "name": "Beam blast", "hint": "press: the full-width beam, with charge motes while it idles" },
 	{ "id": "homing", "name": "Homing orbs", "hint": "three orbs idle in orbit; press: they spiral out, then chase" },
-	{ "id": "boomerang", "name": "Boomerang", "hint": "press: the glaive flies out, hangs, and comes home" },
+	{ "id": "boomerang", "name": "Boomerang", "hint": "press: the glaive leaves with a velocity and a pull back to the hand — it slows, hangs, comes home" },
 	{ "id": "laser_sight", "name": "Laser sight", "hint": "a thin aiming line flickers ahead; press for the railgun crack" },
 	{ "id": "charge_shot", "name": "Charge shot", "hint": "the orb at its palm GROWS while you wait; press to fire it" },
 	{ "id": "spread", "name": "Spread shot", "hint": "press: a five-way fan; idle: one pellet bounces in its hand" },
@@ -21,8 +21,24 @@ static func init(b: Dictionary) -> void:
 	b.parts = []
 	match b.id:
 		"boomerang":
-			b.flight = -1.0
-			b.dir = 1.0
+			# the old flight was reach = sin(kπ): a timer wearing a curve. now the
+			# press gives the glaive a velocity and a lateral pull — a spring toward
+			# the hand, the way a boomerang's bank keeps turning it back — and the
+			# out, the hang, and the return all fall out of integrating that: it
+			# decelerates as the pull catches up, hangs where its speed is spent,
+			# then falls home. the pull aims at the hand's CURRENT position, so it
+			# comes home even though the hero has strolled on.
+			b.D = { "speed": 200.0,          # launch speed, px/s — the reach is speed/√k, about 3.2 cube-sides
+				"loft": 40.0,                # the upward part of the launch, px/s — bends the line into a thin loop
+				"k": 8.2,                    # the homing pull's stiffness (a spring toward the hand): out and back takes π/√k ≈ 1.1 s
+				"spin": 16.0,                # the blade's own spin, rad/s
+				"catchR": 8.0,               # how close it must come to be caught, px
+				"maxFlight": 3.0 }           # the safety catch, s — a hand that walks away could otherwise chase it all day
+			b.flying = false
+			b.pos = Vector2.ZERO
+			b.vel = Vector2.ZERO
+			b.rot = 0.0
+			b.ft = 0.0
 		"charge_shot":
 			b.charge = 0.15
 		"orbit_launch":
@@ -44,9 +60,13 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 				b.parts.append({ "kind": "homer", "pos": Vector2(c.x, c.y - c.s * 0.5),
 					"a": i / 3.0 * TAU, "spiral": 0.6, "dir": c.face, "life": 2.0 })
 		"boomerang":
-			if b.flight < 0.0:
-				b.flight = 0.0
-				b.dir = c.face
+			if not b.flying:
+				var D: Dictionary = b.D
+				b.flying = true
+				b.pos = Vector2(c.x + c.face * c.s * 0.5, c.y - c.s * 0.6)
+				b.vel = Vector2(c.face * float(D.speed), -float(D.loft))
+				b.rot = 0.0
+				b.ft = 0.0
 		"charge_shot":
 			b.parts.append({ "kind": "shot", "pos": Vector2(c.x + c.face * c.s * 0.6, c.y - c.s * 0.5),
 				"vx": c.face * 180.0, "r": 4.0 + b.charge * 12.0 })
@@ -91,10 +111,15 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt
 			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.pos.x > r.position.x - 20 and p.pos.x < r.position.x + r.size.x + 20)
 		"boomerang":
-			if b.flight >= 0.0:
-				b.flight += dt * 0.9
-				if b.flight >= 1.0:
-					b.flight = -1.0
+			if b.flying:
+				var D: Dictionary = b.D
+				var hand := Vector2(c.x, c.y - c.s * 0.6)      # the hand it is coming home to
+				b.vel += float(D.k) * (hand - b.pos) * dt
+				b.pos += b.vel * dt
+				b.rot += float(D.spin) * dt
+				b.ft += dt
+				if (b.ft > 0.3 and b.pos.distance_to(hand) < float(D.catchR)) or b.ft > float(D.maxFlight):
+					b.flying = false                           # caught!
 		"charge_shot":
 			b.charge = minf(1.0, b.charge + dt * 0.18)
 			for p in b.parts:
@@ -154,11 +179,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for p in b.parts:
 				CubeKit.glow(n, p.pos, 6.0, Color(1, 0.75, 0.88, 0.9), 2)
 		"boomerang":
-			if b.flight >= 0.0:
-				var reach: float = sin(minf(1.0, b.flight) * PI) * c.s * 3.2
-				var pos := Vector2(c.x + b.dir * reach,
-					c.y - c.s * 0.6 - sin(minf(1.0, b.flight) * TAU) * 8.0)
-				n.draw_set_transform(pos, t * 16.0, Vector2.ONE)
+			if b.flying:
+				n.draw_set_transform(b.pos, b.rot, Vector2.ONE)
 				n.draw_polyline(PackedVector2Array([Vector2(-7, 3), Vector2(0, -5), Vector2(7, 3)]),
 					Color(0.86, 0.88, 0.96, 0.95), 3.0)
 				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

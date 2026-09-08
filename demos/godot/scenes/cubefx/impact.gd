@@ -13,7 +13,7 @@ const DEFS := [
 	{ "id": "parry", "name": "Parry flash", "hint": "press: the one-frame white flash every fighting game player knows" },
 	{ "id": "knockback", "name": "Knockback", "hint": "press: something hits IT — tumble, skid, proud recovery" },
 	{ "id": "ground_crack", "name": "Ground crack", "hint": "press: one punch down — the floor remembers it a while" },
-	{ "id": "stomp", "name": "Stomp quake", "hint": "press: a stomp sends dust waves rolling both ways" },
+	{ "id": "stomp", "name": "Stomp quake", "hint": "press: a short ballistic hop — the landing squashes it and sends dust waves both ways" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -28,7 +28,19 @@ static func init(b: Dictionary) -> void:
 		"knockback":
 			b.tumble = -1.0
 		"stomp":
-			b.hop = -1.0
+			# Double jump's integrator again: the press injects an upward velocity,
+			# gravity brings it back, and the floor is a contact — the waves leave at
+			# the moment of contact because that is when the floor is hit, not at the
+			# end of a timer. the impact speed becomes a squash the spring resolves.
+			b.D = { "jump": 140.0,           # launch speed, px/s — a stomp is a short hop: peak jump²/2g ≈ 0.7 cube-sides
+				"g": 620.0,                  # gravity, px/s²
+				"squashK": 400.0,            # the landing squash's spring stiffness
+				"squashDamp": 0.35,          # its damping as a fraction of critical — under 1, so it rebounds into a stretch
+				"squashKick": 0.06,          # squash velocity bought per px/s of landing speed — a stomp lands heavy
+				"wave": 130.0 }              # the dust waves' speed, px/s
+			b.vy = 0.0
+			b.air = false
+			b.sqv = 0.0
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -77,8 +89,9 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 				b.parts.append({ "kind": "debris", "pos": Vector2(cx, b.G),
 					"vel": Vector2(randf_range(-70, 70), randf_range(-140, -40)), "life": 1.0 })
 		"stomp":
-			if b.hop < 0.0:
-				b.hop = 0.0
+			if not b.air:
+				b.air = true
+				b.vy = -float(b.D.jump)
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var c: Dictionary = b.cub
@@ -142,16 +155,26 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.life -= dt * 1.4
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"stomp":
-			if b.hop >= 0.0:
-				b.hop += dt * 3.0
-				c.y = b.G - sin(minf(1.0, b.hop) * PI) * c.s * 0.7
-				if b.hop >= 1.0:
+			var D: Dictionary = b.D
+			if b.air:
+				b.vy += float(D.g) * dt
+				c.y += b.vy * dt
+				if c.y >= b.G:                    # contact: the stomp lands
 					c.y = b.G
-					b.hop = -1.0
+					b.air = false
+					b.sqv += b.vy * float(D.squashKick)
+					b.vy = 0.0
 					b.parts.append({ "kind": "wave", "x": c.x, "dir": 1.0, "life": 1.0 })
 					b.parts.append({ "kind": "wave", "x": c.x, "dir": -1.0, "life": 1.0 })
-			for p in b.parts:
-				p.x += p.dir * 130.0 * dt
+			var sk: float = D.squashK
+			var sd: float = float(D.squashDamp) * 2.0 * sqrt(sk)
+			var sub := maxi(1, ceili(dt * 50.0))   # the spring's substep guard
+			var h := dt / float(sub)
+			for _s in sub:
+				b.sqv += (sk * (0.0 - c.squash) - sd * b.sqv) * h
+				c.squash = clampf(c.squash + b.sqv * h, -0.5, 0.5)
+			for p in b.parts:                     # each wave: a travelling dust hump
+				p.x += p.dir * float(D.wave) * dt
 				p.life -= dt * 1.1
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 

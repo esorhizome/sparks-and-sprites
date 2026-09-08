@@ -7,7 +7,7 @@ const TITLE := "Earth & nature"
 const BLURB := "rocks thrown, vines called, flowers left behind"
 const DEFS := [
 	{ "id": "rock_throw", "name": "Rock throw", "hint": "a pebble orbits, waiting; press to lob the real boulder" },
-	{ "id": "vine_snare", "name": "Vine snare", "hint": "press: vines erupt where you click, writhe, and withdraw" },
+	{ "id": "vine_snare", "name": "Vine snare", "hint": "press: three flat vines where you click get kicked upright — chains that whip past vertical, settle, lie back down" },
 	{ "id": "leaf_whirl", "name": "Leaf whirl", "hint": "leaves orbit like a green satellite belt; press for the storm" },
 	{ "id": "boulder_shield", "name": "Boulder shield", "hint": "press: four rocks rise and orbit as armour for a while" },
 	{ "id": "bloom_trail", "name": "Bloom trail", "hint": "flowers open in its footsteps; press for a whole garden" },
@@ -20,6 +20,25 @@ static func init(b: Dictionary) -> void:
 	b.press_v = 0.0
 	b.parts = []
 	match b.id:
+		"vine_snare":
+			# the old vines rose on a sine envelope and writhed on the clock. here each
+			# vine is a Grass blade — a chain of angles from upright, every joint a
+			# damped spring chasing the one below — that starts LYING FLAT. the press
+			# kicks the root; the spring toward upright does the rest, and because the
+			# joints are lighter and less damped than the root, the tips arrive late
+			# and overshoot past vertical before settling: the writhe is the settle.
+			# when life runs out the rest angle goes back to flat, and they lie down.
+			b.D = { "joints": 3,             # segments per vine
+				"len": 0.6,                  # each segment's length, in cube-sides (three reach 1.8 sides)
+				"k": 60.0,                   # the root spring's stiffness — the vine rights itself with this
+				"damp": 0.45,                # the root's damping as a fraction of critical — under 1: it swings past vertical
+				"tip": 1.4,                  # each joint's k as a multiple of the one below (lighter up there)
+				"tipdamp": 0.4,              # a joint's damping as a fraction of ITS OWN critical — the tip whips through
+				"bend": 1.5,                 # the most a joint can fold past the one below, radians
+				"flat": 1.5,                 # where a vine lies before the press, radians from upright
+				"kick": 3.0,                 # the press's impulse on each root, rad/s — the eruption is a shove, not a tween
+				"life": 1.6,                 # seconds before the vines lie back down
+				"splay": 0.08 }              # the outer vines' resting lean away from the middle one, radians
 		"leaf_whirl":
 			b.leaves = []
 			for i in 8:
@@ -40,7 +59,20 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			b.parts.append({ "kind": "rock", "pos": Vector2(c.x + c.face * c.s * 0.5, c.y - c.s),
 				"vel": Vector2(c.face * randf_range(120, 160), -170.0), "rot": 0.0, "life": 9.0 })
 		"vine_snare":
-			b.parts.append({ "kind": "snare", "x": clampf(pos.x, r.position.x + 10, r.position.x + r.size.x - 10), "life": 1.6 })
+			var D: Dictionary = b.D
+			var J: int = D.joints
+			var th := PackedFloat32Array()   # vine-major: [v * J + j], angles from upright, and their rates
+			var om := PackedFloat32Array()
+			th.resize(3 * J)
+			om.resize(3 * J)
+			var flat: float = D.flat
+			for v in 3:
+				var dir: float = -1.0 if v == 1 else 1.0    # the middle one lies the other way
+				for j in J:
+					th[v * J + j] = dir * flat
+				om[v * J] = -dir * float(D.kick)            # the shove, at the root only
+			b.parts.append({ "kind": "snare", "x": clampf(pos.x, r.position.x + 10, r.position.x + r.size.x - 10),
+				"life": float(D.life), "th": th, "om": om })
 		"leaf_whirl":
 			for l in b.leaves:
 				l.burst = 1.0
@@ -80,10 +112,45 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.vel.y += 300.0 * dt
 					p.life -= dt * 1.5
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"vine_snare", "thorn_wall":
+		"thorn_wall":
 			for p in b.parts:
-				p.life -= dt * (0.7 if b.id == "vine_snare" else 0.6)
+				p.life -= dt * 0.6
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
+		"vine_snare":
+			var D: Dictionary = b.D
+			var J: int = D.joints
+			var kk: float = D.k
+			var damp: float = D.damp
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var bend: float = D.bend
+			var flat: float = D.flat
+			var splay: float = D.splay
+			var sub := maxi(1, ceili(dt * 50.0))   # the springs' substep guard: ≤ 0.02 s a step
+			var h := dt / float(sub)
+			for p in b.parts:
+				p.life -= dt
+				var th: PackedFloat32Array = p.th
+				var om: PackedFloat32Array = p.om
+				for v in 3:
+					var dir: float = -1.0 if v == 1 else 1.0
+					var rest: float = (v - 1) * splay if p.life > 0.5 else dir * flat   # upright while alive; back to flat to withdraw
+					for _s in sub:
+						var below := rest
+						var kj := kk
+						var dj := damp * 2.0 * sqrt(kk)
+						for j in J:
+							var i := v * J + j
+							if j > 0:
+								kj *= tip                        # quicker with every joint up (lighter segment, same bend)
+								dj = tipdamp * 2.0 * sqrt(kj)    # a fraction of THIS joint's critical damping
+							om[i] += (kj * (below - th[i]) - dj * om[i]) * h
+							var a: float = th[i] + om[i] * h
+							if j > 0:
+								a = clampf(a, below - bend, below + bend)
+							th[i] = clampf(a, -1.6, 1.6)         # never below the floor
+							below = th[i]
+			b.parts = b.parts.filter(func(p): return p.life > -0.4)
 		"leaf_whirl":
 			for l in b.leaves:
 				l.burst = maxf(0.0, l.burst - dt * 0.7)
@@ -145,16 +212,19 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_set_transform(Vector2(c.x + c.s * 0.25, c.y - c.s - c.hop), 0.5 + sin(t * 2.0) * 0.15, Vector2(1.0, 0.45))
 			n.draw_circle(Vector2(3, 0), 4.0, Color(0.43, 0.7, 0.43, 0.9))
 			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var J: int = b.D.joints
+			var L: float = c.s * float(b.D.len)
 			for p in b.parts:
-				var up: float = sin(minf(1.0, (1.6 - p.life) * 2.0) * PI * 0.5) * minf(1.0, p.life * 1.8)
-				for v in range(-1, 2):
+				var th: PackedFloat32Array = p.th
+				for v in 3:
 					var pts := PackedVector2Array()
-					pts.append(Vector2(p.x + v * 5.0, b.G))
-					for k in range(1, 7):
-						var q := k / 6.0
-						pts.append(Vector2(p.x + v * 5.0 + sin(q * 5.0 + t * 6.0 + v * 2.0) * 6.0 * q,
-							b.G - up * c.s * 1.8 * q))
-					n.draw_polyline(pts, Color(0.35, 0.63, 0.35, minf(1.0, p.life)), 3.0)
+					var pt := Vector2(p.x + (v - 1) * 5.0, b.G)
+					pts.append(pt)
+					for j in J:                          # walk the chain up from the ground
+						var a: float = th[v * J + j]
+						pt += Vector2(sin(a), -cos(a)) * L
+						pts.append(pt)
+					n.draw_polyline(pts, Color(0.35, 0.63, 0.35, clampf(p.life + 0.4, 0.0, 1.0)), 3.0)
 		"leaf_whirl":
 			CubeKit.draw_cube(n, b)
 			for l in b.leaves:

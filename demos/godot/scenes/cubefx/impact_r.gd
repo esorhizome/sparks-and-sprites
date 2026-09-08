@@ -12,13 +12,16 @@ const RHYMES := {
 	"parry": { "name": "Crimson counter", "hint": "danger red — the freeze lasts longer" },
 	"knockback": { "name": "Launcher", "hint": "aimed UP — juggle-state, then the landing" },
 	"ground_crack": { "name": "Frost crack", "hint": "veined with GLOWING ice — heals twice as fast" },
-	"stomp": { "name": "Ripple stomp", "hint": "on water — rings roll out instead of dust humps" },
+	"stomp": { "name": "Ripple stomp", "hint": "the same ballistic stomp on water — slower rings roll out instead of dust humps" },
 }
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "knockback":
 		b.vy = 0.0
+	if b.id == "stomp":
+		# dial: wave 130 → 90 (rings roll slower) · the hop and squash untouched
+		b.D.merge({ "wave": 90.0 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -114,17 +117,27 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.life -= dt * 1.4
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"stomp":
-			# dial: dust humps → water rings that widen as they travel
-			if b.hop >= 0.0:
-				b.hop += dt * 3.0
-				c.y = b.G - sin(minf(1.0, b.hop) * PI) * c.s * 0.7
-				if b.hop >= 1.0:
+			# dials: dust humps → water rings that widen as they travel · fade 1.1 → 0.8 · the hop is the Base's, on the merged dials
+			var D: Dictionary = b.D
+			if b.air:
+				b.vy += float(D.g) * dt
+				c.y += b.vy * dt
+				if c.y >= b.G:                    # contact: the stomp lands on water
 					c.y = b.G
-					b.hop = -1.0
+					b.air = false
+					b.sqv += b.vy * float(D.squashKick)
+					b.vy = 0.0
 					b.parts.append({ "kind": "wave", "x": c.x, "dir": 1.0, "life": 1.0 })
 					b.parts.append({ "kind": "wave", "x": c.x, "dir": -1.0, "life": 1.0 })
+			var sk: float = D.squashK
+			var sd: float = float(D.squashDamp) * 2.0 * sqrt(sk)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				b.sqv += (sk * (0.0 - c.squash) - sd * b.sqv) * h
+				c.squash = clampf(c.squash + b.sqv * h, -0.5, 0.5)
 			for p in b.parts:
-				p.x += p.dir * 90.0 * dt
+				p.x += p.dir * float(D.wave) * dt
 				p.life -= dt * 0.8
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		_:

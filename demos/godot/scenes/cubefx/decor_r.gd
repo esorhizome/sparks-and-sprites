@@ -5,23 +5,38 @@ const Base := preload("res://scenes/cubefx/decor.gd")
 ## DECORATIONS — the rhymes. Dials named per branch; the rest delegates.
 
 const RHYMES := {
-	"butterflies": { "name": "Moths", "hint": "after dark — grey wings, drawn to a lamp overhead" },
+	"butterflies": { "name": "Moths", "hint": "after dark — grey wings that beat slower, keener steering (k 6 → 8) round a lamp overhead" },
 	"lanterns": { "name": "Party balloons", "hint": "bright rubber — they bob, and never burn out" },
 	"petals": { "name": "First snow", "hint": "the season's first flakes — slower, whiter" },
 	"fireflies": { "name": "Embers at dusk", "hint": "blown off a campfire — they rise as they blink" },
-	"cape": { "name": "Tattered cape", "hint": "after many battles — darker, slower, gap-toothed" },
+	"cape": { "name": "Tattered cape", "hint": "after many battles — heavier cloth (k 90 → 45) answers slower and swings longer; darker, gap-toothed" },
 	"stage_rain": { "name": "Stage snow", "hint": "frozen — flakes SETTLE on the hero's head" },
 }
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	match b.id:
+		"butterflies":
+			# dials: k 6 → 8 (keener) · flapBase 8 → 5, flapPer 0.25 → 0.15 (÷1.5) · wander 0.8 → 1.4 (circling the lamp too tightly to settle)
+			b.D.merge({ "k": 8.0, "flapBase": 5.0, "flapPer": 0.15, "wander": 1.4 }, true)
+		"cape":
+			# dials: k 90 → 45 (heavier: half the stiffness per inertia) · tipdamp 0.45 → 0.6 (frayed cloth)
+			b.D.merge({ "k": 45.0, "tipdamp": 0.6 }, true)
 		"stage_rain":
 			b.pile = 0.0
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
 	match b.id:
+		"butterflies":
+			# dial: the shove is away from the lamp they were crowding, not the hero
+			var r: Rect2 = b.rect
+			var lamp := Vector2(r.get_center().x, r.position.y + 14.0)
+			for f in b.flies:
+				f.panic = 1.0
+				var d: Vector2 = f.pos - lamp
+				var dist: float = maxf(1.0, d.length())
+				f.vel += d / dist * float(b.D.scatter) + Vector2(0.0, -float(b.D.up))
 		"stage_rain":
 			# dial: the press shakes the settled snow off
 			b.press_v = 1.4
@@ -38,16 +53,37 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
 		"butterflies":
-			# dial: they orbit a LAMP overhead, not the hero — panic still scatters
+			# dial: the fancied spot orbits a LAMP overhead, not the hero — the steering is the Base's, on the merged dials
 			b.press_v = maxf(0.0, b.press_v - dt)
+			var D: Dictionary = b.D
+			var kk: float = D.k
+			var drag: float = D.drag
+			var flutter: float = D.flutter
 			var lamp := Vector2(r.get_center().x, r.position.y + 14.0)
 			for f in b.flies:
-				f.panic = maxf(0.0, f.panic - dt * 0.5)
-				var target := lamp + Vector2(sin(t * 1.4 + f.ph * 3.0) * 18.0, cos(t * 1.8 + f.ph) * 8.0)
-				var chase: float = -3.0 if f.panic > 0.0 else 2.0
-				f.pos += (target - f.pos) * dt * chase + Vector2(sin(t * 9.0 + f.ph) * 14.0, -f.panic * 40.0) * dt
-				f.pos.x = clampf(f.pos.x, r.position.x + 4, r.position.x + r.size.x - 4)
-				f.pos.y = clampf(f.pos.y, r.position.y + 8, b.G - 8)
+				f.panic = maxf(0.0, f.panic - dt * float(D.forgive))
+				f.wa += float(D.wander) * dt
+				var target := lamp + Vector2(cos(f.wa) * 16.0, sin(f.wa * 1.3 + f.ph) * 10.0)
+				var seek: float = 0.0 if f.panic > 0.0 else kk
+				f.vel += (seek * (target - f.pos) - drag * f.vel
+					+ Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * flutter) * dt
+				var sp: float = f.vel.length()
+				if sp > 400.0:
+					f.vel *= 400.0 / sp
+				f.pos += f.vel * dt
+				if f.pos.y < r.position.y + 8.0:
+					f.pos.y = r.position.y + 8.0
+					f.vel.y = absf(f.vel.y) * 0.5
+				if f.pos.y > b.G - 8.0:
+					f.pos.y = b.G - 8.0
+					f.vel.y = -absf(f.vel.y) * 0.5
+				if f.pos.x < r.position.x + 4.0:
+					f.pos.x = r.position.x + 4.0
+					f.vel.x = absf(f.vel.x) * 0.5
+				if f.pos.x > r.position.x + r.size.x - 4.0:
+					f.pos.x = r.position.x + r.size.x - 4.0
+					f.vel.x = -absf(f.vel.x) * 0.5
+				f.ph += (float(D.flapBase) + sp * float(D.flapPer)) * dt
 		"lanterns":
 			# dial: they bob at a resting height — no burn-out, no expiry
 			b.press_v = maxf(0.0, b.press_v - dt)
@@ -116,7 +152,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_line(lamp + Vector2(0, -14), lamp + Vector2(0, -4), Color(0.47, 0.45, 0.55, 0.7), 1.5)
 			CubeKit.draw_cube(n, b)
 			for f in b.flies:
-				var flap: float = sin(t * 16.0 + f.ph) * 0.8
+				var flap: float = sin(f.ph) * 0.8
 				for side in [-1.0, 1.0]:
 					n.draw_set_transform(f.pos + Vector2(side * 2.4, 0), side * flap, Vector2(1.0, (1.6 + absf(flap)) / 3.0))
 					n.draw_circle(Vector2.ZERO, 3.0, Color(0.63, 0.6, 0.57, 0.85))
@@ -152,16 +188,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					CubeKit.glow(n, f.pos, 3.5, Color(1, 0.63, 0.27, blink * 0.85), 2)
 		"cape":
 			CubeKit.stage(n, b)
-			# dial: full sweep → gap-toothed strips in mourning maroon
-			var pts: Array = b.pts
-			for i in range(1, pts.size()):
-				if i % 3 == 0:
-					continue          # the battle-torn gaps
-				var a: Vector2 = pts[i - 1]
-				var bpt: Vector2 = pts[i]
-				n.draw_colored_polygon(PackedVector2Array([
-					a, bpt, bpt + Vector2(0, 5.0 + i * 1.1), a + Vector2(0, 5.0 + (i - 1) * 1.1)]),
-					Color(0.31, 0.1, 0.14, 0.9))
+			# dials: full sweep → gap-toothed strips in mourning maroon · the chain is the Base's, heavier
+			var J: int = b.D.joints
+			var L: float = c.s * float(b.D.len)
+			var th: PackedFloat32Array = b.th
+			var pt := Vector2(c.x - c.face * c.s * 0.45, c.y - c.s * 0.9 - c.hop)
+			for j in J:
+				var a: float = th[j]
+				var nxt: Vector2 = pt + Vector2(sin(a), cos(a)) * L
+				if j % 3 != 2:                                # every third segment torn away
+					n.draw_line(pt, nxt, Color(0.31, 0.1, 0.14, 0.9), 5.0 + j * 0.6)
+				pt = nxt
 			CubeKit.draw_cube(n, b)
 		"stage_rain":
 			CubeKit.stage(n, b)
