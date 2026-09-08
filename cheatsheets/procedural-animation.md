@@ -25,7 +25,7 @@ Everything = **want − have, closed a little each frame.** Full chapter: [14](.
 | Q | Quaternion | axis + twist in 4 numbers; **Slerp** = shortest arc, constant speed |
 | R | Ragdoll | verlet points + distance constraints (half the error to each end, ×8 rounds) |
 | S | Swarm | boids: separation + alignment + cohesion — three neighbour averages |
-| T | Tentacle | drag-follow chain: each link at bone length from its parent, per frame |
+| T | Tentacle | a chain of angle springs: each joint chases the one before it under-damped, so the head's own motion runs a whip to the tip |
 | U | Undulate | one sine, per-segment **phase offset** `sin(t·f − i·φ)` = a travelling wave |
 | V | Vectorfield | a formula `angle(x, y, t)`; riders take the local direction as law |
 | W | Wander | jittered target on a circle held ahead — randomness smoothed by geometry |
