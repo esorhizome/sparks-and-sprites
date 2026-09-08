@@ -5158,28 +5158,43 @@ def("J", "Jetstream", "wave", "four ribbons of wind crossing the sky at differen
   };
 });
 
-def("K", "Kite", "wave", "a diamond of two triangles, lit and dark either side of the spar, bobbing on a sine — its tail is a chain, each link following the last, twisting as it trails", function make(u) {
+def("K", "Kite", "wave", "a diamond of two triangles, lit and dark either side of the spar, held on a spring toward a slowly wandering point in the wind — click for a gust: it kicks the kite up and downwind, and the spring brings it back with an overshoot; its tail is a chain, each link following the last, twisting as it trails", function make(u) {
   var D = { sky: ["#3A7FD0", "#B8D8F5"], kite: "#F5A15A", tail: "#F05A8A", tailBack: "#F5E0B0",
-            links: 26, link: 0.022, bob: 1.0, wind: 1.0 };                  // link: one chain segment, as a share of H
+            links: 26, link: 0.022, bob: 1.0, wind: 1.0,                    // link: one chain segment, as a share of H
+            k: 20, damp: 0.3,          // the body's position spring toward its wind-held point: stiffness, and damping as a fraction of critical (2√k) — under 1, so a gust overshoots
+            gust: 0.8 };               // a click's kick, in screens per second: up by gust·H, downwind by half that
+  // the kite is a point on a spring. its REST wanders slowly — two slow sines
+  // per axis stand in for the wind's drift — and the kite chases it, always
+  // a little behind, always overshooting a touch. a gust is not a position:
+  // it is velocity added to the kite, which then flies up and past the rest
+  // and is pulled back, ringing down over a couple of seconds. the tail is a
+  // constrained chain hung from the sprung body, so its whip is the body's
+  // real motion run through 26 links.
   var tail = [];
   for (var i = 0; i <= D.links; i++) tail.push([u.W * 0.6 - i * 4, u.H * 0.5 + i * 4]);
-  var gustAt = -9, lastT = 0;
+  var kx = u.W * 0.6, ky = u.H * 0.36, vx = 0, vy = 0;
   return {
     frame: function (dt, t) {
-      lastT = t;
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#4A7A4A");
-      var gust = Math.exp(-(t - gustAt) * 2);                               // a click's gust fades in half a second
-      var kx = u.W * (0.6 + 0.07 * Math.sin(t * 0.7) + gust * 0.1), ky = u.H * (0.36 + 0.07 * Math.sin(t * 1.3 * D.bob) - gust * 0.12);
-      var lean = Math.sin(t * 0.7) * 0.3, kw = u.W * 0.07, kh = u.H * 0.1;
+      var rx = u.W * (0.6 + 0.05 * Math.sin(t * 0.7) + 0.03 * Math.sin(t * 1.9 + 1));           // the wind-held point drifts
+      var ry = u.H * (0.36 + 0.05 * Math.sin(t * 1.3 * D.bob) + 0.03 * Math.sin(t * 0.53 + 2));
+      // symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k);
+      for (var q = 0; q < sub; q++) {
+        vx += (D.k * (rx - kx) - damp * vx) * h; kx += vx * h;
+        vy += (D.k * (ry - ky) - damp * vy) * h; ky += vy * h;
+      }
+      kx = u.clamp(kx, u.W * 0.1, u.W * 0.95); ky = u.clamp(ky, u.H * 0.05, u.H * 0.8);
+      var lean = u.clamp(vx / (u.W * 0.6), -0.35, 0.35), kw = u.W * 0.07, kh = u.H * 0.1;   // the kite banks with its sideways speed: the fold's shading shifts
       u.line(u.W * 0.08, u.H * 0.9, kx - kw * 0.3, ky + kh * 0.4, "rgba(0,0,0,0.35)", 1);   // the string
       tail[0] = [kx, ky + kh * 1.2];                                          // the tail: a chain. wind and gravity move each link,
       var L = u.H * D.link, step = Math.min(dt, 0.05);                       // then the link before it pulls it back to length
       for (var i = 1; i <= D.links; i++) {
-        var p = tail[i], q = tail[i - 1];
+        var p = tail[i], q2 = tail[i - 1];
         p[1] += 60 * step; p[0] += (30 + 40 * Math.sin(t * 3 + i * 0.4)) * step * D.wind;
-        var dx = p[0] - q[0], dy = p[1] - q[1], d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
-        p[0] = q[0] + dx / d * L; p[1] = q[1] + dy / d * L;
+        var dx = p[0] - q2[0], dy = p[1] - q2[1], d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
+        p[0] = q2[0] + dx / d * L; p[1] = q2[1] + dy / d * L;
       }
       for (var j = 0; j < D.links; j++) {                                    // the tail twists: width by |cos|, colour by its sign
         var a = tail[j], b = tail[j + 1], c = Math.cos(j * 0.45 - t * 4), hw = (Math.abs(c) * 3.5 + 0.5) * (1 - j / D.links * 0.5);
@@ -5189,18 +5204,31 @@ def("K", "Kite", "wave", "a diamond of two triangles, lit and dark either side o
       u.poly([[kx, ky - kh], [kx - kw, ky], [kx, ky + kh * 1.2]], u.shade(D.kite, 0.22 + lean));    // the lit half
       u.poly([[kx, ky - kh], [kx + kw, ky], [kx, ky + kh * 1.2]], u.shade(D.kite, -0.35 + lean));   // the shadowed half
       u.line(kx, ky - kh, kx, ky + kh * 1.2, "rgba(0,0,0,0.4)", 1);           // the spar: the fold line
-      u.label("two flat shades meeting at the spar make a fold; the tail is a chain — each link follows the one before", u.W / 2, u.H - 8, null, "center");
+      u.label("two flat shades meeting at the spar make a fold; the body is a spring on the wind, the tail a chain — each link follows the one before", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { gustAt = lastT; }                              // click = a gust lifts the kite
+    press: function (x, y) { vy -= u.H * D.gust; vx += u.W * D.gust * 0.5; }   // click = a gust: velocity, not a place — the spring does the rest
   };
 });
 
-def("L", "Loop", "wave", "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside", function make(u) {
+def("L", "Loop", "wave", "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside, fast through the bottom and slow over the crown, its speed traded for height", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], front: "#F5C169", back: "#8A5A2A", car: "#D82A2A",
-            segs: 72, width: 0.11, carSpeed: 1.2, radius: 0.3 };
+            segs: 72, width: 0.11, radius: 0.3,
+            carSpeed: 1.2,             // the car's angular speed at the bottom of the loop, rad/s — negative runs it backwards
+            gravity: 0.3,              // the pull that trades speed for height, in (rad/s)² per loop radius: at the crown v² = carSpeed² − 4·gravity
+            minSpeed: 0.25 };          // the car never quite stalls at the crown — a chain lift, rad/s
+  // the car's speed is not a dial, it is ENERGY: v² = v₀² − 2·g·h, with h the
+  // height above the bottom of the loop (1 − cos of the angle, in radii). so
+  // it is fastest through the bottom, slows climbing, crawls over the crown
+  // and comes down faster again — and the angle is integrated with that
+  // speed each frame rather than read off the clock. a floor keeps it from
+  // stalling when the press sets a bottom speed too low to make the top.
+  var ca = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
+      var dir = D.carSpeed < 0 ? -1 : 1, w2 = D.carSpeed * D.carSpeed - 2 * D.gravity * (1 - Math.cos(ca));   // v² from the energy left at this height
+      ca += dir * Math.sqrt(Math.max(w2, D.minSpeed * D.minSpeed)) * Math.min(dt, 0.05);
+      ca = ca - Math.floor(ca / u.TAU) * u.TAU;                              // keep the angle in one turn
       var cx = u.W / 2, R = u.H * D.radius, cy = u.H * 0.5, GY = cy + R, w = u.H * D.width;
       u.ground(GY + 6, "#3A5A3A");
       u.shadow(cx, GY + 8, R * 1.2, R * 0.2, 0.35);
@@ -5215,11 +5243,11 @@ def("L", "Loop", "wave", "a ribbon tied in a loop-de-loop: quads round a circle,
                 [cx + s1 * (R + hw), cy + c1 * (R + hw)], [cx + s0 * (R + hw), cy + c0 * (R + hw)]],
                u.shade(c >= 0 ? D.front : D.back, u.clamp(lit, -0.4, 0.4))); // cos < 0 (the top half) shows the back
       }
-      var ca = t * D.carSpeed, cr = w * 0.35, cw = Math.abs(Math.cos(ca)) * w / 2 + 0.6;   // the car hugs the inside of the track
+      var cr = w * 0.35, cw = Math.abs(Math.cos(ca)) * w / 2 + 0.6;           // the car hugs the inside of the track
       u.sphere(cx + Math.sin(ca) * (R - cw - cr), cy + Math.cos(ca) * (R - cw - cr), cr, D.car, -0.5, -0.5, { spec: 0.5 });
-      u.label("the |cos| rule bent into a circle — front at the bottom, back at the top, edge-on at the sides", u.W / 2, u.H - 8, null, "center");
+      u.label("the |cos| rule bent into a circle — front at the bottom, back at the top, edge-on at the sides; the car's speed is √(v₀² − 2g·h)", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.carSpeed = (x / u.W - 0.5) * 5; }            // click left of centre = the car runs backwards
+    press: function (x, y) { D.carSpeed = (x / u.W - 0.5) * 5; }            // click left of centre = the car runs backwards; near the centre it barely makes the crown
   };
 });
 
@@ -5365,13 +5393,34 @@ def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the
   };
 });
 
-def("W", "Wake", "wave", "a boat crossing rows of receding sea, trailing a V of ripples — rings left at its past positions, growing and fading with age, squashed flat by perspective", function make(u) {
+def("W", "Wake", "wave", "a boat crossing rows of receding sea, trailing a V of ripples — every ring is dropped where the stern was and grows from there, older ones wider and fainter, squashed flat by perspective; the hull rides the swell on a spring, pitching with its heave — click right = faster boat, and the rings already dropped stay put", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#2A1E1A", sail: "#F5F0E0",
-            rows: 6, rings: 14, speed: 1.0, spread: 0.45 };                 // spread: ring radius per unit distance behind — the V's angle
+            rows: 6,
+            rings: 32,                 // how many rings are kept alive — the oldest is recycled when a new one drops
+            speed: 1.0,                // the boat's speed: 1 = 0.18 screens per second
+            spread: 0.45,              // how fast a ring grows, as a share of the boat's speed at speed 1 — the V's half-angle is atan(spread / speed)
+            drop: 0.08,                // seconds between rings
+            life: 2.4,                 // seconds a ring lives, growing and fading the whole time
+            k: 36, damp: 0.35,         // the hull's heave spring toward the water under it: stiffness, and damping as a fraction of critical (2√k)
+            pitchK: 25, pitchDamp: 0.3,   // the pitch spring, whose rest is the heave velocity × pitchGain — the bow lifts as the hull rises
+            pitchGain: 0.004 };        // radians of pitch per px/s of heave
+  // the wake is a MEMORY: every `drop` seconds the stern leaves a ring on the
+  // water, and from then on the ring is on its own — radius and alpha come from
+  // its age, nothing else. the boat never looks back to draw them, so when it
+  // wraps to the left edge, or a press changes its speed, the rings already
+  // dropped stay exactly where they were. the V is only their envelope: the
+  // tangent through the stern, whose slope is ring growth over boat speed.
+  // the hull is a damped spring toward the water height under it (the same
+  // sine the boat's sea row draws), and the pitch is a second spring whose
+  // rest is the heave velocity — so the bow lifts as the hull rises and the
+  // hull overshoots each crest a little, because both are under-damped.
+  var cap = Math.max(1, Math.floor(D.rings));
+  var rx = new Float32Array(cap), ry = new Float32Array(cap), rborn = new Float32Array(cap), head = 0, count = 0, since = 0;
+  var BY = u.H * 0.62, bx = -u.W * 0.25, by = BY, vy = 0, pitch = 0, pv = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
-      var HY = u.H * 0.32, BY = u.H * 0.62;                                  // the horizon, and the boat's row
+      var HY = u.H * 0.32;                                                   // the horizon; BY is the boat's row
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
       for (var i = 0; i < D.rows; i++) {                                     // the sea recedes: rows bunch toward the horizon
         var p = (i + 1) / D.rows, y = HY + p * p * (u.H - HY) * 0.9, amp = 1 + p * p * 5, len = u.W * (0.15 + p * 0.35);
@@ -5381,35 +5430,88 @@ def("W", "Wake", "wave", "a boat crossing rows of receding sea, trailing a V of 
         for (var x = 0; x <= u.W + 6; x += 6) u.ctx.lineTo(x, y + Math.sin(x / len * u.TAU + t * (0.5 + p) + i) * amp);
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
       }
-      var s = u.W * 0.004, bx = ((t * D.speed * u.W * 0.18) % (u.W * 1.5)) - u.W * 0.25, by = BY + Math.sin(t * 2) * 2;   // the boat crosses left → right
-      var L = u.W * 0.45;                                                     // how far back the wake reaches
-      for (var k = D.rings; k >= 1; k--) {                                   // oldest rings first
-        var age = k / D.rings, rx = age * L * D.spread;                       // each ring was left where the boat was, and has grown since
-        u.ctx.strokeStyle = u.rgba("#FFFFFF", (1 - age) * 0.55); u.ctx.lineWidth = 1 + (1 - age) * 1.2;
-        u.ctx.beginPath(); u.ctx.ellipse(bx - age * L, by, rx, rx * 0.3, 0, 0, u.TAU); u.ctx.stroke();   // squashed: we see the water at a low angle
+      var s = u.W * 0.004, v = D.speed * u.W * 0.18, grow = D.spread * u.W * 0.18;   // px/s: the boat, and a ring's radius
+      bx += v * dt;
+      if (bx > u.W * 1.25) bx -= u.W * 1.5;                                  // the boat wraps; the rings it dropped do not
+      var ri = Math.max(0, D.rows - 3), rp = (ri + 1) / D.rows, ramp = 1 + rp * rp * 5, rlen = u.W * (0.15 + rp * 0.35);   // the boat's sea row
+      var ph = bx / rlen * u.TAU + t * (0.5 + rp) + ri, water = BY + Math.sin(ph) * ramp;   // the water under the hull, this frame
+      // symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k), pdamp = D.pitchDamp * 2 * Math.sqrt(D.pitchK);
+      for (var q = 0; q < sub; q++) {
+        vy += (D.k * (water - by) - damp * vy) * h; by += vy * h;            // heave: chase the water
+        var prest = u.clamp(vy * D.pitchGain, -0.3, 0.3);                    // pitch: chase the heave velocity — rising = bow up
+        pv += (D.pitchK * (prest - pitch) - pdamp * pv) * h; pitch = u.clamp(pitch + pv * h, -0.5, 0.5);
       }
+      by = u.clamp(by, BY - u.H * 0.2, BY + u.H * 0.2);
+      since += dt;
+      var drop = Math.max(0.01, D.drop);
+      while (since >= drop) {                                                // drop a ring where the stern is now (it is `since` seconds old already)
+        since -= drop;
+        rx[head] = bx - 16 * s; ry[head] = water; rborn[head] = t - since;
+        head = (head + 1) % cap; count = Math.min(count + 1, cap);
+      }
+      for (var j = 0; j < count; j++) {                                      // oldest rings first
+        var idx = (head - count + j + cap) % cap, age = t - rborn[idx];
+        if (age < 0 || age > D.life) continue;
+        var r = grow * age, fade = 1 - age / D.life;                         // each ring has grown since it was dropped, and faded
+        u.ctx.strokeStyle = u.rgba("#FFFFFF", fade * 0.55); u.ctx.lineWidth = 1 + fade * 1.2;
+        u.ctx.beginPath(); u.ctx.ellipse(rx[idx], ry[idx], r, r * 0.3, 0, 0, u.TAU); u.ctx.stroke();   // squashed: we see the water at a low angle
+      }
+      var L = v * D.life, A = grow * D.life * 0.3;                           // the envelope: where the oldest living ring is, and how wide it has grown (squashed)
       u.ctx.strokeStyle = u.lin(bx, 0, bx - L, 0, [u.rgba("#FFFFFF", 0.6), u.rgba("#FFFFFF", 0)]); u.ctx.lineWidth = 1;   // the V's arms fade with distance
-      u.ctx.beginPath(); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by - L * D.spread * 0.3); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by + L * D.spread * 0.3); u.ctx.stroke();
-      u.soft(bx - 16 * s, by, 8 * s, "#FFFFFF", 0.6);                        // foam at the stern
-      u.poly([[bx - 18 * s, by - 5 * s], [bx + 20 * s, by - 5 * s], [bx + 14 * s, by + 5 * s], [bx - 13 * s, by + 5 * s]], D.hull);
-      u.line(bx, by - 5 * s, bx, by - 40 * s, D.hull, 1);
-      u.ctx.fillStyle = u.lin(bx, 0, bx + 22 * s, 0, [u.shade(D.sail, 0.1), D.sail, u.shade(D.sail, -0.3)]);   // the sail bellies: light → dark across it
-      u.poly([[bx + s, by - 38 * s], [bx + s, by - 7 * s], [bx + 22 * s, by - 7 * s]], u.ctx.fillStyle);
-      u.label("each ring was dropped where the boat was, then grew and faded — the V is their envelope, squashed flat", u.W / 2, u.H - 8, null, "center");
+      u.ctx.beginPath(); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by - A); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by + A); u.ctx.stroke();
+      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.rotate(pitch);            // the hull: heaved and pitched by the springs
+      u.soft(-16 * s, 0, 8 * s, "#FFFFFF", 0.6);                             // foam at the stern
+      u.poly([[-18 * s, -5 * s], [20 * s, -5 * s], [14 * s, 5 * s], [-13 * s, 5 * s]], D.hull);
+      u.line(0, -5 * s, 0, -40 * s, D.hull, 1);
+      u.ctx.fillStyle = u.lin(0, 0, 22 * s, 0, [u.shade(D.sail, 0.1), D.sail, u.shade(D.sail, -0.3)]);   // the sail bellies: light → dark across it
+      u.poly([[s, -38 * s], [s, -7 * s], [22 * s, -7 * s]], u.ctx.fillStyle);
+      u.ctx.restore();
+      u.label("each ring is a stored (x, y, born): it grows at one rate while the boat runs on — the V is their envelope, angle = ring growth ÷ boat speed", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2; }              // click right = faster boat
+    press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2; }              // click right = faster boat — the rings already dropped stay where they are
   };
 });
 
-def("X", "Xebec", "wave", "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the sails breathe, the hull rocks, the sea recedes behind", function make(u) {
+def("X", "Xebec", "wave", "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the hull rides the swell under it on a spring, rolls to the water's slope on another, and the sails fill and slacken on a third that chases the roll and overshoots; the sea recedes behind — click right = a stiffer wind", function make(u) {
   var D = { sky: ["#F5C169", "#F5E1B0", "#8FB8E0"], sea: "#2A5A8A", air: "#E8D8B8", hull: "#4A2A1A", sail: "#F0E6D0",
-            rows: 6, belly: 1.0, alpha: 1 };                                // alpha: how solid the ship is
+            rows: 6,
+            belly: 1.0,                // the belly the wind asks for — the sails' spring chases it
+            alpha: 1,                  // how solid the ship is
+            k: 16, damp: 0.4,          // the hull's heave spring toward the water under it: stiffness, and damping as a fraction of critical (2√k)
+            rollK: 12, rollDamp: 0.35, // the roll spring — its rest is the water's slope under the hull × rollGain
+            rollGain: 0.35,            // radians of roll per unit of slope (dy/dx)
+            sailK: 25, sailDamp: 0.25, // the sails' belly spring, chasing the hull's roll — less damped, so the rig lags and overshoots at the top of each roll
+            sailGain: 3 };             // how much a radian of roll swells (or slackens) the belly
+  // three springs, each chasing the one before. the hull chases the water
+  // height under it — the same sine its sea row draws — and overshoots each
+  // crest a little (damp < 1). the roll chases the water's SLOPE there, so
+  // the ship leans down the face of each swell and rights itself past
+  // vertical. the sails chase the roll on a looser spring: they fill as the
+  // hull rolls toward the wind, lag behind it, and swell past the rest at
+  // the top of the roll — the rig is the last thing to settle. a press moves
+  // the belly's target; the sails take their own time getting there.
+  var ri = Math.max(0, D.rows - 3), rp = (ri + 1) / D.rows, ramp = 1 + rp * rp * 5, rlen = u.W * (0.15 + rp * 0.35);   // the ship's sea row
+  var SY = u.H * 0.66, sy = SY, vy = 0, roll = 0, rv = 0, bel = D.belly * 0.85, bv = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[2]], [0.6, D.sky[1]], [1, D.sky[0]]]);
-      var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5, sy = u.H * 0.66 + Math.sin(t * 0.9) * 2;
+      var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5;
       u.soft(u.W * 0.7, HY, u.W * 0.3, D.sky[0], 0.5);                       // a low sun behind the ship
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
+      var ph = sx / rlen * u.TAU - t * (0.5 + rp) + ri;                       // the water under the hull: its height, and its slope
+      var water = SY + Math.sin(ph) * ramp, slope = Math.cos(ph) * ramp * u.TAU / rlen;
+      // symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      var damp = D.damp * 2 * Math.sqrt(D.k), rdamp = D.rollDamp * 2 * Math.sqrt(D.rollK), sdamp = D.sailDamp * 2 * Math.sqrt(D.sailK);
+      for (var q = 0; q < sub; q++) {
+        vy += (D.k * (water - sy) - damp * vy) * h; sy += vy * h;            // heave: chase the water height
+        var rrest = u.clamp(slope * D.rollGain, -0.4, 0.4);                  // roll: chase the water's slope
+        rv += (D.rollK * (rrest - roll) - rdamp * rv) * h; roll = u.clamp(roll + rv * h, -0.6, 0.6);
+        var brest = D.belly * (0.85 + D.sailGain * roll);                    // belly: chase the roll, on the loosest spring
+        bv += (D.sailK * (brest - bel) - sdamp * bv) * h; bel = u.clamp(bel + bv * h, 0.05, 3);
+      }
+      sy = u.clamp(sy, SY - u.H * 0.2, SY + u.H * 0.2);
       function row(i) {                                                       // one row of sea, bunching toward the horizon
         var p = (i + 1) / D.rows, y = HY + p * p * (u.H - HY) * 0.9, amp = 1 + p * p * 5, len = u.W * (0.15 + p * 0.35);
         var c = u.fog(D.sea, (1 - p) * 0.8, D.air);
@@ -5420,39 +5522,69 @@ def("X", "Xebec", "wave", "a ship with lateen sails: each triangle filled dark �
       }
       function sail(mx, size) {                                               // a lateen sail: yard slanting low-forward to high-aft
         var ax = mx - size * 0.45, ay = -size * 1.05, fx = mx + size * 0.45, fy = -size * 0.35, cx = mx - size * 0.4, cy = -size * 0.12;
-        var breathe = D.belly * (0.7 + 0.3 * Math.sin(t * 1.6));             // the sail fills and slackens
-        u.ctx.fillStyle = u.lin(ax, 0, fx, 0, [[0, u.shade(D.sail, -0.35)], [0.45 + breathe * 0.15, u.shade(D.sail, -0.05)], [1, u.shade(D.sail, 0.15)]]);   // dark at the yard, light on the belly
+        var breathe = bel;                                                    // the sail's fill is the sprung belly
+        u.ctx.fillStyle = u.lin(ax, 0, fx, 0, [[0, u.shade(D.sail, -0.35)], [u.clamp(0.45 + breathe * 0.15, 0.01, 0.99), u.shade(D.sail, -0.05)], [1, u.shade(D.sail, 0.15)]]);   // dark at the yard, light on the belly
         u.ctx.beginPath(); u.ctx.moveTo(ax, ay); u.ctx.lineTo(fx, fy);
         u.ctx.quadraticCurveTo((fx + cx) / 2 + size * 0.25 * breathe, (fy + cy) / 2 + size * 0.1, cx, cy); u.ctx.closePath(); u.ctx.fill();
         u.line(ax, ay, fx, fy, u.shade(D.hull, -0.3), 1.5);                  // the yard
         u.line(mx, -6 * s, mx, -size, u.shade(D.hull, -0.3), 1.5);           // the mast
       }
       for (var i = 0; i < D.rows - 1; i++) row(i);                            // far rows first
-      u.ctx.save(); u.ctx.translate(sx, sy); u.ctx.rotate(Math.sin(t * 0.9) * 0.05); u.ctx.globalAlpha = D.alpha;   // the hull rocks
+      u.ctx.save(); u.ctx.translate(sx, sy); u.ctx.rotate(roll); u.ctx.globalAlpha = D.alpha;   // the hull: heaved and rolled by its springs
       sail(-2 * s, 58 * s); sail(28 * s, 42 * s);
       u.ctx.fillStyle = u.lin(0, -8 * s, 0, 6 * s, [u.shade(D.hull, 0.2), u.shade(D.hull, -0.4)]);   // dark at the waterline
       u.poly([[-40 * s, -6 * s], [44 * s, -9 * s], [36 * s, 6 * s], [-34 * s, 6 * s]], u.ctx.fillStyle);
       u.ctx.restore();
       row(D.rows - 1);                                                        // the nearest row in front of the hull
-      u.label("a triangle with a sideways gradient is a curved sail; far rows, then the ship, then the near row", u.W / 2, u.H - 8, null, "center");
+      u.label("a sideways gradient bends a triangle into a sail; hull chases the swell, roll chases its slope, the rig chases the roll — three springs", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.belly = 0.3 + (x / u.W) * 1.5; }             // click right = a stiffer wind fills the sails
+    press: function (x, y) { D.belly = 0.3 + (x / u.W) * 1.5; }             // click right = a stiffer wind — it moves the belly's target, and the sails' spring follows
   };
 });
 
-def("Y", "Yacht", "wave", "a yacht heeling in the wind: one tall triangle shaded across its width as a curved sail, the whole boat rotated by the heel — rows of sea behind and in front", function make(u) {
+def("Y", "Yacht", "wave", "a yacht heeling in the wind: one tall triangle shaded across its width as a curved sail, the whole boat rotated by the heel — the heel is an under-damped spring, so a tack swings past upright and settles back, and the hull rides its row's swell on another; rows of sea behind and in front — click = tack", function make(u) {
   var D = { sky: ["#3A7FD0", "#B8D8F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#F5F0E0", sail: "#FFFFFF", trim: "#D82A2A",
-            rows: 6, boats: 1, heel: 0.22, speed: 1.0 };                    // heel: radians of lean
-  var dir = 1, lean = D.heel;
+            rows: 6, boats: 1,
+            heel: 0.22,                // radians of lean the wind asks for
+            speed: 1.0,
+            k: 16, damp: 0.35,         // the heel spring: ω = √k ≈ 4 rad/s, and damping as a fraction of critical (2√k) — under 1, so a tack overshoots
+            slopeGain: 0.25,            // radians of extra heel per unit of the water's slope under the hull — the swell rocks the boat
+            bobK: 30, bobDamp: 0.4 };  // the hull's heave spring toward the water under it
+  // the heel is a damped spring toward heel·dir plus the slope of the water
+  // under the hull. a tack flips the TARGET, never the angle: the boat swings
+  // through upright, overshoots the new side by a third (ζ ≈ 0.35), and
+  // settles in about two seconds — the follow-through is what sells the
+  // weight of the boat. the hull's height is a second spring chasing the
+  // water under it, so it lifts a beat after each crest. every boat keeps
+  // its own state, so in a fleet no two are at the same point of the swing.
+  var HY = u.H * 0.4, n = Math.max(1, Math.floor(D.boats)), dir = 1;
+  var th = new Float32Array(n), om = new Float32Array(n), by = new Float32Array(n), vy = new Float32Array(n);
+  var rowOf = [], bx = [], rowY = [], rowP = [], rowAmp = [], rowLen = [];
+  for (var b = 0; b < n; b++) {                                              // which row each boat sits on, and where — fixed for the card's life
+    rowOf[b] = n === 1 ? D.rows - 2 : Math.round(1 + (b / (n - 1)) * (D.rows - 3));
+    rowP[b] = (rowOf[b] + 1) / D.rows; rowY[b] = HY + rowP[b] * rowP[b] * (u.H - HY) * 0.9;
+    rowAmp[b] = 1 + rowP[b] * rowP[b] * 5; rowLen[b] = u.W * (0.15 + rowP[b] * 0.35);
+    bx[b] = u.W * (0.5 + (b - (n - 1) / 2) * 0.3); th[b] = D.heel; by[b] = rowY[b] - 2;
+  }
   return {
     frame: function (dt, t) {
       u.sky(D.sky);
-      var HY = u.H * 0.4;
-      lean += (D.heel * dir - lean) * Math.min(1, dt * 3);                   // the heel eases over to the wind's side
+      // symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k), bdamp = D.bobDamp * 2 * Math.sqrt(D.bobK);
+      for (var b = 0; b < n; b++) {
+        var ph = bx[b] / rowLen[b] * u.TAU - t * (0.5 + rowP[b]) * D.speed + rowOf[b];   // the water under this hull: height and slope
+        var water = rowY[b] - 2 + Math.sin(ph) * rowAmp[b], slope = Math.cos(ph) * rowAmp[b] * u.TAU / rowLen[b];
+        var rest = D.heel * dir + u.clamp(slope * D.slopeGain, -0.3, 0.3);   // the wind's side, plus the swell's tilt
+        for (var q = 0; q < sub; q++) {
+          om[b] += (D.k * (rest - th[b]) - damp * om[b]) * h; th[b] = u.clamp(th[b] + om[b] * h, -1.2, 1.2);
+          vy[b] += (D.bobK * (water - by[b]) - bdamp * vy[b]) * h; by[b] += vy[b] * h;
+        }
+        by[b] = u.clamp(by[b], rowY[b] - u.H * 0.15, rowY[b] + u.H * 0.15);
+      }
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
-      function boat(x, y, z) {                                                // z: 0 far … 1 near — size and fog follow it
+      function boat(x, y, z, angle) {                                         // z: 0 far … 1 near — size and fog follow it
         var s = u.W * 0.0045 * (0.3 + z * 0.7), hull = u.fog(D.hull, (1 - z) * 0.6, D.air), sail = u.fog(D.sail, (1 - z) * 0.6, D.air);
-        u.ctx.save(); u.ctx.translate(x, y); u.ctx.rotate(lean * dir); u.ctx.scale(dir, 1);   // mirror + lean: the wind's side
+        u.ctx.save(); u.ctx.translate(x, y); u.ctx.rotate(angle); u.ctx.scale(dir, 1);   // the sprung heel, and a mirror for the wind's side
         u.poly([[-24 * s, -5 * s], [26 * s, -6 * s], [20 * s, 6 * s], [-20 * s, 6 * s]], hull);
         u.poly([[-23 * s, 1 * s], [24 * s, 1 * s], [20 * s, 6 * s], [-20 * s, 6 * s]], u.fog(D.trim, (1 - z) * 0.6, D.air));   // the stripe at the waterline
         u.line(0, -5 * s, 0, -70 * s, "rgba(0,0,0,0.5)", 1);
@@ -5470,14 +5602,11 @@ def("Y", "Yacht", "wave", "a yacht heeling in the wind: one tall triangle shaded
         u.ctx.beginPath(); u.ctx.moveTo(0, u.H);
         for (var x = 0; x <= u.W + 6; x += 6) u.ctx.lineTo(x, y + Math.sin(x / len * u.TAU - t * (0.5 + p) * D.speed + i) * amp);
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
-        for (var b = 0; b < D.boats; b++) {
-          var rowOf = D.boats === 1 ? D.rows - 2 : Math.round(1 + (b / (D.boats - 1)) * (D.rows - 3));
-          if (rowOf === i) boat(u.W * (0.5 + (b - (D.boats - 1) / 2) * 0.3), y - 2 + Math.sin(t * 1.4 * D.speed + b) * 2, p);
-        }
+        for (var k = 0; k < n; k++) if (rowOf[k] === i) boat(bx[k], by[k], p, th[k]);
       }
-      u.label("a triangle with a gradient across it is a sail; the heel is one rotate — rows behind, boat, rows in front", u.W / 2, u.H - 8, null, "center");
+      u.label("a triangle with a gradient across it is a sail; the heel is one rotate on a spring — a tack swings past and settles; rows behind, boat, rows in front", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { dir = -dir; }                                   // click = the wind changes sides; the yacht tacks
+    press: function (x, y) { dir = -dir; }                                   // click = the wind changes sides; the target flips, the spring does the tack
   };
 });
 
@@ -5614,26 +5743,31 @@ rhymeOf("Jetstream", "Aurora streams", "the same four bands in green over a nigh
 rhymeOf("Kite", "Dragon kite", "the same diamond in red with a gold-and-crimson tail almost twice as long, over a festival dusk — the chain just has more links", function make(u) {
   // rhyme of Kite: dials moved — kite/tail/sky palette, links 26 → 44, link 0.022 → 0.02
   var D = { sky: ["#3A2A6A", "#F5A15A"], kite: "#D82A2A", tail: "#F5C169", tailBack: "#B81A1A",
-            links: 44, link: 0.02, bob: 1.0, wind: 1.0 };
+            links: 44, link: 0.02, bob: 1.0, wind: 1.0, k: 20, damp: 0.3, gust: 0.8 };
   var tail = [];
   for (var i = 0; i <= D.links; i++) tail.push([u.W * 0.6 - i * 4, u.H * 0.5 + i * 4]);
-  var gustAt = -9, lastT = 0;
+  var kx = u.W * 0.6, ky = u.H * 0.36, vx = 0, vy = 0;
   return {
     frame: function (dt, t) {
-      lastT = t;
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#4A7A4A");
-      var gust = Math.exp(-(t - gustAt) * 2);
-      var kx = u.W * (0.6 + 0.07 * Math.sin(t * 0.7) + gust * 0.1), ky = u.H * (0.36 + 0.07 * Math.sin(t * 1.3 * D.bob) - gust * 0.12);
-      var lean = Math.sin(t * 0.7) * 0.3, kw = u.W * 0.07, kh = u.H * 0.1;
+      var rx = u.W * (0.6 + 0.05 * Math.sin(t * 0.7) + 0.03 * Math.sin(t * 1.9 + 1));
+      var ry = u.H * (0.36 + 0.05 * Math.sin(t * 1.3 * D.bob) + 0.03 * Math.sin(t * 0.53 + 2));
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k);
+      for (var q = 0; q < sub; q++) {
+        vx += (D.k * (rx - kx) - damp * vx) * h; kx += vx * h;
+        vy += (D.k * (ry - ky) - damp * vy) * h; ky += vy * h;
+      }
+      kx = u.clamp(kx, u.W * 0.1, u.W * 0.95); ky = u.clamp(ky, u.H * 0.05, u.H * 0.8);
+      var lean = u.clamp(vx / (u.W * 0.6), -0.35, 0.35), kw = u.W * 0.07, kh = u.H * 0.1;
       u.line(u.W * 0.08, u.H * 0.9, kx - kw * 0.3, ky + kh * 0.4, "rgba(0,0,0,0.35)", 1);
       tail[0] = [kx, ky + kh * 1.2];
       var L = u.H * D.link, step = Math.min(dt, 0.05);
       for (var i = 1; i <= D.links; i++) {
-        var p = tail[i], q = tail[i - 1];
+        var p = tail[i], q2 = tail[i - 1];
         p[1] += 60 * step; p[0] += (30 + 40 * Math.sin(t * 3 + i * 0.4)) * step * D.wind;
-        var dx = p[0] - q[0], dy = p[1] - q[1], d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
-        p[0] = q[0] + dx / d * L; p[1] = q[1] + dy / d * L;
+        var dx = p[0] - q2[0], dy = p[1] - q2[1], d = Math.sqrt(dx * dx + dy * dy) + 1e-6;
+        p[0] = q2[0] + dx / d * L; p[1] = q2[1] + dy / d * L;
       }
       for (var j = 0; j < D.links; j++) {
         var a = tail[j], b = tail[j + 1], c = Math.cos(j * 0.45 - t * 4), hw = (Math.abs(c) * 3.5 + 0.5) * (1 - j / D.links * 0.5);
@@ -5645,17 +5779,21 @@ rhymeOf("Kite", "Dragon kite", "the same diamond in red with a gold-and-crimson 
       u.line(kx, ky - kh, kx, ky + kh * 1.2, "rgba(0,0,0,0.4)", 1);
       u.label("a longer chain is the same rule run more times — the tail's whip is emergent, not drawn", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { gustAt = lastT; }
+    press: function (x, y) { vy -= u.H * D.gust; vx += u.W * D.gust * 0.5; }
   };
 });
 
 rhymeOf("Loop", "Roller coaster", "the same loop as a red rail under a carnival night, the car in gold running two and a half times faster", function make(u) {
   // rhyme of Loop: dials moved — front/back/car/sky palette, carSpeed 1.2 → 3.0
   var D = { sky: ["#1A1030", "#3A2A6A"], front: "#D82A2A", back: "#5A0A0A", car: "#F5C169",
-            segs: 72, width: 0.11, carSpeed: 3.0, radius: 0.3 };
+            segs: 72, width: 0.11, radius: 0.3, carSpeed: 3.0, gravity: 0.3, minSpeed: 0.25 };
+  var ca = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
+      var dir = D.carSpeed < 0 ? -1 : 1, w2 = D.carSpeed * D.carSpeed - 2 * D.gravity * (1 - Math.cos(ca));
+      ca += dir * Math.sqrt(Math.max(w2, D.minSpeed * D.minSpeed)) * Math.min(dt, 0.05);
+      ca = ca - Math.floor(ca / u.TAU) * u.TAU;
       var cx = u.W / 2, R = u.H * D.radius, cy = u.H * 0.5, GY = cy + R, w = u.H * D.width;
       u.ground(GY + 6, "#3A5A3A");
       u.shadow(cx, GY + 8, R * 1.2, R * 0.2, 0.35);
@@ -5670,9 +5808,9 @@ rhymeOf("Loop", "Roller coaster", "the same loop as a red rail under a carnival 
                 [cx + s1 * (R + hw), cy + c1 * (R + hw)], [cx + s0 * (R + hw), cy + c0 * (R + hw)]],
                u.shade(c >= 0 ? D.front : D.back, u.clamp(lit, -0.4, 0.4)));
       }
-      var ca = t * D.carSpeed, cr = w * 0.35, cw = Math.abs(Math.cos(ca)) * w / 2 + 0.6;
+      var cr = w * 0.35, cw = Math.abs(Math.cos(ca)) * w / 2 + 0.6;
       u.sphere(cx + Math.sin(ca) * (R - cw - cr), cy + Math.cos(ca) * (R - cw - cr), cr, D.car, -0.5, -0.5, { spec: 0.5 });
-      u.label("speed is a dial: at 3.0 the eye stops seeing a ribbon and starts seeing a ride", u.W / 2, u.H - 8, null, "center");
+      u.label("speed is a dial: at 3.0 the eye stops seeing a ribbon and starts seeing a ride — and a car that fast barely slows at the crown", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { D.carSpeed = (x / u.W - 0.5) * 5; }
   };
@@ -5824,14 +5962,18 @@ rhymeOf("Undertow", "Deep sea", "the same water gone near-black, the weed a dim 
   };
 });
 
-rhymeOf("Wake", "Speedboat", "the same rings behind a white hull with no sail, two and a half times faster and a wider V — spread is the boat's speed made visible", function make(u) {
+rhymeOf("Wake", "Speedboat", "the same rings behind a white hull with no sail, two and a half times faster, the rings growing nearly twice as fast — bigger rings, but a tighter V, because the V's angle is growth over speed; click to change speed and the rings already dropped stay put", function make(u) {
   // rhyme of Wake: dials moved — hull/sail palette (sail fully transparent), speed 1.0 → 2.4, spread 0.45 → 0.8
   var D = { sky: ["#6FA8E8", "#CFE6F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#F0F0F5", sail: "rgba(0,0,0,0)",
-            rows: 6, rings: 14, speed: 2.4, spread: 0.8 };
+            rows: 6, rings: 32, speed: 2.4, spread: 0.8, drop: 0.08, life: 2.4,
+            k: 36, damp: 0.35, pitchK: 25, pitchDamp: 0.3, pitchGain: 0.004 };
+  var cap = Math.max(1, Math.floor(D.rings));
+  var rx = new Float32Array(cap), ry = new Float32Array(cap), rborn = new Float32Array(cap), head = 0, count = 0, since = 0;
+  var BY = u.H * 0.62, bx = -u.W * 0.25, by = BY, vy = 0, pitch = 0, pv = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
-      var HY = u.H * 0.32, BY = u.H * 0.62;
+      var HY = u.H * 0.32;
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
       for (var i = 0; i < D.rows; i++) {
         var p = (i + 1) / D.rows, y = HY + p * p * (u.H - HY) * 0.9, amp = 1 + p * p * 5, len = u.W * (0.15 + p * 0.35);
@@ -5841,21 +5983,43 @@ rhymeOf("Wake", "Speedboat", "the same rings behind a white hull with no sail, t
         for (var x = 0; x <= u.W + 6; x += 6) u.ctx.lineTo(x, y + Math.sin(x / len * u.TAU + t * (0.5 + p) + i) * amp);
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
       }
-      var s = u.W * 0.004, bx = ((t * D.speed * u.W * 0.18) % (u.W * 1.5)) - u.W * 0.25, by = BY + Math.sin(t * 2) * 2;
-      var L = u.W * 0.45;
-      for (var k = D.rings; k >= 1; k--) {
-        var age = k / D.rings, rx = age * L * D.spread;
-        u.ctx.strokeStyle = u.rgba("#FFFFFF", (1 - age) * 0.55); u.ctx.lineWidth = 1 + (1 - age) * 1.2;
-        u.ctx.beginPath(); u.ctx.ellipse(bx - age * L, by, rx, rx * 0.3, 0, 0, u.TAU); u.ctx.stroke();
+      var s = u.W * 0.004, v = D.speed * u.W * 0.18, grow = D.spread * u.W * 0.18;
+      bx += v * dt;
+      if (bx > u.W * 1.25) bx -= u.W * 1.5;                                  // the boat wraps; the rings it dropped do not
+      var ri = Math.max(0, D.rows - 3), rp = (ri + 1) / D.rows, ramp = 1 + rp * rp * 5, rlen = u.W * (0.15 + rp * 0.35);
+      var ph = bx / rlen * u.TAU + t * (0.5 + rp) + ri, water = BY + Math.sin(ph) * ramp;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k), pdamp = D.pitchDamp * 2 * Math.sqrt(D.pitchK);
+      for (var q = 0; q < sub; q++) {
+        vy += (D.k * (water - by) - damp * vy) * h; by += vy * h;
+        var prest = u.clamp(vy * D.pitchGain, -0.3, 0.3);
+        pv += (D.pitchK * (prest - pitch) - pdamp * pv) * h; pitch = u.clamp(pitch + pv * h, -0.5, 0.5);
       }
+      by = u.clamp(by, BY - u.H * 0.2, BY + u.H * 0.2);
+      since += dt;
+      var drop = Math.max(0.01, D.drop);
+      while (since >= drop) {
+        since -= drop;
+        rx[head] = bx - 16 * s; ry[head] = water; rborn[head] = t - since;
+        head = (head + 1) % cap; count = Math.min(count + 1, cap);
+      }
+      for (var j = 0; j < count; j++) {
+        var idx = (head - count + j + cap) % cap, age = t - rborn[idx];
+        if (age < 0 || age > D.life) continue;
+        var r = grow * age, fade = 1 - age / D.life;
+        u.ctx.strokeStyle = u.rgba("#FFFFFF", fade * 0.55); u.ctx.lineWidth = 1 + fade * 1.2;
+        u.ctx.beginPath(); u.ctx.ellipse(rx[idx], ry[idx], r, r * 0.3, 0, 0, u.TAU); u.ctx.stroke();
+      }
+      var L = v * D.life, A = grow * D.life * 0.3;
       u.ctx.strokeStyle = u.lin(bx, 0, bx - L, 0, [u.rgba("#FFFFFF", 0.6), u.rgba("#FFFFFF", 0)]); u.ctx.lineWidth = 1;
-      u.ctx.beginPath(); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by - L * D.spread * 0.3); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by + L * D.spread * 0.3); u.ctx.stroke();
-      u.soft(bx - 16 * s, by, 8 * s, "#FFFFFF", 0.6);
-      u.poly([[bx - 18 * s, by - 5 * s], [bx + 20 * s, by - 5 * s], [bx + 14 * s, by + 5 * s], [bx - 13 * s, by + 5 * s]], D.hull);
-      u.line(bx, by - 5 * s, bx, by - 40 * s, D.hull, 1);
-      u.ctx.fillStyle = u.lin(bx, 0, bx + 22 * s, 0, [u.shade(D.sail, 0.1), D.sail, u.shade(D.sail, -0.3)]);
-      u.poly([[bx + s, by - 38 * s], [bx + s, by - 7 * s], [bx + 22 * s, by - 7 * s]], u.ctx.fillStyle);
-      u.label("a wider spread is a faster boat: the rings grow the same, the boat just gets further away from them", u.W / 2, u.H - 8, null, "center");
+      u.ctx.beginPath(); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by - A); u.ctx.moveTo(bx, by); u.ctx.lineTo(bx - L, by + A); u.ctx.stroke();
+      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.rotate(pitch);
+      u.soft(-16 * s, 0, 8 * s, "#FFFFFF", 0.6);
+      u.poly([[-18 * s, -5 * s], [20 * s, -5 * s], [14 * s, 5 * s], [-13 * s, 5 * s]], D.hull);
+      u.line(0, -5 * s, 0, -40 * s, D.hull, 1);
+      u.ctx.fillStyle = u.lin(0, 0, 22 * s, 0, [u.shade(D.sail, 0.1), D.sail, u.shade(D.sail, -0.3)]);
+      u.poly([[s, -38 * s], [s, -7 * s], [22 * s, -7 * s]], u.ctx.fillStyle);
+      u.ctx.restore();
+      u.label("the V's angle is ring growth over boat speed: 0.8 / 2.4 — bigger rings, tighter V; a press leaves the old rings behind", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2; }
   };
@@ -5864,13 +6028,28 @@ rhymeOf("Wake", "Speedboat", "the same rings behind a white hull with no sail, t
 rhymeOf("Xebec", "Ghost ship", "the same ship in grey under a night sky, drawn at half alpha so the sea shows through the hull — translucency is the whole haunting", function make(u) {
   // rhyme of Xebec: dials moved — sky/sea/air/hull/sail palette, alpha 1 → 0.55
   var D = { sky: ["#3A4A6A", "#1A2040", "#05051A"], sea: "#0A1A2A", air: "#2A3A5A", hull: "#3A4A5A", sail: "#A8C8D8",
-            rows: 6, belly: 1.0, alpha: 0.55 };
+            rows: 6, belly: 1.0, alpha: 0.55,
+            k: 16, damp: 0.4, rollK: 12, rollDamp: 0.35, rollGain: 0.35, sailK: 25, sailDamp: 0.25, sailGain: 3 };
+  var ri = Math.max(0, D.rows - 3), rp = (ri + 1) / D.rows, ramp = 1 + rp * rp * 5, rlen = u.W * (0.15 + rp * 0.35);
+  var SY = u.H * 0.66, sy = SY, vy = 0, roll = 0, rv = 0, bel = D.belly * 0.85, bv = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky([[0, D.sky[2]], [0.6, D.sky[1]], [1, D.sky[0]]]);
-      var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5, sy = u.H * 0.66 + Math.sin(t * 0.9) * 2;
+      var HY = u.H * 0.45, s = u.W * 0.0045, sx = u.W * 0.5;
       u.soft(u.W * 0.7, HY, u.W * 0.3, D.sky[0], 0.5);
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
+      var ph = sx / rlen * u.TAU - t * (0.5 + rp) + ri;
+      var water = SY + Math.sin(ph) * ramp, slope = Math.cos(ph) * ramp * u.TAU / rlen;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      var damp = D.damp * 2 * Math.sqrt(D.k), rdamp = D.rollDamp * 2 * Math.sqrt(D.rollK), sdamp = D.sailDamp * 2 * Math.sqrt(D.sailK);
+      for (var q = 0; q < sub; q++) {
+        vy += (D.k * (water - sy) - damp * vy) * h; sy += vy * h;
+        var rrest = u.clamp(slope * D.rollGain, -0.4, 0.4);
+        rv += (D.rollK * (rrest - roll) - rdamp * rv) * h; roll = u.clamp(roll + rv * h, -0.6, 0.6);
+        var brest = D.belly * (0.85 + D.sailGain * roll);
+        bv += (D.sailK * (brest - bel) - sdamp * bv) * h; bel = u.clamp(bel + bv * h, 0.05, 3);
+      }
+      sy = u.clamp(sy, SY - u.H * 0.2, SY + u.H * 0.2);
       function row(i) {
         var p = (i + 1) / D.rows, y = HY + p * p * (u.H - HY) * 0.9, amp = 1 + p * p * 5, len = u.W * (0.15 + p * 0.35);
         var c = u.fog(D.sea, (1 - p) * 0.8, D.air);
@@ -5881,15 +6060,15 @@ rhymeOf("Xebec", "Ghost ship", "the same ship in grey under a night sky, drawn a
       }
       function sail(mx, size) {
         var ax = mx - size * 0.45, ay = -size * 1.05, fx = mx + size * 0.45, fy = -size * 0.35, cx = mx - size * 0.4, cy = -size * 0.12;
-        var breathe = D.belly * (0.7 + 0.3 * Math.sin(t * 1.6));
-        u.ctx.fillStyle = u.lin(ax, 0, fx, 0, [[0, u.shade(D.sail, -0.35)], [0.45 + breathe * 0.15, u.shade(D.sail, -0.05)], [1, u.shade(D.sail, 0.15)]]);
+        var breathe = bel;
+        u.ctx.fillStyle = u.lin(ax, 0, fx, 0, [[0, u.shade(D.sail, -0.35)], [u.clamp(0.45 + breathe * 0.15, 0.01, 0.99), u.shade(D.sail, -0.05)], [1, u.shade(D.sail, 0.15)]]);
         u.ctx.beginPath(); u.ctx.moveTo(ax, ay); u.ctx.lineTo(fx, fy);
         u.ctx.quadraticCurveTo((fx + cx) / 2 + size * 0.25 * breathe, (fy + cy) / 2 + size * 0.1, cx, cy); u.ctx.closePath(); u.ctx.fill();
         u.line(ax, ay, fx, fy, u.shade(D.hull, -0.3), 1.5);
         u.line(mx, -6 * s, mx, -size, u.shade(D.hull, -0.3), 1.5);
       }
       for (var i = 0; i < D.rows - 1; i++) row(i);
-      u.ctx.save(); u.ctx.translate(sx, sy); u.ctx.rotate(Math.sin(t * 0.9) * 0.05); u.ctx.globalAlpha = D.alpha;
+      u.ctx.save(); u.ctx.translate(sx, sy); u.ctx.rotate(roll); u.ctx.globalAlpha = D.alpha;
       sail(-2 * s, 58 * s); sail(28 * s, 42 * s);
       u.ctx.fillStyle = u.lin(0, -8 * s, 0, 6 * s, [u.shade(D.hull, 0.2), u.shade(D.hull, -0.4)]);
       u.poly([[-40 * s, -6 * s], [44 * s, -9 * s], [36 * s, 6 * s], [-34 * s, 6 * s]], u.ctx.fillStyle);
@@ -5904,17 +6083,35 @@ rhymeOf("Xebec", "Ghost ship", "the same ship in grey under a night sky, drawn a
 rhymeOf("Yacht", "Regatta", "three of the same yacht, each on its own row — the far ones smaller and paler by the row they sit on — leaning harder, sailing faster", function make(u) {
   // rhyme of Yacht: dials moved — boats 1 → 3, heel 0.22 → 0.3, speed 1.0 → 1.6
   var D = { sky: ["#3A7FD0", "#B8D8F5"], sea: "#1E5A8F", air: "#C8DCEE", hull: "#F5F0E0", sail: "#FFFFFF", trim: "#D82A2A",
-            rows: 6, boats: 3, heel: 0.3, speed: 1.6 };
-  var dir = 1, lean = D.heel;
+            rows: 6, boats: 3, heel: 0.3, speed: 1.6,
+            k: 16, damp: 0.35, slopeGain: 0.25, bobK: 30, bobDamp: 0.4 };
+  var HY = u.H * 0.4, n = Math.max(1, Math.floor(D.boats)), dir = 1;
+  var th = new Float32Array(n), om = new Float32Array(n), by = new Float32Array(n), vy = new Float32Array(n);
+  var rowOf = [], bx = [], rowY = [], rowP = [], rowAmp = [], rowLen = [];
+  for (var b = 0; b < n; b++) {
+    rowOf[b] = n === 1 ? D.rows - 2 : Math.round(1 + (b / (n - 1)) * (D.rows - 3));
+    rowP[b] = (rowOf[b] + 1) / D.rows; rowY[b] = HY + rowP[b] * rowP[b] * (u.H - HY) * 0.9;
+    rowAmp[b] = 1 + rowP[b] * rowP[b] * 5; rowLen[b] = u.W * (0.15 + rowP[b] * 0.35);
+    bx[b] = u.W * (0.5 + (b - (n - 1) / 2) * 0.3); th[b] = D.heel; by[b] = rowY[b] - 2;
+  }
   return {
     frame: function (dt, t) {
       u.sky(D.sky);
-      var HY = u.H * 0.4;
-      lean += (D.heel * dir - lean) * Math.min(1, dt * 3);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, damp = D.damp * 2 * Math.sqrt(D.k), bdamp = D.bobDamp * 2 * Math.sqrt(D.bobK);
+      for (var b = 0; b < n; b++) {                                          // every boat has its own springs — each row's swell rocks it at its own moment
+        var ph = bx[b] / rowLen[b] * u.TAU - t * (0.5 + rowP[b]) * D.speed + rowOf[b];
+        var water = rowY[b] - 2 + Math.sin(ph) * rowAmp[b], slope = Math.cos(ph) * rowAmp[b] * u.TAU / rowLen[b];
+        var rest = D.heel * dir + u.clamp(slope * D.slopeGain, -0.3, 0.3);
+        for (var q = 0; q < sub; q++) {
+          om[b] += (D.k * (rest - th[b]) - damp * om[b]) * h; th[b] = u.clamp(th[b] + om[b] * h, -1.2, 1.2);
+          vy[b] += (D.bobK * (water - by[b]) - bdamp * vy[b]) * h; by[b] += vy[b] * h;
+        }
+        by[b] = u.clamp(by[b], rowY[b] - u.H * 0.15, rowY[b] + u.H * 0.15);
+      }
       u.ctx.fillStyle = u.fog(D.sea, 0.85, D.air); u.ctx.fillRect(0, HY, u.W, u.H - HY);
-      function boat(x, y, z) {
+      function boat(x, y, z, angle) {
         var s = u.W * 0.0045 * (0.3 + z * 0.7), hull = u.fog(D.hull, (1 - z) * 0.6, D.air), sail = u.fog(D.sail, (1 - z) * 0.6, D.air);
-        u.ctx.save(); u.ctx.translate(x, y); u.ctx.rotate(lean * dir); u.ctx.scale(dir, 1);
+        u.ctx.save(); u.ctx.translate(x, y); u.ctx.rotate(angle); u.ctx.scale(dir, 1);
         u.poly([[-24 * s, -5 * s], [26 * s, -6 * s], [20 * s, 6 * s], [-20 * s, 6 * s]], hull);
         u.poly([[-23 * s, 1 * s], [24 * s, 1 * s], [20 * s, 6 * s], [-20 * s, 6 * s]], u.fog(D.trim, (1 - z) * 0.6, D.air));
         u.line(0, -5 * s, 0, -70 * s, "rgba(0,0,0,0.5)", 1);
@@ -5932,12 +6129,9 @@ rhymeOf("Yacht", "Regatta", "three of the same yacht, each on its own row — th
         u.ctx.beginPath(); u.ctx.moveTo(0, u.H);
         for (var x = 0; x <= u.W + 6; x += 6) u.ctx.lineTo(x, y + Math.sin(x / len * u.TAU - t * (0.5 + p) * D.speed + i) * amp);
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
-        for (var b = 0; b < D.boats; b++) {
-          var rowOf = D.boats === 1 ? D.rows - 2 : Math.round(1 + (b / (D.boats - 1)) * (D.rows - 3));
-          if (rowOf === i) boat(u.W * (0.5 + (b - (D.boats - 1) / 2) * 0.3), y - 2 + Math.sin(t * 1.4 * D.speed + b) * 2, p);
-        }
+        for (var k = 0; k < n; k++) if (rowOf[k] === i) boat(bx[k], by[k], p, th[k]);
       }
-      u.label("count 1 → 3: each boat is drawn right after its row, so the near sea covers the far hulls — order is depth", u.W / 2, u.H - 8, null, "center");
+      u.label("count 1 → 3: each boat is drawn right after its row, so the near sea covers the far hulls — and each tacks on its own spring", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { dir = -dir; }
   };
