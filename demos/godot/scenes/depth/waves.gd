@@ -264,18 +264,90 @@ static func defs() -> Array:
 
 	# ---- F · Flag ----------------------------------------------------------
 	d.append({ "letter": "F", "name": "Flag", "drag": true,
-		"hint": "a flag is vertical strips lifted by a travelling sine that grows toward the free end — shade each strip by its slope (cos) and the wiggle becomes folds",
+		"hint": "a flag is vertical strips sewn to the pole and pulled by their neighbours: the pole's vortices shove the first strip, the cloth carries the wave out and the free end swings furthest — shade each strip by its slope and the ripple becomes folds; a gust takes a second to reach the free end",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "cloth": Color("D8302A"), "band": Color("F5F0E0"), "pole": Color("8A8A96"),
-			"strips": 40, "wind": 1.0, "waves": 1.6, "shade_by": 0.45,        # shade_by: how hard the slope shades the cloth
-			"label": "shade = cos(phase) × distance from the pole — the slope of the sine says which way each strip faces" },
+			"strips": 16,               # strips of cloth: the first is sewn to the pole and never moves
+			"wind": 1.0,                # the wind a press asks for — the cloth feels a wind that CHASES this, it never jumps
+			"waves": 1.6,               # waves along the flag at wind 1: sets the cloth's tension, k = (strips · f / waves)²
+			"shade_by": 0.45,           # how hard the slope shades the cloth
+			"damp": 0.6,                # each strip's damping, per second — low, so a gust rings down the cloth for a while
+			"light": 1.1,               # each strip's stiffness-per-mass over the one before: the hoist is the heaviest band, so the wave GROWS toward the free end
+			"drive": 0.04,              # the pole's vortex shove on the first strip, as a fraction of the flag's height per unit wind
+			"flutter": 1.5,             # how fast the shedding oscillator grows to full swing (its van der pol gain)
+			"label": "wind chases the press · pole vortices shove strip 1 · yᵢ'' = k(yᵢ₋₁ − 2yᵢ + yᵢ₊₁)/mᵢ − damp·yᵢ' · shade = slope" },
 		"rhyme": { "name": "Pirate flag", "hint": "the same strips in black under a storm sky, a stiffer wind and more ripples — the folds now read from the white band alone",
 			"dials": { "sky": [Color("2A2A3A"), Color("6A6A7A")], "cloth": Color("111118"), "band": Color("E8E5F4"), "pole": Color("5A5A66"),
 				"wind": 1.9, "waves": 2.2,
-				"label": "black cloth barely shades — the band carries the folds; more waves, faster: a gale is two dials" } },
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.wind = 0.3 + (pos.x / b.W) * 2.0,   # click right = more wind
+				"label": "black cloth barely shades — the band carries the folds; more waves, a harder wind: a gale is two dials, the cloth still has to catch up" } },
+		"init": func(b: Dictionary) -> void:
+			# the cloth is a STRING of strips: each one pulled toward both its
+			# neighbours by the cloth's tension (a wave equation), the first strip sewn
+			# to the pole, the last with nothing beyond it — so a wave reaching the free
+			# end has nothing to pull back and swings double. what sets it going is the
+			# pole: air shedding off a rod pulses at a rate proportional to the wind
+			# (strouhal), modelled as a self-excited oscillator that grows from any nudge
+			# and saturates, shoving the first strip. the wind itself is a spring
+			# chasing the pressed value, so a gust arrives late, and later still at the
+			# free end: watch the ripple run out along the flag after a click.
+			var nn := maxi(4, int(b.D.strips))
+			var y := PackedFloat32Array()                 # each strip's lift as a fraction of the flag's height; strip 0 is the pole (sized here: a packed array read back from b is a copy)
+			var v := PackedFloat32Array()                 # and its velocity
+			y.resize(nn)
+			v.resize(nn)
+			b.n = nn
+			b.y = y
+			b.v = v
+			b.wv = 0.0                                    # the wind the cloth feels: a spring chasing D.wind
+			b.wvv = 0.0
+			b.fx = 0.5                                    # the shedding oscillator, nudged off zero so it starts
+			b.fv = 0.0,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var nn: int = b.n
+			var y: PackedFloat32Array = b.y
+			var v: PackedFloat32Array = b.v
+			var wind: float = D.wind
+			var waves: float = D.waves
+			var damp: float = D.damp
+			var light: float = D.light
+			var drive: float = D.drive
+			var flutter: float = D.flutter
+			var wv: float = b.wv
+			var wvv: float = b.wvv
+			var fx: float = b.fx
+			var fv: float = b.fv
+			# the string's top mode rings at 2√k, and a symplectic step holds only while
+			# √k·h < 1 — so a coarse frame is cut into substeps of at most 1/60 s
+			var sub := maxi(1, ceili(dt * 60.0))
+			var h := dt / float(sub)
+			var kw := 6.0                                 # the wind's own spring — it settles on a press in about a second
+			for _s in sub:
+				wvv += (kw * (wind - wv) - 0.9 * 2.0 * sqrt(kw) * wvv) * h   # the wind eases toward the pressed value, just under critical
+				wv += wvv * h
+				var om := 4.0 * maxf(0.05, wv)                                # the shedding rate follows the wind
+				fv += (-om * om * fx + flutter * om * (1.0 - fx * fx) * fv) * h   # van der pol: negative damping below |x| = 1, positive above — it settles at |x| ≈ 2
+				fx += fv * h
+				var kk := pow(float(nn) * om / TAU / waves, 2.0)              # tension so that `waves` fit along the flag at this wind
+				var inv := 1.0                                                # 1 / this strip's mass
+				for i in range(1, nn):
+					inv *= light
+					var f := kk * (y[i - 1] - y[i])                           # pulled toward the strip before …
+					if i + 1 < nn:
+						f += kk * (y[i + 1] - y[i])                           # … and the one after; the free end has none, and swings double
+					if i == 1:
+						f += fx * drive * wv * kk                             # the pole's vortex street shoves the first free strip
+					v[i] += (f * inv - damp * v[i]) * h
+				for i in range(1, nn):
+					y[i] = clampf(y[i] + v[i] * h, -0.5, 0.5)
+			b.wv = wv
+			b.wvv = wvv
+			b.fx = fx
+			b.fv = fv
+			b.y = y
+			b.v = v,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.wind = 0.3 + (pos.x / b.W) * 2.0,   # click right = more wind — the cloth's wind catches up over a second
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			K.sky(n, b, D.sky)
 			var px: float = b.W * 0.18
 			var top: float = b.H * 0.16
@@ -286,21 +358,24 @@ static func defs() -> Array:
 			K.shadow(n, Vector2(px + fw * 0.35, GY + 2.0), fw * 0.45, 5.0, 0.3)   # the flag's shadow on the grass
 			K.cyl(n, px - 3.0, GY, 6.0, GY - top + 14.0, D.pole, -0.3)
 			K.sphere(n, Vector2(px - 3.0, top - 16.0), 5.0, Color("E8C060"), -0.5, -0.5)
-			var strips: int = D.strips
-			var wind: float = D.wind
-			var waves: float = D.waves
+			var nn: int = b.n
+			var y: PackedFloat32Array = b.y
 			var shade_by: float = D.shade_by
-			var sw := fw / strips
-			for i in strips:
-				var k := float(i) / strips
-				var ph := k * TAU * waves - t * wind * 4.0
-				var amp := fh * 0.2 * k * wind                                # pinned at the pole, loose at the free end
-				var y := top + sin(ph) * amp
-				var slope := cos(ph) * k * wind                               # d/dx of the sine — which way this strip faces
-				var fold := clampf(1.0 - k * 3.0, 0.0, 1.0) * 0.25            # the cloth shades itself where it bunches at the pole
-				var lit := clampf(slope * shade_by - fold, -0.45, 0.45)
-				n.draw_rect(Rect2(px + i * sw, y, sw + 1.0, fh * (1.0 - k * 0.08)), K.shade(D.cloth, lit))   # the free end hangs a little shorter
-				n.draw_rect(Rect2(px + i * sw, y + fh * 0.38, sw + 1.0, fh * 0.2), K.shade(D.band, lit))     # a stripe rides the same folds
+			var sw := fw / float(nn - 1)
+			for j in nn - 1:                                                  # a quad per strip: its top edge runs from this lift to the next
+				var kk := float(j) / float(nn - 1)
+				var x0 := px + j * sw
+				var x1 := x0 + sw + 0.5
+				var y0 := top + y[j] * fh
+				var y1 := top + y[j + 1] * fh
+				var h0 := fh * (1.0 - kk * 0.08)                              # the free end hangs a little shorter
+				var h1 := fh * (1.0 - float(j + 1) / float(nn - 1) * 0.08)
+				var slope := (y1 - y0) / sw                                   # dy/dx across the strip — which way it faces
+				var fold := clampf(1.0 - kk * 3.0, 0.0, 1.0) * 0.25           # the cloth shades itself where it bunches at the pole
+				var lit := clampf(slope * 2.0 * shade_by - fold, -0.45, 0.45)
+				K.poly(n, PackedVector2Array([Vector2(x0, y0), Vector2(x1, y1), Vector2(x1, y1 + h1), Vector2(x0, y0 + h0)]), K.shade(D.cloth, lit))
+				K.poly(n, PackedVector2Array([Vector2(x0, y0 + h0 * 0.38), Vector2(x1, y1 + h1 * 0.38), Vector2(x1, y1 + h1 * 0.58), Vector2(x0, y0 + h0 * 0.58)]),
+					K.shade(D.band, lit))                                     # a stripe rides the same folds
 			K.label(n, b, D.label) })
 
 	# ---- H · Helix ---------------------------------------------------------
@@ -601,15 +676,74 @@ static func defs() -> Array:
 
 	# ---- R · Ribbon --------------------------------------------------------
 	d.append({ "letter": "R", "name": "Ribbon",
-		"hint": "a long strip drawn as short quads along a moving sine — its width is |cos(twist)|, and when cos goes negative the BACK colour shows",
+		"hint": "a long strip drawn as short quads along a moving sine — its width is |cos(twist)|, and when cos goes negative the BACK colour shows; click to flick the head, and the extra twist runs down the strip as a real wave, reflects off the tail and rings down",
 		"dials": { "sky": [Color("1A1030"), Color("2A1E4A")], "front": Color("F05A8A"), "back": Color("F5C169"),   # the two faces of the strip
-			"width": 0.1, "segs": 64, "twists": 2.5, "speed": 1.0, "step": 0,   # step > 0 snaps time to 1/step s (jerky)
-			"label": "width = |cos(twist)|; cos < 0 shows the back colour; the shade follows the slope" },
+			"width": 0.1, "segs": 64, "twists": 2.5, "speed": 1.0, "step": 0,   # step > 0 snaps the shown clock to 1/step s (jerky)
+			"k": 2500.0,                # the torsion coupling between neighbouring segments: sets how fast a twist travels (√k segments per second)
+			"damp": 2.0,                # each segment's damping, per second — a flick rings for a couple of seconds
+			"ret": 40.0,                # the strip's own stiffness, pulling every segment back to its steady twist
+			"flick": 160.0,             # the angular velocity a click gives the head, radians per second
+			"label": "width = |cos(twist)|; cos < 0 shows the back · twist: ψₙ'' = k(ψₙ₋₁ − 2ψₙ + ψₙ₊₁) − ret·ψₙ − damp·ψₙ' · click: ψ₀' += flick" },
 		"rhyme": { "name": "Glitch tape", "hint": "the same quads in magenta and cyan on black, faster, with time snapped to ninths of a second — the smoothness was a dial",
 			"dials": { "sky": [Color("050508"), Color("0A0A12")], "front": Color("FF00C8"), "back": Color("00E5FF"), "speed": 1.6, "step": 9,
-				"label": "floor(t × 9) / 9: quantise the clock and the same ribbon stutters — glitch is a time dial" } },
-		"init": func(b: Dictionary) -> void: b.flick_at = -9.0,
-		"press": func(b: Dictionary, _pos: Vector2) -> void: b.flick_at = b.t,   # click = flick the ribbon
+				"label": "floor(t × 9) / 9: the twist wave runs on smoothly underneath, the picture only refreshes nine times a second — glitch is a time dial" } },
+		"init": func(b: Dictionary) -> void:
+			# the steady twist is a spin along the strip that the clock winds on. on
+			# top of it every node carries its OWN extra twist, and the nodes are a
+			# torsion chain: each pulled toward both its neighbours (a wave equation),
+			# and weakly back to zero by the strip's own stiffness. a click does not
+			# draw a bump — it gives the head an angular VELOCITY, and the twist it
+			# makes travels down the strip at √k nodes a second, doubles as it reflects
+			# off the free tail, and rings down as the damping eats it.
+			var nn := maxi(4, int(b.D.segs))
+			var ps := PackedFloat32Array()                # each node's extra twist over the steady spin (sized here: a packed array read back from b is a copy)
+			var om := PackedFloat32Array()                # and its angular velocity
+			var shown := PackedFloat32Array()             # the twist the picture shows: the live one, or a snapshot when the clock is stepped
+			ps.resize(nn + 1)
+			om.resize(nn + 1)
+			shown.resize(nn + 1)
+			b.n = nn
+			b.ps = ps
+			b.om = om
+			b.shown = shown
+			b.snap_at = -1.0,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var nn: int = b.n
+			var ps: PackedFloat32Array = b.ps
+			var om: PackedFloat32Array = b.om
+			var kk: float = D.k
+			var damp: float = D.damp
+			var ret: float = D.ret
+			# the chain's top mode rings at 2√k, and a symplectic step holds only while
+			# √k·h < 1 — so a coarse frame is cut into substeps of at most 1/60 s
+			var sub := maxi(1, ceili(dt * 60.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				for i in nn + 1:
+					var f := -ret * ps[i]                                     # the strip's own stiffness: back toward the steady twist
+					if i > 0:
+						f += kk * (ps[i - 1] - ps[i])                         # pulled toward the node before …
+					if i < nn:
+						f += kk * (ps[i + 1] - ps[i])                         # … and after; the tail has none, and swings double
+					om[i] += (f - damp * om[i]) * h
+				for i in nn + 1:
+					ps[i] = clampf(ps[i] + om[i] * h, -6.0, 6.0)
+			b.ps = ps
+			b.om = om
+			var stp: int = D.step
+			if stp > 0:                                   # a stepped clock: the picture only refreshes 1/step s, the physics runs on
+				var tt := floorf(b.t * stp) / stp
+				if tt != float(b.snap_at):
+					b.snap_at = tt
+					var shown: PackedFloat32Array = b.shown
+					for i in nn + 1:
+						shown[i] = ps[i]
+					b.shown = shown,
+		"press": func(b: Dictionary, _pos: Vector2) -> void:
+			var om: PackedFloat32Array = b.om
+			om[0] += float(b.D.flick)                     # click = flick the head: a kick of angular velocity, never a jump in twist
+			b.om = om,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -617,10 +751,10 @@ static func defs() -> Array:
 			var tt: float = floorf(t * stp) / stp if stp > 0 else t
 			K.sky(n, b, D.sky)
 			var w: float = b.H * D.width
-			var N: int = D.segs
+			var N: int = b.n
 			var speed: float = D.speed
 			var twists: float = D.twists
-			var fa: float = b.flick_at
+			var live: PackedFloat32Array = b.shown if stp > 0 else b.ps
 			var px := PackedFloat32Array()
 			var py := PackedFloat32Array()
 			var tw := PackedFloat32Array()
@@ -628,8 +762,7 @@ static func defs() -> Array:
 				var k := float(i) / N
 				px.append(b.W * (-0.04 + k * 1.08))
 				py.append(b.H * (0.48 + 0.2 * sin(k * TAU * 1.2 - tt * speed * 1.4) + 0.06 * sin(k * TAU * 2.7 + tt * speed * 0.9)))
-				var flick := 2.4 * exp(-pow((k - (tt - fa) * 0.7) * 7.0, 2.0))   # a pulse of extra twist running head → tail
-				tw.append(k * TAU * twists - tt * speed * 2.0 + flick)
+				tw.append(k * TAU * twists - tt * speed * 2.0 + live[i])     # the steady spin plus this node's own extra twist
 			for j in N:
 				var c := cos((tw[j] + tw[j + 1]) / 2.0)                        # the twist, seen edge-on at cos = 0
 				var hw := absf(c) * w / 2.0 + 0.6                              # apparent half-width: |cos|
@@ -707,10 +840,16 @@ static func defs() -> Array:
 
 	# ---- U · Undertow ------------------------------------------------------
 	d.append({ "letter": "U", "name": "Undertow", "drag": true,
-		"hint": "under the surface: caustic stripes wobbling in the light, seaweed ribbons swaying at three depths — far ones paler, slower — and bubbles rising faster the nearer they are",
+		"hint": "under the surface: caustic stripes wobbling in the light, seaweed at three depths — far ones paler, slower — each weed a chain of springs the current bends from the root, so the tips lag and whip through — and bubbles rising faster the nearer they are",
 		"dials": { "water": [Color("1A6A9A"), Color("052040")], "air": Color("2A6A9A"), "weed": Color("2A8A4A"), "light": Color("B8F0FF"), "bubble": Color("E8F8FF"),
-			"depths": 3, "weeds": 4, "bubbles": 22, "sway": 1.0, "glow": false,
-			"label": "far weed is paler and slower, near bubbles bigger and faster — three dials, one z" },
+			"depths": 3, "weeds": 4, "bubbles": 22, "glow": false,
+			"sway": 1.0,                # the current's strength: scales the lean the root's rest is bent to (a press moves this, never the weed)
+			"k": 40.0,                  # the root spring's stiffness (per inertia): a weed rights itself in about a second
+			"damp": 6.0,                # its damping (2√k = 12.6 would be critical): well under, so the root overshoots
+			"tip": 1.25,                # each segment's k as a multiple of the one below — lighter up the weed, so the same bend rights it faster
+			"tipdamp": 0.6,             # a segment's damping as a fraction of ITS OWN critical: under 1, so the tip overshoots the root and whips through
+			"lean": 0.45,               # radians the current asks of the root at sway 1
+			"label": "root: θ'' = k·(current − θ) − damp·θ' · segment j: kⱼ = tip·kⱼ₋₁ chasing θⱼ₋₁ · far weed paler and slower, near bubbles bigger and faster" },
 		"rhyme": { "name": "Deep sea", "hint": "the same water gone near-black, the weed a dim teal, half the current — and every bubble carries its own glow",
 			"dials": { "water": [Color("031020"), Color("000306")], "air": Color("0A1A2A"), "weed": Color("1A3A3A"), "light": Color("3A8AA0"), "bubble": Color("8AF0FF"),
 				"sway": 0.5, "glow": true,
@@ -726,8 +865,58 @@ static func defs() -> Array:
 				for w in weeds:
 					b.weeds.append({ "x": R.randf() * b.W, "z": (dd + 0.5) / depths, "h": 0.28 + R.randf() * 0.3, "ph": R.randf() * 9.0 })
 			for bl in int(D.bubbles):
-				b.bubbles.append({ "x": R.randf() * b.W, "y": R.randf(), "z": R.randf(), "ph": R.randf() * 9.0 }),
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.sway = 0.2 + (pos.x / b.W) * 2.5,   # click right = a stronger current
+				b.bubbles.append({ "x": R.randf() * b.W, "y": R.randf(), "z": R.randf(), "ph": R.randf() * 9.0 })
+			# a weed is a CHAIN of angles from vertical, one per segment — the stagecraft
+			# Grass, under water. the root is a damped spring toward a rest the CURRENT
+			# sets: two slow sines, slower for the far weeds, scaled by sway. every
+			# segment above is the same spring again, its rest the angle of the segment
+			# below, quicker (k · tip: a lighter segment, same bend) and less damped
+			# (tipdamp of its own critical) — so when the current turns, the root goes
+			# first, the tip follows late and whips through when the current comes back.
+			# a press moves the rest; the weed has to get there by itself.
+			var th := PackedFloat32Array()                # segment angles from vertical, weed-major, 9 per weed (sized here: a packed array read back from b is a copy)
+			var om := PackedFloat32Array()                # and their angular velocities
+			th.resize(b.weeds.size() * 9)
+			om.resize(b.weeds.size() * 9)
+			b.th = th
+			b.om = om,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var th: PackedFloat32Array = b.th
+			var om: PackedFloat32Array = b.om
+			var kk: float = D.k
+			var damp: float = D.damp
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var lean: float = D.lean
+			var sway: float = D.sway
+			var weeds: Array = b.weeds
+			# the segments up a weed are stiffer than the root (k · tip each), and a
+			# symplectic step holds only while √k·h < 2 — so a coarse frame is cut into
+			# substeps of at most 0.02 s; at 60 fps that is one step
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for j in weeds.size():
+				var s: Dictionary = weeds[j]
+				var z: float = s.z
+				var sph: float = s.ph
+				var sp := 0.6 + z * 0.8                                       # far weed: a slower current
+				var rest := lean * sway * (0.6 * sin(t * sp * 0.9 + sph) + 0.4 * sin(t * sp * 0.37 + sph * 2.0))
+				for _s in sub:
+					var below := rest                                         # the root chases the current; each segment chases the one below
+					var kj := kk
+					var dj := damp
+					for g in 9:
+						var i := j * 9 + g
+						om[i] += (kj * (below - th[i]) - dj * om[i]) * h
+						th[i] = clampf(th[i] + om[i] * h, -1.4, 1.4)
+						below = th[i]
+						kj *= tip                                             # the next segment up: quicker …
+						dj = tipdamp * 2.0 * sqrt(kj)                         # … and a fraction of ITS critical
+			b.th = th
+			b.om = om,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.sway = 0.2 + (pos.x / b.W) * 2.5,   # click right = a stronger current — the rest moves, the weed catches up
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -745,26 +934,26 @@ static func defs() -> Array:
 				n.draw_polyline(pts, K.alpha(light, 0.35 * (1.0 - i / 7.0)), 1.5, true)
 			var GY: float = b.H * 0.9
 			K.lin_rect(n, Rect2(0, GY, b.W, b.H - GY), [K.fog(Color("4A3A2A"), 0.5, air), Color("2A1A10")])
-			var sway: float = D.sway
-			for s in b.weeds:                                                 # seaweed: a ribbon of quads, shaded by its lean
+			var th: PackedFloat32Array = b.th
+			var weeds: Array = b.weeds
+			for j in weeds.size():                                            # seaweed: walk the chain, a quad per segment, shaded by its lean
+				var s: Dictionary = weeds[j]
 				var z: float = s.z
 				var sx: float = s.x
-				var sph: float = s.ph
-				var nn := 9
 				var hgt: float = b.H * s.h * (0.5 + z * 0.6)
 				var base: float = GY - (1.0 - z) * b.H * 0.05
+				var seg := hgt / 9.0
 				var c := K.fog(D.weed, (1.0 - z) * 0.75, air)
 				var px := sx
 				var py := base
-				var sp := (0.6 + z * 0.8) * sway
-				for k in nn:
-					var q := float(k + 1) / nn
-					var ang := q * 3.0 + t * sp + sph
-					var nx := sx + sin(ang) * q * q * hgt * 0.35                  # the tip sways most
-					var ny := base - q * hgt
+				for k in 9:
+					var q := float(k + 1) / 9.0
+					var a: float = th[j * 9 + k]
+					var nx := px + sin(a) * seg
+					var ny := py - cos(a) * seg
 					var hw := (1.0 - q * 0.7) * (2.0 + z * 5.0)
 					K.poly(n, PackedVector2Array([Vector2(px - hw, py), Vector2(nx - hw, ny), Vector2(nx + hw, ny), Vector2(px + hw, py)]),
-						K.shade(c, cos(ang) * 0.25 * q))                         # cos = the slope: pale when leaning into the light
+						K.shade(c, sin(a) * 0.3))                                # the lean is the slope: pale when leaning into the light
 					px = nx
 					py = ny
 			for o in b.bubbles:
@@ -1144,15 +1333,24 @@ static func defs() -> Array:
 
 	# ---- Z · Zephyr --------------------------------------------------------
 	d.append({ "letter": "Z", "name": "Zephyr", "drag": true,
-		"hint": "the wind made visible: three translucent ribbons streaming across on long sine paths, twisting (width by |cos|) and fading toward their tails — leaves ride the same paths",
+		"hint": "the wind made visible: three translucent ribbons streaming across on long sine paths, twisting (width by |cos|) and fading toward their tails — leaves chase the same paths on a spring, so they lag each crest, overshoot it, and spin as fast as they are thrown",
 		"dials": { "sky": [Color("8FB8E0"), Color("E8F0F8")], "ribbon": Color.WHITE, "back": Color("B8D8F5"), "leaf": Color("7AB85A"),
 			"ribbons": 3, "leaves": 6, "speed": 1.0, "len": 0.8, "segs": 40,   # len: ribbon length as a share of W
-			"label": "the ribbon is the wind: alpha fades toward the tail, |cos| twists it, the leaves ride the same y(x)" },
+			"k": 40.0,                  # a leaf's spring toward the ribbon's height at its x: light, so it takes ~0.2 s to answer
+			"damp": 5.0,                # its damping (2√k = 12.6 would be critical): well under, so a leaf overshoots every crest
+			"spin": 8.0,                # radians of spin per screen-width of travel — the leaf turns as fast as it is thrown
+			"label": "the ribbon is the wind: alpha fades to the tail, |cos| twists it · leaf: y'' = k·(ribbon(x) − y) − damp·y' · spin' ∝ |vx| + |vy|" },
 		"rhyme": { "name": "Autumn gale", "hint": "the same wind in a warm dusk, nearly twice as fast, carrying three times the leaves in rust and orange — the ribbons barely change, the load does",
 			"dials": { "sky": [Color("C88A4A"), Color("F5D9B0")], "ribbon": Color("FFF3E0"), "back": Color("E8B888"), "leaf": Color("D8602A"),
 				"leaves": 18, "speed": 1.8,
-				"label": "more leaves on the same y(x) and the wind reads as stronger — the passengers sell the ribbon" } },
+				"label": "more leaves chasing the same y(x), faster, and the wind reads as stronger — they fall further behind each crest, and spin harder" } },
 		"init": func(b: Dictionary) -> void:
+			# the ribbon is the wind's path, y(x). a leaf is not ON it: it is carried
+			# along in x at the wind's speed, and in y it is a damped spring chasing
+			# the ribbon's height at its x — so it lags every crest and overshoots it,
+			# more the faster the wind (a press moves the wind; the leaf catches up).
+			# its spin is integrated from how fast it is being thrown, sideways and
+			# up-down, not read off the clock: a leaf at rest in still air would stop.
 			var D: Dictionary = b.D
 			var R := K.rng(17)
 			b.paths = []
@@ -1160,9 +1358,46 @@ static func defs() -> Array:
 			var ribbons: int = D.ribbons
 			for i in ribbons:
 				b.paths.append({ "y": 0.22 + i * 0.24, "amp": 0.05 + R.randf() * 0.05, "f": 1.0 + R.randf() * 1.2, "off": R.randf() * 4.0, "sp": 0.8 + R.randf() * 0.4 })
-			for l in int(D.leaves):
-				b.leaves.append({ "p": l % ribbons, "s": 0.1 + R.randf() * 0.6, "spin": R.randf() * 9.0 }),
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.speed = 0.3 + (pos.x / b.W) * 2.5,   # click right = a stronger wind
+			for l in int(D.leaves):                                          # y, vy, rot: the leaf's state; px: its last x, to spot a wrap
+				b.leaves.append({ "p": l % ribbons, "s": 0.1 + R.randf() * 0.6, "spin": R.randf() * 9.0, "y": -1.0, "vy": 0.0, "rot": 0.0, "px": -1.0e9 }),
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var W: float = b.W
+			var H: float = b.H
+			var ln: float = W * D.len
+			var speed: float = D.speed
+			var kk: float = D.k
+			var damp: float = D.damp
+			var spin: float = D.spin
+			var paths: Array = b.paths
+			var sub := maxi(1, ceili(dt * 50.0))        # substeps of at most 0.02 s keep the leaf springs stable on a coarse frame
+			var h := dt / float(sub)
+			for o in b.leaves:
+				var p: Dictionary = paths[int(o.p)]
+				var off: float = p.off
+				var sp: float = p.sp
+				var head: float = fposmod(t * speed * W * 0.35 * sp + off * W, W + ln)
+				var os: float = o.s
+				var lx := head - os * ln
+				var target := _path_y(b, p, lx, t)
+				var vx := speed * W * 0.35 * sp                                # how fast the wind carries it
+				var oy: float = o.y
+				var vy: float = o.vy
+				var rot: float = o.rot
+				var last_x: float = o.px
+				if last_x < -1.0e8 or lx < last_x - W * 0.5:                  # the ribbon wrapped (or this is the first frame): a fresh leaf, starting on the path
+					oy = target
+					vy = 0.0
+				o.px = lx
+				for _s in sub:
+					vy += (kk * (target - oy) - damp * vy) * h                # chase the ribbon's height, under-damped
+					oy = clampf(oy + vy * h, -H, H * 2.0)
+					rot += (absf(vx) + absf(vy) * 2.0) / W * spin * h         # spin from how fast it is thrown, not from the clock
+				o.y = oy
+				o.vy = vy
+				o.rot = rot,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.speed = 0.3 + (pos.x / b.W) * 2.5,   # click right = a stronger wind — the leaves fall behind, then catch up
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -1200,10 +1435,11 @@ static func defs() -> Array:
 					var os: float = o.s
 					var spin: float = o.spin
 					var lx := head - os * ln
-					var ly := _path_y(b, p, lx, t)
+					var ly: float = o.y                                       # where the leaf's spring has got to, not the ribbon's y
+					var rot: float = o.rot
 					if lx < 0.0 or lx > b.W:
 						continue
-					n.draw_set_transform(Vector2(lx, ly), t * 3.0 + spin, Vector2.ONE)
+					n.draw_set_transform(Vector2(lx, ly), rot + spin, Vector2.ONE)
 					K.ellipse(n, Vector2.ZERO, b.W * 0.014, b.W * 0.007, leaf)
 					n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			K.label(n, b, D.label) })

@@ -5312,9 +5312,28 @@ rhymeOf("Yule", "Campfire embers", "the same logs under an open night sky, the f
    spacing bunches toward the horizon (horizon + p²), far rows lose their
    amplitude and mix toward the air. Thirteen pictures. */
 
-def("F", "Flag", "wave", "a flag is vertical strips lifted by a travelling sine that grows toward the free end — shade each strip by its slope (cos) and the wiggle becomes folds", function make(u) {
+def("F", "Flag", "wave", "a flag is vertical strips sewn to the pole and pulled by their neighbours: the pole's vortices shove the first strip, the cloth carries the wave out and the free end swings furthest — shade each strip by its slope and the ripple becomes folds; a gust takes a second to reach the free end", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], cloth: "#D8302A", band: "#F5F0E0", pole: "#8A8A96",
-            strips: 40, wind: 1.0, waves: 1.6, shadeBy: 0.45 };              // shadeBy: how hard the slope shades the cloth
+            strips: 16,              // strips of cloth: the first is sewn to the pole and never moves
+            wind: 1.0,               // the wind a press asks for — the cloth feels a wind that CHASES this, it never jumps
+            waves: 1.6,              // waves along the flag at wind 1: sets the cloth's tension, k = (strips · f / waves)²
+            shadeBy: 0.45,           // how hard the slope shades the cloth
+            damp: 0.6,               // each strip's damping, per second — low, so a gust rings down the cloth for a while
+            light: 1.1,              // each strip's stiffness-per-mass over the one before: the hoist is the heaviest band, so the wave GROWS toward the free end
+            drive: 0.04,             // the pole's vortex shove on the first strip, as a fraction of the flag's height per unit wind
+            flutter: 1.5 };          // how fast the shedding oscillator grows to full swing (its van der pol gain)
+  var N = Math.max(4, Math.floor(D.strips));
+  var y = new Float32Array(N), v = new Float32Array(N);                      // each strip's lift as a fraction of the flag's height, and its velocity; strip 0 is the pole
+  var wv = 0, wvv = 0, fx = 0.5, fv = 0;                                      // the wind the cloth feels (a spring chasing D.wind), and the shedding oscillator
+  // the cloth is a STRING of strips: each one pulled toward both its
+  // neighbours by the cloth's tension (a wave equation), the first strip sewn
+  // to the pole, the last with nothing beyond it — so a wave reaching the free
+  // end has nothing to pull back and swings double. what sets it going is the
+  // pole: air shedding off a rod pulses at a rate proportional to the wind
+  // (strouhal), modelled as a self-excited oscillator that grows from any nudge
+  // and saturates, shoving the first strip. the wind itself is a spring
+  // chasing the pressed value, so a gust arrives late, and later still at the
+  // free end: watch the ripple run out along the flag after a click.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
@@ -5323,22 +5342,36 @@ def("F", "Flag", "wave", "a flag is vertical strips lifted by a travelling sine 
       u.shadow(px + fw * 0.35, GY + 2, fw * 0.45, 5, 0.3);                   // the flag's shadow on the grass
       u.cyl(px - 3, GY, 6, GY - top + 14, D.pole, -0.3);
       u.sphere(px - 3, top - 16, 5, "#E8C060", -0.5, -0.5);
-      var sw = fw / D.strips;
-      for (var i = 0; i < D.strips; i++) {
-        var k = i / D.strips, ph = k * u.TAU * D.waves - t * D.wind * 4;
-        var amp = fh * 0.2 * k * D.wind;                                     // pinned at the pole, loose at the free end
-        var y = top + Math.sin(ph) * amp;
-        var slope = Math.cos(ph) * k * D.wind;                               // d/dx of the sine — which way this strip faces
-        var fold = u.clamp(1 - k * 3, 0, 1) * 0.25;                          // the cloth shades itself where it bunches at the pole
-        var lit = u.clamp(slope * D.shadeBy - fold, -0.45, 0.45);
-        u.ctx.fillStyle = u.shade(D.cloth, lit);
-        u.ctx.fillRect(px + i * sw, y, sw + 1, fh * (1 - k * 0.08));          // the free end hangs a little shorter
-        u.ctx.fillStyle = u.shade(D.band, lit);
-        u.ctx.fillRect(px + i * sw, y + fh * 0.38, sw + 1, fh * 0.2);         // a stripe rides the same folds
+      // the string's top mode rings at 2√k, and a symplectic step holds only while
+      // √k·h < 1 — so a coarse frame is cut into substeps of at most 1/60 s
+      var sub = Math.max(1, Math.ceil(dt * 60)), h = dt / sub, kw = 6;       // kw: the wind's own spring — it settles on a press in about a second
+      for (var st = 0; st < sub; st++) {
+        wvv += (kw * (D.wind - wv) - 0.9 * 2 * Math.sqrt(kw) * wvv) * h; wv += wvv * h;   // the wind eases toward the pressed value, just under critical
+        var om = 4 * Math.max(0.05, wv);                                     // the shedding rate follows the wind
+        fv += (-om * om * fx + D.flutter * om * (1 - fx * fx) * fv) * h; fx += fv * h;   // van der pol: negative damping below |x| = 1, positive above — it settles at |x| ≈ 2
+        var k = Math.pow(N * om / u.TAU / D.waves, 2), inv = 1;             // tension so that `waves` fit along the flag at this wind; inv: 1 / this strip's mass
+        for (var i = 1; i < N; i++) {
+          inv *= D.light;
+          var f = k * (y[i - 1] - y[i]);                                     // pulled toward the strip before …
+          if (i + 1 < N) f += k * (y[i + 1] - y[i]);                         // … and the one after; the free end has none, and swings double
+          if (i === 1) f += fx * D.drive * wv * k;                           // the pole's vortex street shoves the first free strip
+          v[i] += (f * inv - D.damp * v[i]) * h;
+        }
+        for (var i2 = 1; i2 < N; i2++) y[i2] = u.clamp(y[i2] + v[i2] * h, -0.5, 0.5);
       }
-      u.label("shade = cos(phase) × distance from the pole — the slope of the sine says which way each strip faces", u.W / 2, u.H - 8, null, "center");
+      var sw = fw / (N - 1);
+      for (var j = 0; j < N - 1; j++) {                                      // a quad per strip: its top edge runs from this lift to the next
+        var kk = j / (N - 1), x0 = px + j * sw, x1 = x0 + sw, y0 = top + y[j] * fh, y1 = top + y[j + 1] * fh;
+        var h0 = fh * (1 - kk * 0.08), h1 = fh * (1 - (j + 1) / (N - 1) * 0.08);   // the free end hangs a little shorter
+        var slope = (y1 - y0) / sw;                                          // dy/dx across the strip — which way it faces
+        var fold = u.clamp(1 - kk * 3, 0, 1) * 0.25;                         // the cloth shades itself where it bunches at the pole
+        var lit = u.clamp(slope * 2 * D.shadeBy - fold, -0.45, 0.45);
+        u.poly([[x0, y0], [x1 + 0.5, y1], [x1 + 0.5, y1 + h1], [x0, y0 + h0]], u.shade(D.cloth, lit));
+        u.poly([[x0, y0 + h0 * 0.38], [x1 + 0.5, y1 + h1 * 0.38], [x1 + 0.5, y1 + h1 * 0.58], [x0, y0 + h0 * 0.58]], u.shade(D.band, lit));   // a stripe rides the same folds
+      }
+      u.label("wind chases the press · pole vortices shove strip 1 · yᵢ'' = k(yᵢ₋₁ − 2yᵢ + yᵢ₊₁)/mᵢ − damp·yᵢ' · shade = slope", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.wind = 0.3 + (x / u.W) * 2; }                // click right = more wind
+    press: function (x, y) { D.wind = 0.3 + (x / u.W) * 2; }                // click right = more wind — the cloth's wind catches up over a second
   };
 });
 
@@ -5518,22 +5551,50 @@ def("O", "Ocean", "wave", "seven rows of travelling sines from horizon to foregr
   };
 });
 
-def("R", "Ribbon", "wave", "a long strip drawn as short quads along a moving sine — its width is |cos(twist)|, and when cos goes negative the BACK colour shows", function make(u) {
+def("R", "Ribbon", "wave", "a long strip drawn as short quads along a moving sine — its width is |cos(twist)|, and when cos goes negative the BACK colour shows; click to flick the head, and the extra twist runs down the strip as a real wave, reflects off the tail and rings down", function make(u) {
   var D = { sky: ["#1A1030", "#2A1E4A"], front: "#F05A8A", back: "#F5C169",   // the two faces of the strip
-            width: 0.1, segs: 64, twists: 2.5, speed: 1.0, step: 0 };        // step > 0 snaps time to 1/step s (jerky)
-  var flickAt = -9, lastT = 0;
+            width: 0.1, segs: 64, twists: 2.5, speed: 1.0, step: 0,          // step > 0 snaps the shown clock to 1/step s (jerky)
+            k: 2500,                 // the torsion coupling between neighbouring segments: sets how fast a twist travels (√k segments per second)
+            damp: 2,                 // each segment's damping, per second — a flick rings for a couple of seconds
+            ret: 40,                 // the strip's own stiffness, pulling every segment back to its steady twist
+            flick: 160 };            // the angular velocity a click gives the head, radians per second
+  var N = Math.max(4, Math.floor(D.segs));
+  var ps = new Float32Array(N + 1), om = new Float32Array(N + 1);            // each node's extra twist over the steady spin, and its angular velocity
+  var shown = new Float32Array(N + 1), snapAt = -1;                          // the twist the picture shows: the live one, or a snapshot when the clock is stepped
+  // the steady twist is a spin along the strip that the clock winds on. on
+  // top of it every node carries its OWN extra twist, and the nodes are a
+  // torsion chain: each pulled toward both its neighbours (a wave equation),
+  // and weakly back to zero by the strip's own stiffness. a click does not
+  // draw a bump — it gives the head an angular VELOCITY, and the twist it
+  // makes travels down the strip at √k nodes a second, doubles as it reflects
+  // off the free tail, and rings down as the damping eats it.
   return {
     frame: function (dt, t) {
-      lastT = t;
-      var tt = D.step ? Math.floor(t * D.step) / D.step : t;
+      // the chain's top mode rings at 2√k, and a symplectic step holds only while
+      // √k·h < 1 — so a coarse frame is cut into substeps of at most 1/60 s
+      var sub = Math.max(1, Math.ceil(dt * 60)), h = dt / sub;
+      for (var st = 0; st < sub; st++) {
+        for (var n = 0; n <= N; n++) {
+          var f = -D.ret * ps[n];                                            // the strip's own stiffness: back toward the steady twist
+          if (n > 0) f += D.k * (ps[n - 1] - ps[n]);                         // pulled toward the node before …
+          if (n < N) f += D.k * (ps[n + 1] - ps[n]);                         // … and after; the tail has none, and swings double
+          om[n] += (f - D.damp * om[n]) * h;
+        }
+        for (var n2 = 0; n2 <= N; n2++) ps[n2] = u.clamp(ps[n2] + om[n2] * h, -6, 6);
+      }
+      var tt = t, live = ps;
+      if (D.step) {                                                          // a stepped clock: the picture only refreshes 1/step s, physics runs on
+        tt = Math.floor(t * D.step) / D.step;
+        if (tt !== snapAt) { snapAt = tt; shown.set(ps); }
+        live = shown;
+      }
       u.sky(D.sky);
-      var w = u.H * D.width, N = D.segs, px = [], py = [], tw = [];
+      var w = u.H * D.width, px = [], py = [], tw = [];
       for (var i = 0; i <= N; i++) {
         var k = i / N;
         px.push(u.W * (-0.04 + k * 1.08));
         py.push(u.H * (0.48 + 0.2 * Math.sin(k * u.TAU * 1.2 - tt * D.speed * 1.4) + 0.06 * Math.sin(k * u.TAU * 2.7 + tt * D.speed * 0.9)));
-        var flick = 2.4 * Math.exp(-Math.pow((k - (tt - flickAt) * 0.7) * 7, 2));   // a pulse of extra twist running head → tail
-        tw.push(k * u.TAU * D.twists - tt * D.speed * 2 + flick);
+        tw.push(k * u.TAU * D.twists - tt * D.speed * 2 + live[i]);         // the steady spin plus this node's own extra twist
       }
       for (var j = 0; j < N; j++) {
         var c = Math.cos((tw[j] + tw[j + 1]) / 2);                           // the twist, seen edge-on at cos = 0
@@ -5543,9 +5604,9 @@ def("R", "Ribbon", "wave", "a long strip drawn as short quads along a moving sin
         u.poly([[px[j], py[j] - hw], [px[j + 1], py[j + 1] - hw], [px[j + 1], py[j + 1] + hw], [px[j], py[j] + hw]],
                u.shade(c >= 0 ? D.front : D.back, u.clamp(lit, -0.4, 0.4))); // the sign of cos picks the face
       }
-      u.label("width = |cos(twist)|; cos < 0 shows the back colour; the shade follows the slope", u.W / 2, u.H - 8, null, "center");
+      u.label("width = |cos(twist)|; cos < 0 shows the back · twist: ψₙ'' = k(ψₙ₋₁ − 2ψₙ + ψₙ₊₁) − ret·ψₙ − damp·ψₙ' · click: ψ₀' += flick", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { flickAt = lastT; }                             // click = flick the ribbon
+    press: function (x, y) { om[0] += D.flick; }                            // click = flick the head: a kick of angular velocity, never a jump in twist
   };
 });
 
@@ -5592,32 +5653,64 @@ def("T", "Tide", "wave", "waves lapping a beach: three rows whose front edge adv
   };
 });
 
-def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the light, seaweed ribbons swaying at three depths — far ones paler, slower — and bubbles rising faster the nearer they are", function make(u) {
+def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the light, seaweed at three depths — far ones paler, slower — each weed a chain of springs the current bends from the root, so the tips lag and whip through — and bubbles rising faster the nearer they are", function make(u) {
   var D = { water: ["#1A6A9A", "#052040"], air: "#2A6A9A", weed: "#2A8A4A", light: "#B8F0FF", bubble: "#E8F8FF",
-            depths: 3, weeds: 4, bubbles: 22, sway: 1.0, glow: 0 };
-  var R = u.rng(7), weeds = [], bubbles = [];
+            depths: 3, weeds: 4, bubbles: 22, glow: 0,
+            sway: 1.0,               // the current's strength: scales the lean the root's rest is bent to (a press moves this, never the weed)
+            k: 40,                   // the root spring's stiffness (per inertia): a weed rights itself in about a second
+            damp: 6,                 // its damping (2√k = 12.6 would be critical): well under, so the root overshoots
+            tip: 1.25,               // each segment's k as a multiple of the one below — lighter up the weed, so the same bend rights it faster
+            tipdamp: 0.6,            // a segment's damping as a fraction of ITS OWN critical: under 1, so the tip overshoots the root and whips through
+            lean: 0.45 };            // radians the current asks of the root at sway 1
+  var R = u.rng(7), weeds = [], bubbles = [], SEG = 9;                       // SEG: segments per weed, root to tip
   for (var d = 0; d < D.depths; d++)                                         // far layer first: painter's order for free
     for (var w = 0; w < D.weeds; w++) weeds.push({ x: R() * u.W, z: (d + 0.5) / D.depths, h: 0.28 + R() * 0.3, ph: R() * 9 });
   for (var b = 0; b < D.bubbles; b++) bubbles.push({ x: R() * u.W, y: R(), z: R(), ph: R() * 9 });
+  var th = new Float32Array(weeds.length * SEG), om = new Float32Array(weeds.length * SEG);   // segment angles from vertical + angular velocities, weed-major
+  // a weed is a CHAIN of angles from vertical, one per segment — the stagecraft
+  // Grass, under water. the root is a damped spring toward a rest the CURRENT
+  // sets: two slow sines, slower for the far weeds, scaled by sway. every
+  // segment above is the same spring again, its rest the angle of the segment
+  // below, quicker (k · tip: a lighter segment, same bend) and less damped
+  // (tipdamp of its own critical) — so when the current turns, the root goes
+  // first, the tip follows late and whips through when the current comes back.
+  // a press moves the rest; the weed has to get there by itself.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      // the segments up a weed are stiffer than the root (k · tip each), and a
+      // symplectic step holds only while √k·h < 2 — so a coarse frame is cut into
+      // substeps of at most 0.02 s; at 60 fps that is one step
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var j = 0; j < weeds.length; j++) {
+        var s = weeds[j], sp = 0.6 + s.z * 0.8;                              // far weed: a slower current
+        var rest = D.lean * D.sway * (0.6 * Math.sin(t * sp * 0.9 + s.ph) + 0.4 * Math.sin(t * sp * 0.37 + s.ph * 2));
+        for (var st = 0; st < sub; st++) {
+          var below = rest, kj = D.k, dj = D.damp;                           // the root chases the current; each segment chases the one below
+          for (var g = 0; g < SEG; g++) {
+            var i = j * SEG + g;
+            om[i] += (kj * (below - th[i]) - dj * om[i]) * h;
+            th[i] = u.clamp(th[i] + om[i] * h, -1.4, 1.4);
+            below = th[i]; kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj);   // the next segment up: quicker, and a fraction of ITS critical
+          }
+        }
+      }
       u.sky(D.water);
       u.soft(u.W * 0.5, -u.H * 0.2, u.H * 0.8, D.light, 0.25);               // the surface, lit from above
-      for (var i = 0; i < 7; i++) {                                          // caustics: bright stripes that wobble
-        u.ctx.strokeStyle = u.rgba(D.light, 0.35 * (1 - i / 7)); u.ctx.lineWidth = 1.5;
+      for (var c0 = 0; c0 < 7; c0++) {                                       // caustics: bright stripes that wobble
+        u.ctx.strokeStyle = u.rgba(D.light, 0.35 * (1 - c0 / 7)); u.ctx.lineWidth = 1.5;
         u.ctx.beginPath();
-        for (var x = 0; x <= u.W; x += 8) u.ctx.lineTo(x, u.H * (0.04 + i * 0.05) + Math.sin(x * 0.04 + t * 1.5 + i) * 3 + Math.sin(x * 0.011 - t * 0.9 + i * 2) * 5);
+        for (var x = 0; x <= u.W; x += 8) u.ctx.lineTo(x, u.H * (0.04 + c0 * 0.05) + Math.sin(x * 0.04 + t * 1.5 + c0) * 3 + Math.sin(x * 0.011 - t * 0.9 + c0 * 2) * 5);
         u.ctx.stroke();
       }
       var GY = u.H * 0.9;
       u.ctx.fillStyle = u.lin(0, GY, 0, u.H, [u.fog("#4A3A2A", 0.5, D.air), "#2A1A10"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);
-      for (var j = 0; j < weeds.length; j++) {                               // seaweed: a ribbon of quads, shaded by its lean
-        var s = weeds[j], z = s.z, n = 9, hgt = u.H * s.h * (0.5 + z * 0.6), base = GY - (1 - z) * u.H * 0.05;
-        var c = u.fog(D.weed, (1 - z) * 0.75, D.air), px = s.x, py = base, sp = (0.6 + z * 0.8) * D.sway;
-        for (var k = 0; k < n; k++) {
-          var q = (k + 1) / n, ang = q * 3 + t * sp + s.ph;
-          var nx = s.x + Math.sin(ang) * q * q * hgt * 0.35, ny = base - q * hgt, hw = (1 - q * 0.7) * (2 + z * 5);   // the tip sways most
-          u.poly([[px - hw, py], [nx - hw, ny], [nx + hw, ny], [px + hw, py]], u.shade(c, Math.cos(ang) * 0.25 * q));   // cos = the slope: pale when leaning into the light
+      for (var j2 = 0; j2 < weeds.length; j2++) {                            // seaweed: walk the chain, a quad per segment, shaded by its lean
+        var s2 = weeds[j2], z = s2.z, hgt = u.H * s2.h * (0.5 + z * 0.6), base = GY - (1 - z) * u.H * 0.05, seg = hgt / SEG;
+        var c = u.fog(D.weed, (1 - z) * 0.75, D.air), px = s2.x, py = base;
+        for (var k = 0; k < SEG; k++) {
+          var q = (k + 1) / SEG, a = th[j2 * SEG + k];
+          var nx = px + Math.sin(a) * seg, ny = py - Math.cos(a) * seg, hw = (1 - q * 0.7) * (2 + z * 5);
+          u.poly([[px - hw, py], [nx - hw, ny], [nx + hw, ny], [px + hw, py]], u.shade(c, Math.sin(a) * 0.3));   // the lean is the slope: pale when leaning into the light
           px = nx; py = ny;
         }
       }
@@ -5629,9 +5722,9 @@ def("U", "Undertow", "wave", "under the surface: caustic stripes wobbling in the
         u.ctx.beginPath(); u.ctx.arc(xx, yy, r, 0, u.TAU); u.ctx.stroke();
         u.dot(xx - r * 0.35, yy - r * 0.35, r * 0.3, u.rgba(D.bubble, 0.4 + zz * 0.5));   // one bright spot: a sphere in two marks
       }
-      u.label("far weed is paler and slower, near bubbles bigger and faster — three dials, one z", u.W / 2, u.H - 8, null, "center");
+      u.label("root: θ'' = k·(current − θ) − damp·θ' · segment j: kⱼ = tip·kⱼ₋₁ chasing θⱼ₋₁ · far weed paler and slower, near bubbles bigger and faster", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.sway = 0.2 + (x / u.W) * 2.5; }              // click right = a stronger current
+    press: function (x, y) { D.sway = 0.2 + (x / u.W) * 2.5; }              // click right = a stronger current — the rest moves, the weed catches up
   };
 });
 
@@ -5852,18 +5945,28 @@ def("Y", "Yacht", "wave", "a yacht heeling in the wind: one tall triangle shaded
   };
 });
 
-def("Z", "Zephyr", "wave", "the wind made visible: three translucent ribbons streaming across on long sine paths, twisting (width by |cos|) and fading toward their tails — leaves ride the same paths", function make(u) {
+def("Z", "Zephyr", "wave", "the wind made visible: three translucent ribbons streaming across on long sine paths, twisting (width by |cos|) and fading toward their tails — leaves chase the same paths on a spring, so they lag each crest, overshoot it, and spin as fast as they are thrown", function make(u) {
   var D = { sky: ["#8FB8E0", "#E8F0F8"], ribbon: "#FFFFFF", back: "#B8D8F5", leaf: "#7AB85A",
-            ribbons: 3, leaves: 6, speed: 1.0, len: 0.8, segs: 40 };        // len: ribbon length as a share of W
+            ribbons: 3, leaves: 6, speed: 1.0, len: 0.8, segs: 40,          // len: ribbon length as a share of W
+            k: 40,                   // a leaf's spring toward the ribbon's height at its x: light, so it takes ~0.2 s to answer
+            damp: 5,                 // its damping (2√k = 12.6 would be critical): well under, so a leaf overshoots every crest
+            spin: 8 };               // radians of spin per screen-width of travel — the leaf turns as fast as it is thrown
   var R = u.rng(17), paths = [], leaves = [];
   for (var i = 0; i < D.ribbons; i++) paths.push({ y: 0.22 + i * 0.24, amp: 0.05 + R() * 0.05, f: 1 + R() * 1.2, off: R() * 4, sp: 0.8 + R() * 0.4 });
-  for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9 });
+  for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9, y: -1, vy: 0, rot: 0, px: -1e9 });   // y, vy, rot: the leaf's state; px: last x, to spot a wrap
   function pathY(p, x, t) { return u.H * (p.y + p.amp * Math.sin(x / u.W * p.f * u.TAU - t * 1.5 * p.sp)); }
+  // the ribbon is the wind's path, y(x). a leaf is not ON it: it is carried
+  // along in x at the wind's speed, and in y it is a damped spring chasing
+  // the ribbon's height at its x — so it lags every crest and overshoots it,
+  // more the faster the wind (a press moves the wind; the leaf catches up).
+  // its spin is integrated from how fast it is being thrown, sideways and
+  // up-down, not read off the clock: a leaf at rest in still air would stop.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#5A8A5A");
       var len = u.W * D.len, w = u.H * 0.05;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // substeps of at most 0.02 s keep the leaf springs stable on a coarse frame
       for (var i = 0; i < paths.length; i++) {
         var p = paths[i], head = ((t * D.speed * u.W * 0.35 * p.sp + p.off * u.W) % (u.W + len));   // the head crosses, then wraps
         for (var j = 0; j < D.segs; j++) {
@@ -5876,16 +5979,23 @@ def("Z", "Zephyr", "wave", "the wind made visible: three translucent ribbons str
         for (var k = 0; k < leaves.length; k++) {
           var o = leaves[k];
           if (o.p !== i) continue;
-          var lx = head - o.s * len, ly = pathY(p, lx, t);
+          var lx = head - o.s * len, target = pathY(p, lx, t), vx = D.speed * u.W * 0.35 * p.sp;   // vx: how fast the wind carries it
+          if (o.px < -1e8 || lx < o.px - u.W * 0.5) { o.y = target; o.vy = 0; }            // the ribbon wrapped: this is a fresh leaf, starting on the path
+          o.px = lx;
+          for (var st = 0; st < sub; st++) {
+            o.vy += (D.k * (target - o.y) - D.damp * o.vy) * h;              // chase the ribbon's height, under-damped
+            o.y = u.clamp(o.y + o.vy * h, -u.H, u.H * 2);
+            o.rot += (Math.abs(vx) + Math.abs(o.vy) * 2) / u.W * D.spin * h;   // spin from how fast it is thrown, not from the clock
+          }
           if (lx < 0 || lx > u.W) continue;
-          u.ctx.save(); u.ctx.translate(lx, ly); u.ctx.rotate(t * 3 + o.spin);
+          u.ctx.save(); u.ctx.translate(lx, o.y); u.ctx.rotate(o.rot + o.spin);
           u.ctx.fillStyle = D.leaf; u.ctx.beginPath(); u.ctx.ellipse(0, 0, u.W * 0.014, u.W * 0.007, 0, 0, u.TAU); u.ctx.fill();
           u.ctx.restore();
         }
       }
-      u.label("the ribbon is the wind: alpha fades toward the tail, |cos| twists it, the leaves ride the same y(x)", u.W / 2, u.H - 8, null, "center");
+      u.label("the ribbon is the wind: alpha fades to the tail, |cos| twists it · leaf: y'' = k·(ribbon(x) − y) − damp·y' · spin' ∝ |vx| + |vy|", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2.5; }             // click right = a stronger wind
+    press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2.5; }             // click right = a stronger wind — the leaves fall behind, then catch up
   };
 });
 
@@ -5894,7 +6004,10 @@ def("Z", "Zephyr", "wave", "the wind made visible: three translucent ribbons str
 rhymeOf("Flag", "Pirate flag", "the same strips in black under a storm sky, a stiffer wind and more ripples — the folds now read from the white band alone", function make(u) {
   // rhyme of Flag: dials moved — cloth/band/sky palette, wind 1.0 → 1.9, waves 1.6 → 2.2
   var D = { sky: ["#2A2A3A", "#6A6A7A"], cloth: "#111118", band: "#E8E5F4", pole: "#5A5A66",
-            strips: 40, wind: 1.9, waves: 2.2, shadeBy: 0.45 };
+            strips: 16, wind: 1.9, waves: 2.2, shadeBy: 0.45, damp: 0.6, light: 1.1, drive: 0.04, flutter: 1.5 };
+  var N = Math.max(4, Math.floor(D.strips));
+  var y = new Float32Array(N), v = new Float32Array(N);
+  var wv = 0, wvv = 0, fx = 0.5, fv = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
@@ -5903,20 +6016,32 @@ rhymeOf("Flag", "Pirate flag", "the same strips in black under a storm sky, a st
       u.shadow(px + fw * 0.35, GY + 2, fw * 0.45, 5, 0.3);
       u.cyl(px - 3, GY, 6, GY - top + 14, D.pole, -0.3);
       u.sphere(px - 3, top - 16, 5, "#E8C060", -0.5, -0.5);
-      var sw = fw / D.strips;
-      for (var i = 0; i < D.strips; i++) {
-        var k = i / D.strips, ph = k * u.TAU * D.waves - t * D.wind * 4;
-        var amp = fh * 0.2 * k * D.wind;
-        var y = top + Math.sin(ph) * amp;
-        var slope = Math.cos(ph) * k * D.wind;
-        var fold = u.clamp(1 - k * 3, 0, 1) * 0.25;
-        var lit = u.clamp(slope * D.shadeBy - fold, -0.45, 0.45);
-        u.ctx.fillStyle = u.shade(D.cloth, lit);
-        u.ctx.fillRect(px + i * sw, y, sw + 1, fh * (1 - k * 0.08));
-        u.ctx.fillStyle = u.shade(D.band, lit);
-        u.ctx.fillRect(px + i * sw, y + fh * 0.38, sw + 1, fh * 0.2);
+      var sub = Math.max(1, Math.ceil(dt * 60)), h = dt / sub, kw = 6;
+      for (var st = 0; st < sub; st++) {
+        wvv += (kw * (D.wind - wv) - 0.9 * 2 * Math.sqrt(kw) * wvv) * h; wv += wvv * h;
+        var om = 4 * Math.max(0.05, wv);
+        fv += (-om * om * fx + D.flutter * om * (1 - fx * fx) * fv) * h; fx += fv * h;
+        var k = Math.pow(N * om / u.TAU / D.waves, 2), inv = 1;
+        for (var i = 1; i < N; i++) {
+          inv *= D.light;
+          var f = k * (y[i - 1] - y[i]);
+          if (i + 1 < N) f += k * (y[i + 1] - y[i]);
+          if (i === 1) f += fx * D.drive * wv * k;
+          v[i] += (f * inv - D.damp * v[i]) * h;
+        }
+        for (var i2 = 1; i2 < N; i2++) y[i2] = u.clamp(y[i2] + v[i2] * h, -0.5, 0.5);
       }
-      u.label("black cloth barely shades — the band carries the folds; more waves, faster: a gale is two dials", u.W / 2, u.H - 8, null, "center");
+      var sw = fw / (N - 1);
+      for (var j = 0; j < N - 1; j++) {
+        var kk = j / (N - 1), x0 = px + j * sw, x1 = x0 + sw, y0 = top + y[j] * fh, y1 = top + y[j + 1] * fh;
+        var h0 = fh * (1 - kk * 0.08), h1 = fh * (1 - (j + 1) / (N - 1) * 0.08);
+        var slope = (y1 - y0) / sw;
+        var fold = u.clamp(1 - kk * 3, 0, 1) * 0.25;
+        var lit = u.clamp(slope * 2 * D.shadeBy - fold, -0.45, 0.45);
+        u.poly([[x0, y0], [x1 + 0.5, y1], [x1 + 0.5, y1 + h1], [x0, y0 + h0]], u.shade(D.cloth, lit));
+        u.poly([[x0, y0 + h0 * 0.38], [x1 + 0.5, y1 + h1 * 0.38], [x1 + 0.5, y1 + h1 * 0.58], [x0, y0 + h0 * 0.58]], u.shade(D.band, lit));
+      }
+      u.label("black cloth barely shades — the band carries the folds; more waves, a harder wind: a gale is two dials, the cloth still has to catch up", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { D.wind = 0.3 + (x / u.W) * 2; }
   };
@@ -6087,20 +6212,35 @@ rhymeOf("Ocean", "Lava sea", "the same seven rows in orange under a black sky, a
 rhymeOf("Ribbon", "Glitch tape", "the same quads in magenta and cyan on black, faster, with time snapped to ninths of a second — the smoothness was a dial", function make(u) {
   // rhyme of Ribbon: dials moved — sky/front/back palette, speed 1.0 → 1.6, step 0 → 9
   var D = { sky: ["#050508", "#0A0A12"], front: "#FF00C8", back: "#00E5FF",
-            width: 0.1, segs: 64, twists: 2.5, speed: 1.6, step: 9 };
-  var flickAt = -9, lastT = 0;
+            width: 0.1, segs: 64, twists: 2.5, speed: 1.6, step: 9, k: 2500, damp: 2, ret: 40, flick: 160 };
+  var N = Math.max(4, Math.floor(D.segs));
+  var ps = new Float32Array(N + 1), om = new Float32Array(N + 1);
+  var shown = new Float32Array(N + 1), snapAt = -1;
   return {
     frame: function (dt, t) {
-      lastT = t;
-      var tt = D.step ? Math.floor(t * D.step) / D.step : t;
+      var sub = Math.max(1, Math.ceil(dt * 60)), h = dt / sub;
+      for (var st = 0; st < sub; st++) {
+        for (var n = 0; n <= N; n++) {
+          var f = -D.ret * ps[n];
+          if (n > 0) f += D.k * (ps[n - 1] - ps[n]);
+          if (n < N) f += D.k * (ps[n + 1] - ps[n]);
+          om[n] += (f - D.damp * om[n]) * h;
+        }
+        for (var n2 = 0; n2 <= N; n2++) ps[n2] = u.clamp(ps[n2] + om[n2] * h, -6, 6);
+      }
+      var tt = t, live = ps;
+      if (D.step) {
+        tt = Math.floor(t * D.step) / D.step;
+        if (tt !== snapAt) { snapAt = tt; shown.set(ps); }
+        live = shown;
+      }
       u.sky(D.sky);
-      var w = u.H * D.width, N = D.segs, px = [], py = [], tw = [];
+      var w = u.H * D.width, px = [], py = [], tw = [];
       for (var i = 0; i <= N; i++) {
         var k = i / N;
         px.push(u.W * (-0.04 + k * 1.08));
         py.push(u.H * (0.48 + 0.2 * Math.sin(k * u.TAU * 1.2 - tt * D.speed * 1.4) + 0.06 * Math.sin(k * u.TAU * 2.7 + tt * D.speed * 0.9)));
-        var flick = 2.4 * Math.exp(-Math.pow((k - (tt - flickAt) * 0.7) * 7, 2));
-        tw.push(k * u.TAU * D.twists - tt * D.speed * 2 + flick);
+        tw.push(k * u.TAU * D.twists - tt * D.speed * 2 + live[i]);
       }
       for (var j = 0; j < N; j++) {
         var c = Math.cos((tw[j] + tw[j + 1]) / 2);
@@ -6110,9 +6250,9 @@ rhymeOf("Ribbon", "Glitch tape", "the same quads in magenta and cyan on black, f
         u.poly([[px[j], py[j] - hw], [px[j + 1], py[j + 1] - hw], [px[j + 1], py[j + 1] + hw], [px[j], py[j] + hw]],
                u.shade(c >= 0 ? D.front : D.back, u.clamp(lit, -0.4, 0.4)));
       }
-      u.label("floor(t × 9) / 9: quantise the clock and the same ribbon stutters — glitch is a time dial", u.W / 2, u.H - 8, null, "center");
+      u.label("floor(t × 9) / 9: the twist wave runs on smoothly underneath, the picture only refreshes nine times a second — glitch is a time dial", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { flickAt = lastT; }
+    press: function (x, y) { om[0] += D.flick; }
   };
 });
 
@@ -6163,30 +6303,46 @@ rhymeOf("Tide", "Moon tide", "the same beach at night under a moon — half the 
 rhymeOf("Undertow", "Deep sea", "the same water gone near-black, the weed a dim teal, half the current — and every bubble carries its own glow", function make(u) {
   // rhyme of Undertow: dials moved — water/air/weed/light/bubble palette, sway 1.0 → 0.5, glow 0 → 1
   var D = { water: ["#031020", "#000306"], air: "#0A1A2A", weed: "#1A3A3A", light: "#3A8AA0", bubble: "#8AF0FF",
-            depths: 3, weeds: 4, bubbles: 22, sway: 0.5, glow: 1 };
-  var R = u.rng(7), weeds = [], bubbles = [];
+            depths: 3, weeds: 4, bubbles: 22, glow: 1,
+            sway: 0.5, k: 40, damp: 6, tip: 1.25, tipdamp: 0.6, lean: 0.45 };
+  var R = u.rng(7), weeds = [], bubbles = [], SEG = 9;
   for (var d = 0; d < D.depths; d++)
     for (var w = 0; w < D.weeds; w++) weeds.push({ x: R() * u.W, z: (d + 0.5) / D.depths, h: 0.28 + R() * 0.3, ph: R() * 9 });
   for (var b = 0; b < D.bubbles; b++) bubbles.push({ x: R() * u.W, y: R(), z: R(), ph: R() * 9 });
+  var th = new Float32Array(weeds.length * SEG), om = new Float32Array(weeds.length * SEG);
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var j = 0; j < weeds.length; j++) {
+        var s = weeds[j], sp = 0.6 + s.z * 0.8;
+        var rest = D.lean * D.sway * (0.6 * Math.sin(t * sp * 0.9 + s.ph) + 0.4 * Math.sin(t * sp * 0.37 + s.ph * 2));
+        for (var st = 0; st < sub; st++) {
+          var below = rest, kj = D.k, dj = D.damp;
+          for (var g = 0; g < SEG; g++) {
+            var i = j * SEG + g;
+            om[i] += (kj * (below - th[i]) - dj * om[i]) * h;
+            th[i] = u.clamp(th[i] + om[i] * h, -1.4, 1.4);
+            below = th[i]; kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj);
+          }
+        }
+      }
       u.sky(D.water);
       u.soft(u.W * 0.5, -u.H * 0.2, u.H * 0.8, D.light, 0.25);
-      for (var i = 0; i < 7; i++) {
-        u.ctx.strokeStyle = u.rgba(D.light, 0.35 * (1 - i / 7)); u.ctx.lineWidth = 1.5;
+      for (var c0 = 0; c0 < 7; c0++) {
+        u.ctx.strokeStyle = u.rgba(D.light, 0.35 * (1 - c0 / 7)); u.ctx.lineWidth = 1.5;
         u.ctx.beginPath();
-        for (var x = 0; x <= u.W; x += 8) u.ctx.lineTo(x, u.H * (0.04 + i * 0.05) + Math.sin(x * 0.04 + t * 1.5 + i) * 3 + Math.sin(x * 0.011 - t * 0.9 + i * 2) * 5);
+        for (var x = 0; x <= u.W; x += 8) u.ctx.lineTo(x, u.H * (0.04 + c0 * 0.05) + Math.sin(x * 0.04 + t * 1.5 + c0) * 3 + Math.sin(x * 0.011 - t * 0.9 + c0 * 2) * 5);
         u.ctx.stroke();
       }
       var GY = u.H * 0.9;
       u.ctx.fillStyle = u.lin(0, GY, 0, u.H, [u.fog("#4A3A2A", 0.5, D.air), "#2A1A10"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);
-      for (var j = 0; j < weeds.length; j++) {
-        var s = weeds[j], z = s.z, n = 9, hgt = u.H * s.h * (0.5 + z * 0.6), base = GY - (1 - z) * u.H * 0.05;
-        var c = u.fog(D.weed, (1 - z) * 0.75, D.air), px = s.x, py = base, sp = (0.6 + z * 0.8) * D.sway;
-        for (var k = 0; k < n; k++) {
-          var q = (k + 1) / n, ang = q * 3 + t * sp + s.ph;
-          var nx = s.x + Math.sin(ang) * q * q * hgt * 0.35, ny = base - q * hgt, hw = (1 - q * 0.7) * (2 + z * 5);
-          u.poly([[px - hw, py], [nx - hw, ny], [nx + hw, ny], [px + hw, py]], u.shade(c, Math.cos(ang) * 0.25 * q));
+      for (var j2 = 0; j2 < weeds.length; j2++) {
+        var s2 = weeds[j2], z = s2.z, hgt = u.H * s2.h * (0.5 + z * 0.6), base = GY - (1 - z) * u.H * 0.05, seg = hgt / SEG;
+        var c = u.fog(D.weed, (1 - z) * 0.75, D.air), px = s2.x, py = base;
+        for (var k = 0; k < SEG; k++) {
+          var q = (k + 1) / SEG, a = th[j2 * SEG + k];
+          var nx = px + Math.sin(a) * seg, ny = py - Math.cos(a) * seg, hw = (1 - q * 0.7) * (2 + z * 5);
+          u.poly([[px - hw, py], [nx - hw, ny], [nx + hw, ny], [px + hw, py]], u.shade(c, Math.sin(a) * 0.3));
           px = nx; py = ny;
         }
       }
@@ -6382,16 +6538,17 @@ rhymeOf("Yacht", "Regatta", "three of the same yacht, each on its own row — th
 rhymeOf("Zephyr", "Autumn gale", "the same wind in a warm dusk, nearly twice as fast, carrying three times the leaves in rust and orange — the ribbons barely change, the load does", function make(u) {
   // rhyme of Zephyr: dials moved — sky/ribbon/back/leaf palette, leaves 6 → 18, speed 1.0 → 1.8
   var D = { sky: ["#C88A4A", "#F5D9B0"], ribbon: "#FFF3E0", back: "#E8B888", leaf: "#D8602A",
-            ribbons: 3, leaves: 18, speed: 1.8, len: 0.8, segs: 40 };
+            ribbons: 3, leaves: 18, speed: 1.8, len: 0.8, segs: 40, k: 40, damp: 5, spin: 8 };
   var R = u.rng(17), paths = [], leaves = [];
   for (var i = 0; i < D.ribbons; i++) paths.push({ y: 0.22 + i * 0.24, amp: 0.05 + R() * 0.05, f: 1 + R() * 1.2, off: R() * 4, sp: 0.8 + R() * 0.4 });
-  for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9 });
+  for (var l = 0; l < D.leaves; l++) leaves.push({ p: l % D.ribbons, s: 0.1 + R() * 0.6, spin: R() * 9, y: -1, vy: 0, rot: 0, px: -1e9 });
   function pathY(p, x, t) { return u.H * (p.y + p.amp * Math.sin(x / u.W * p.f * u.TAU - t * 1.5 * p.sp)); }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(u.H * 0.9, "#5A8A5A");
       var len = u.W * D.len, w = u.H * 0.05;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (var i = 0; i < paths.length; i++) {
         var p = paths[i], head = ((t * D.speed * u.W * 0.35 * p.sp + p.off * u.W) % (u.W + len));
         for (var j = 0; j < D.segs; j++) {
@@ -6404,14 +6561,21 @@ rhymeOf("Zephyr", "Autumn gale", "the same wind in a warm dusk, nearly twice as 
         for (var k = 0; k < leaves.length; k++) {
           var o = leaves[k];
           if (o.p !== i) continue;
-          var lx = head - o.s * len, ly = pathY(p, lx, t);
+          var lx = head - o.s * len, target = pathY(p, lx, t), vx = D.speed * u.W * 0.35 * p.sp;
+          if (o.px < -1e8 || lx < o.px - u.W * 0.5) { o.y = target; o.vy = 0; }
+          o.px = lx;
+          for (var st = 0; st < sub; st++) {
+            o.vy += (D.k * (target - o.y) - D.damp * o.vy) * h;
+            o.y = u.clamp(o.y + o.vy * h, -u.H, u.H * 2);
+            o.rot += (Math.abs(vx) + Math.abs(o.vy) * 2) / u.W * D.spin * h;
+          }
           if (lx < 0 || lx > u.W) continue;
-          u.ctx.save(); u.ctx.translate(lx, ly); u.ctx.rotate(t * 3 + o.spin);
+          u.ctx.save(); u.ctx.translate(lx, o.y); u.ctx.rotate(o.rot + o.spin);
           u.ctx.fillStyle = D.leaf; u.ctx.beginPath(); u.ctx.ellipse(0, 0, u.W * 0.014, u.W * 0.007, 0, 0, u.TAU); u.ctx.fill();
           u.ctx.restore();
         }
       }
-      u.label("more leaves on the same y(x) and the wind reads as stronger — the passengers sell the ribbon", u.W / 2, u.H - 8, null, "center");
+      u.label("more leaves chasing the same y(x), faster, and the wind reads as stronger — they fall further behind each crest, and spin harder", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { D.speed = 0.3 + (x / u.W) * 2.5; }
   };
