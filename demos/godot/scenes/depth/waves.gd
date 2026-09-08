@@ -179,6 +179,24 @@ static func _sea_row(n: CanvasItem, b: Dictionary, HY: float, i: int, rows: int,
 	_wave_fill(n, xs, tops, bots, y - amp, y + amp * 3.0, [K.shade(c, 0.25), c, K.shade(c, -0.3)])
 	return y
 
+## The base y of sea row i (horizon + p²), exactly as _sea_row lays it out.
+static func _row_y(b: Dictionary, HY: float, i: int, rows: int) -> float:
+	var H: float = b.H
+	var p := float(i + 1) / rows
+	return HY + p * p * (H - HY) * 0.9
+
+## The water of sea row i at column x — the same sine _sea_row draws — as
+## (height below the row's base, slope dy/dx): what a hull sitting there feels.
+## Wake / Xebec / Yacht spring their hulls toward this instead of a clock.
+static func _sea_at(b: Dictionary, i: int, rows: int, x: float, tsign: float) -> Vector2:
+	var W: float = b.W
+	var t: float = b.t
+	var p := float(i + 1) / rows
+	var amp := 1.0 + p * p * 5.0
+	var wl := W * (0.15 + p * 0.35)
+	var ph := x / wl * TAU + tsign * t * (0.5 + p) + i
+	return Vector2(sin(ph) * amp, cos(ph) * amp * TAU / wl)
+
 ## Tide: the front edge of row r at column x — a slow sine riding a fast one.
 static func _edge_at(b: Dictionary, x: float, r: int, reach: float, t: float) -> float:
 	var W: float = b.W
@@ -187,36 +205,36 @@ static func _edge_at(b: Dictionary, x: float, r: int, reach: float, t: float) ->
 
 ## Xebec: a lateen sail — yard slanting low-forward to high-aft, the leech bowed out.
 ## Drawn in the ship's local space; sail_c / hull_c carry the ship's alpha already.
-static func _lateen(n: CanvasItem, mx: float, size: float, s: float, sail_c: Color, hull_c: Color, belly: float, t: float) -> void:
+## breathe is the sprung belly (the card's tick chases the hull's roll with it).
+static func _lateen(n: CanvasItem, mx: float, size: float, s: float, sail_c: Color, hull_c: Color, breathe: float) -> void:
 	var ax := mx - size * 0.45
 	var ay := -size * 1.05
 	var fx := mx + size * 0.45
 	var fy := -size * 0.35
 	var cx := mx - size * 0.4
 	var cy := -size * 0.12
-	var breathe := belly * (0.7 + 0.3 * sin(t * 1.6))                     # the sail fills and slackens
 	var ctrl := Vector2((fx + cx) / 2.0 + size * 0.25 * breathe, (fy + cy) / 2.0 + size * 0.1)
 	var pts := PackedVector2Array([Vector2(ax, ay), Vector2(fx, fy)])
 	for i in range(1, 8):
 		pts.append(_qbez(Vector2(fx, fy), ctrl, Vector2(cx, cy), i / 8.0))
 	pts.append(Vector2(cx, cy))
 	# dark at the yard, light on the belly: a sideways gradient makes the triangle curve
-	_grad_poly(n, pts, 0, ax, fx, [[0.0, K.shade(sail_c, -0.35)], [0.45 + breathe * 0.15, K.shade(sail_c, -0.05)], [1.0, K.shade(sail_c, 0.15)]])
+	_grad_poly(n, pts, 0, ax, fx, [[0.0, K.shade(sail_c, -0.35)], [clampf(0.45 + breathe * 0.15, 0.01, 0.99), K.shade(sail_c, -0.05)], [1.0, K.shade(sail_c, 0.15)]])
 	K.line(n, Vector2(ax, ay), Vector2(fx, fy), K.shade(hull_c, -0.3), 1.5)   # the yard
 	K.line(n, Vector2(mx, -6.0 * s), Vector2(mx, -size), K.shade(hull_c, -0.3), 1.5)   # the mast
 
-## Yacht: one boat at (x, y); z 0 far … 1 near sets its size and fog. The heel is
-## one rotate, the tack a mirror — both live in the transform, not the points.
-static func _yacht(n: CanvasItem, b: Dictionary, x: float, y: float, z: float) -> void:
+## Yacht: one boat at (x, y); z 0 far … 1 near sets its size and fog. The heel th
+## is one rotate (this boat's sprung angle), the tack a mirror — both live in the
+## transform, not the points.
+static func _yacht(n: CanvasItem, b: Dictionary, x: float, y: float, z: float, th: float) -> void:
 	var D: Dictionary = b.D
 	var air: Color = D.air
 	var dir: float = b.dir
-	var lean: float = b.lean
 	var W: float = b.W
 	var s := W * 0.0045 * (0.3 + z * 0.7)
 	var hull := K.fog(D.hull, (1.0 - z) * 0.6, air)
 	var sail := K.fog(D.sail, (1.0 - z) * 0.6, air)
-	n.draw_set_transform(Vector2(x, y), lean * dir, Vector2(dir, 1.0))   # mirror + lean: the wind's side
+	n.draw_set_transform(Vector2(x, y), th, Vector2(dir, 1.0))          # the sprung heel, and a mirror for the wind's side
 	K.poly(n, PackedVector2Array([Vector2(-24 * s, -5 * s), Vector2(26 * s, -6 * s), Vector2(20 * s, 6 * s), Vector2(-20 * s, 6 * s)]), hull)
 	K.poly(n, PackedVector2Array([Vector2(-23 * s, 1 * s), Vector2(24 * s, 1 * s), Vector2(20 * s, 6 * s), Vector2(-20 * s, 6 * s)]),
 		K.fog(D.trim, (1.0 - z) * 0.6, air))                                # the stripe at the waterline
@@ -378,10 +396,12 @@ static func defs() -> Array:
 
 	# ---- K · Kite ----------------------------------------------------------
 	d.append({ "letter": "K", "name": "Kite",
-		"hint": "a diamond of two triangles, lit and dark either side of the spar, bobbing on a sine — its tail is a chain, each link following the last, twisting as it trails",
+		"hint": "a diamond of two triangles, lit and dark either side of the spar, held on a spring toward a slowly wandering point in the wind — click for a gust: it kicks the kite up and downwind, and the spring brings it back with an overshoot; its tail is a chain, each link following the last, twisting as it trails",
 		"dials": { "sky": [Color("3A7FD0"), Color("B8D8F5")], "kite": Color("F5A15A"), "tail": Color("F05A8A"), "tail_back": Color("F5E0B0"),
 			"links": 26, "link": 0.022, "bob": 1.0, "wind": 1.0,              # link: one chain segment, as a share of H
-			"label": "two flat shades meeting at the spar make a fold; the tail is a chain — each link follows the one before" },
+			"k": 20, "damp": 0.3,                                             # the body's position spring toward its wind-held point: stiffness, and damping as a fraction of critical (2√k) — under 1, so a gust overshoots
+			"gust": 0.8,                                                      # a click's kick, in screens per second: up by gust·H, downwind by half that
+			"label": "two flat shades meeting at the spar make a fold; the body is a spring on the wind, the tail a chain — each link follows the one before" },
 		"rhyme": { "name": "Dragon kite", "hint": "the same diamond in red with a gold-and-crimson tail almost twice as long, over a festival dusk — the chain just has more links",
 			"dials": { "sky": [Color("3A2A6A"), Color("F5A15A")], "kite": Color("D82A2A"), "tail": Color("F5C169"), "tail_back": Color("B81A1A"),
 				"links": 44, "link": 0.02,
@@ -391,17 +411,47 @@ static func defs() -> Array:
 			b.tail = []
 			for i in links + 1:
 				b.tail.append(Vector2(b.W * 0.6 - i * 4.0, b.H * 0.5 + i * 4.0))
-			b.gust_at = -9.0,
+			b.kx = b.W * 0.6                                                  # the body, and its velocity
+			b.ky = b.H * 0.36
+			b.vx = 0.0
+			b.vy = 0.0
+			b.lean = 0.0,
 		"tick": func(b: Dictionary, dt: float) -> void:
+			# the kite is a point on a spring. its REST wanders slowly — two slow sines
+			# per axis stand in for the wind's drift — and the kite chases it, always
+			# a little behind, always overshooting a touch. a gust is not a position:
+			# it is velocity added to the kite, which then flies up and past the rest
+			# and is pulled back, ringing down over a couple of seconds. the tail is a
+			# constrained chain hung from the sprung body, so its whip is the body's
+			# real motion run through the links.
 			var D: Dictionary = b.D
 			var t: float = b.t
 			var links: int = D.links
-			var ga: float = b.gust_at
 			var bob: float = D.bob
 			var wind: float = D.wind
-			var gust := exp(-(t - ga) * 2.0)
-			var kx: float = b.W * (0.6 + 0.07 * sin(t * 0.7) + gust * 0.1)
-			var ky: float = b.H * (0.36 + 0.07 * sin(t * 1.3 * bob) - gust * 0.12)
+			var k: float = D.k
+			var damp: float = D.damp * 2.0 * sqrt(k)                          # a fraction of critical
+			var rx: float = b.W * (0.6 + 0.05 * sin(t * 0.7) + 0.03 * sin(t * 1.9 + 1.0))   # the wind-held point drifts
+			var ry: float = b.H * (0.36 + 0.05 * sin(t * 1.3 * bob) + 0.03 * sin(t * 0.53 + 2.0))
+			# symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var kx: float = b.kx
+			var ky: float = b.ky
+			var vx: float = b.vx
+			var vy: float = b.vy
+			for _s in sub:
+				vx += (k * (rx - kx) - damp * vx) * h
+				kx += vx * h
+				vy += (k * (ry - ky) - damp * vy) * h
+				ky += vy * h
+			kx = clampf(kx, b.W * 0.1, b.W * 0.95)
+			ky = clampf(ky, b.H * 0.05, b.H * 0.8)
+			b.kx = kx
+			b.ky = ky
+			b.vx = vx
+			b.vy = vy
+			b.lean = clampf(vx / (b.W * 0.6), -0.35, 0.35)                    # the kite banks with its sideways speed: the fold's shading shifts
 			var kh: float = b.H * 0.1
 			var tail: Array = b.tail
 			tail[0] = Vector2(kx, ky + kh * 1.2)                              # the tail: a chain. wind and gravity move each link,
@@ -414,18 +464,18 @@ static func defs() -> Array:
 				p.x += (30.0 + 40.0 * sin(t * 3.0 + i * 0.4)) * step * wind
 				var dv := p - q
 				tail[i] = q + dv / (dv.length() + 1e-6) * L,
-		"press": func(b: Dictionary, _pos: Vector2) -> void: b.gust_at = b.t,   # click = a gust lifts the kite
+		"press": func(b: Dictionary, _pos: Vector2) -> void:                  # click = a gust: velocity, not a place — the spring does the rest
+			var gust: float = b.D.gust
+			b.vy -= b.H * gust
+			b.vx += b.W * gust * 0.5,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
 			K.sky(n, b, D.sky)
 			K.ground(n, b, b.H * 0.9, Color("4A7A4A"))
-			var ga: float = b.gust_at
-			var bob: float = D.bob
-			var gust := exp(-(t - ga) * 2.0)                                  # a click's gust fades in half a second
-			var kx: float = b.W * (0.6 + 0.07 * sin(t * 0.7) + gust * 0.1)
-			var ky: float = b.H * (0.36 + 0.07 * sin(t * 1.3 * bob) - gust * 0.12)
-			var lean := sin(t * 0.7) * 0.3
+			var kx: float = b.kx                                              # the sprung body
+			var ky: float = b.ky
+			var lean: float = b.lean
 			var kw: float = b.W * 0.07
 			var kh: float = b.H * 0.1
 			K.line(n, Vector2(b.W * 0.08, b.H * 0.9), Vector2(kx - kw * 0.3, ky + kh * 0.4), Color(0, 0, 0, 0.35), 1.0)   # the string
@@ -446,15 +496,36 @@ static func defs() -> Array:
 
 	# ---- L · Loop ----------------------------------------------------------
 	d.append({ "letter": "L", "name": "Loop", "drag": true,
-		"hint": "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside",
+		"hint": "a ribbon tied in a loop-de-loop: quads round a circle, width = |cos| of the angle from the bottom, colour flipping to the back at the top — a car rides the inside, fast through the bottom and slow over the crown, its speed traded for height",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "front": Color("F5C169"), "back": Color("8A5A2A"), "car": Color("D82A2A"),
-			"segs": 72, "width": 0.11, "car_speed": 1.2, "radius": 0.3,
-			"label": "the |cos| rule bent into a circle — front at the bottom, back at the top, edge-on at the sides" },
+			"segs": 72, "width": 0.11, "radius": 0.3,
+			"car_speed": 1.2,                                                 # the car's angular speed at the bottom of the loop, rad/s — negative runs it backwards
+			"gravity": 0.3,                                                   # the pull that trades speed for height, in (rad/s)² per loop radius: at the crown v² = car_speed² − 4·gravity
+			"min_speed": 0.25,                                                # the car never quite stalls at the crown — a chain lift, rad/s
+			"label": "the |cos| rule bent into a circle — front at the bottom, back at the top, edge-on at the sides; the car's speed is √(v₀² − 2g·h)" },
 		"rhyme": { "name": "Roller coaster", "hint": "the same loop as a red rail under a carnival night, the car in gold running two and a half times faster",
 			"dials": { "sky": [Color("1A1030"), Color("3A2A6A")], "front": Color("D82A2A"), "back": Color("5A0A0A"), "car": Color("F5C169"),
 				"car_speed": 3.0,
-				"label": "speed is a dial: at 3.0 the eye stops seeing a ribbon and starts seeing a ride" } },
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.car_speed = (pos.x / b.W - 0.5) * 5.0,   # click left of centre = the car runs backwards
+				"label": "speed is a dial: at 3.0 the eye stops seeing a ribbon and starts seeing a ride — and a car that fast barely slows at the crown" } },
+		"init": func(b: Dictionary) -> void:
+			b.ca = 0.0,                                                       # the car's angle from the bottom
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the car's speed is not a dial, it is ENERGY: v² = v₀² − 2·g·h, with h the
+			# height above the bottom of the loop (1 − cos of the angle, in radii). so
+			# it is fastest through the bottom, slows climbing, crawls over the crown
+			# and comes down faster again — and the angle is integrated with that
+			# speed each frame rather than read off the clock. a floor keeps it from
+			# stalling when the press sets a bottom speed too low to make the top.
+			var D: Dictionary = b.D
+			var cs: float = D.car_speed
+			var g: float = D.gravity
+			var vmin: float = D.min_speed
+			var ca: float = b.ca
+			var dir := -1.0 if cs < 0.0 else 1.0
+			var w2 := cs * cs - 2.0 * g * (1.0 - cos(ca))                      # v² from the energy left at this height
+			ca += dir * sqrt(maxf(w2, vmin * vmin)) * minf(dt, 0.05)
+			b.ca = fposmod(ca, TAU),                                           # keep the angle in one turn
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.car_speed = (pos.x / b.W - 0.5) * 5.0,   # click left of centre = the car runs backwards; near the centre it barely makes the crown
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -479,7 +550,7 @@ static func defs() -> Array:
 				K.poly(n, PackedVector2Array([Vector2(cx + s0 * (R - hw), cy + c0 * (R - hw)), Vector2(cx + s1 * (R - hw), cy + c1 * (R - hw)),
 					Vector2(cx + s1 * (R + hw), cy + c1 * (R + hw)), Vector2(cx + s0 * (R + hw), cy + c0 * (R + hw))]),
 					K.shade(D.front if c >= 0.0 else D.back, clampf(lit, -0.4, 0.4)))   # cos < 0 (the top half) shows the back
-			var ca: float = t * D.car_speed
+			var ca: float = b.ca                                              # integrated by tick from the car's energy
 			var cr := w * 0.35
 			var cw := absf(cos(ca)) * w / 2.0 + 0.6                            # the car hugs the inside of the track
 			K.sphere(n, Vector2(cx + sin(ca) * (R - cw - cr), cy + cos(ca) * (R - cw - cr)), cr, D.car, -0.5, -0.5, 0.5)
@@ -712,20 +783,108 @@ static func defs() -> Array:
 
 	# ---- W · Wake ----------------------------------------------------------
 	d.append({ "letter": "W", "name": "Wake", "drag": true,
-		"hint": "a boat crossing rows of receding sea, trailing a V of ripples — rings left at its past positions, growing and fading with age, squashed flat by perspective",
+		"hint": "a boat crossing rows of receding sea, trailing a V of ripples — every ring is dropped where the stern was and grows from there, older ones wider and fainter, squashed flat by perspective; the hull rides the swell on a spring, pitching with its heave — click right = faster boat, and the rings already dropped stay put",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "sea": Color("1E5A8F"), "air": Color("C8DCEE"), "hull": Color("2A1E1A"), "sail": Color("F5F0E0"),
-			"rows": 6, "rings": 14, "speed": 1.0, "spread": 0.45,             # spread: ring radius per unit distance behind — the V's angle
-			"label": "each ring was dropped where the boat was, then grew and faded — the V is their envelope, squashed flat" },
-		"rhyme": { "name": "Speedboat", "hint": "the same rings behind a white hull with no sail, two and a half times faster and a wider V — spread is the boat's speed made visible",
+			"rows": 6,
+			"rings": 32,                                                      # how many rings are kept alive — the oldest is recycled when a new one drops
+			"speed": 1.0,                                                     # the boat's speed: 1 = 0.18 screens per second
+			"spread": 0.45,                                                   # how fast a ring grows, as a share of the boat's speed at speed 1 — the V's half-angle is atan(spread / speed)
+			"drop": 0.08,                                                     # seconds between rings
+			"life": 2.4,                                                      # seconds a ring lives, growing and fading the whole time
+			"k": 36.0, "damp": 0.35,                                          # the hull's heave spring toward the water under it: stiffness, and damping as a fraction of critical (2√k)
+			"pitch_k": 25.0, "pitch_damp": 0.3,                               # the pitch spring, whose rest is the heave velocity × pitch_gain — the bow lifts as the hull rises
+			"pitch_gain": 0.004,                                              # radians of pitch per px/s of heave
+			"label": "each ring is a stored (x, y, born): it grows at one rate while the boat runs on — the V is their envelope, angle = ring growth ÷ boat speed" },
+		"rhyme": { "name": "Speedboat", "hint": "the same rings behind a white hull with no sail, two and a half times faster, the rings growing nearly twice as fast — bigger rings, but a tighter V, because the V's angle is growth over speed; click to change speed and the rings already dropped stay put",
 			"dials": { "hull": Color("F0F0F5"), "sail": Color(0, 0, 0, 0), "speed": 2.4, "spread": 0.8,
-				"label": "a wider spread is a faster boat: the rings grow the same, the boat just gets further away from them" } },
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.speed = 0.3 + (pos.x / b.W) * 2.0,   # click right = faster boat
+				"label": "the V's angle is ring growth over boat speed: 0.8 / 2.4 — bigger rings, tighter V; a press leaves the old rings behind" } },
+		"init": func(b: Dictionary) -> void:
+			var cap: int = maxi(1, int(b.D.rings))
+			var rx := PackedFloat32Array()                # sized here: a packed array read back from b is a copy
+			var ry := PackedFloat32Array()
+			var rborn := PackedFloat32Array()
+			rx.resize(cap)
+			ry.resize(cap)
+			rborn.resize(cap)
+			b.rx = rx                                     # the ring buffer: where each ring was dropped, and when
+			b.ry = ry
+			b.rborn = rborn
+			b.rhead = 0
+			b.rcount = 0
+			b.since = 0.0                                 # seconds since the last ring dropped
+			b.bx = -b.W * 0.25                            # the boat enters from the left
+			b.by = b.H * 0.62                             # the hull's height and heave velocity
+			b.vy = 0.0
+			b.pitch = 0.0                                 # the hull's pitch and its rate
+			b.pv = 0.0,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the wake is a MEMORY: every `drop` seconds the stern leaves a ring on the
+			# water, and from then on the ring is on its own — radius and alpha come from
+			# its age, nothing else. the boat never looks back to draw them, so when it
+			# wraps to the left edge, or a press changes its speed, the rings already
+			# dropped stay exactly where they were. the V is only their envelope: the
+			# tangent through the stern, whose slope is ring growth over boat speed.
+			# the hull is a damped spring toward the water height under it (the same
+			# sine the boat's sea row draws), and the pitch is a second spring whose
+			# rest is the heave velocity — so the bow lifts as the hull rises and the
+			# hull overshoots each crest a little, because both are under-damped.
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var W: float = b.W
+			var H: float = b.H
+			var rows: int = D.rows
+			var v: float = float(D.speed) * W * 0.18                          # px/s: the boat
+			var bx: float = b.bx + v * dt
+			if bx > W * 1.25:                                                 # the boat wraps; the rings it dropped do not
+				bx -= W * 1.5
+			b.bx = bx
+			var BY := H * 0.62
+			var ri := maxi(0, rows - 3)                                       # the boat's sea row
+			var water: float = BY + _sea_at(b, ri, rows, bx, 1.0).x           # the water under the hull, this frame
+			var k: float = D.k
+			var damp: float = float(D.damp) * 2.0 * sqrt(k)                   # a fraction of critical
+			var pk: float = D.pitch_k
+			var pdamp: float = float(D.pitch_damp) * 2.0 * sqrt(pk)
+			var gain: float = D.pitch_gain
+			# symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var by: float = b.by
+			var vy: float = b.vy
+			var pitch: float = b.pitch
+			var pv: float = b.pv
+			for _s in sub:
+				vy += (k * (water - by) - damp * vy) * h                      # heave: chase the water
+				by += vy * h
+				var prest := clampf(vy * gain, -0.3, 0.3)                     # pitch: chase the heave velocity — rising = bow up
+				pv += (pk * (prest - pitch) - pdamp * pv) * h
+				pitch = clampf(pitch + pv * h, -0.5, 0.5)
+			b.by = clampf(by, BY - H * 0.2, BY + H * 0.2)
+			b.vy = vy
+			b.pitch = pitch
+			b.pv = pv
+			var rx: PackedFloat32Array = b.rx
+			var ry: PackedFloat32Array = b.ry
+			var rborn: PackedFloat32Array = b.rborn
+			var cap := rx.size()
+			var s := W * 0.004
+			var since: float = b.since + dt
+			var drop: float = maxf(0.01, D.drop)
+			while since >= drop:                                              # drop a ring where the stern is now (it is `since` seconds old already)
+				since -= drop
+				var hd: int = b.rhead
+				rx[hd] = bx - 16.0 * s
+				ry[hd] = water
+				rborn[hd] = t - since
+				b.rhead = (hd + 1) % cap
+				b.rcount = mini(int(b.rcount) + 1, cap)
+			b.since = since,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.speed = 0.3 + (pos.x / b.W) * 2.0,   # click right = faster boat — the rings already dropped stay where they are
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
 			K.sky(n, b, D.sky)
-			var HY: float = b.H * 0.32                                        # the horizon, and the boat's row
-			var BY: float = b.H * 0.62
+			var HY: float = b.H * 0.32                                        # the horizon; the boat's row is at 0.62
 			var sea: Color = D.sea
 			var air: Color = D.air
 			n.draw_rect(Rect2(0, HY, b.W, b.H - HY), K.fog(sea, 0.85, air))
@@ -733,53 +892,129 @@ static func defs() -> Array:
 			for i in rows:                                                    # the sea recedes: rows bunch toward the horizon
 				_sea_row(n, b, HY, i, rows, sea, air, 1.0)
 			var s: float = b.W * 0.004
-			var speed: float = D.speed
-			var spread: float = D.spread
-			var bx: float = fposmod(t * speed * b.W * 0.18, b.W * 1.5) - b.W * 0.25   # the boat crosses left → right
-			var by := BY + sin(t * 2.0) * 2.0
-			var L: float = b.W * 0.45                                         # how far back the wake reaches
-			var rings: int = D.rings
-			for k in range(rings, 0, -1):                                     # oldest rings first
-				var age := float(k) / rings
-				var rx := age * L * spread                                     # each ring was left where the boat was, and has grown since
-				_ellipse_line(n, Vector2(bx - age * L, by), rx, rx * 0.3, K.alpha(Color.WHITE, (1.0 - age) * 0.55), 1.0 + (1.0 - age) * 1.2)   # squashed: we see the water at a low angle
-			# the V's arms fade with distance — a gradient stroke, spelled as 12 segments of stepped alpha
+			var v: float = float(D.speed) * b.W * 0.18                        # px/s: the boat, and a ring's radius
+			var grow: float = float(D.spread) * b.W * 0.18
+			var life: float = D.life
+			var bx: float = b.bx
+			var by: float = b.by
+			var rx: PackedFloat32Array = b.rx
+			var ry: PackedFloat32Array = b.ry
+			var rborn: PackedFloat32Array = b.rborn
+			var cap := rx.size()
+			var cnt: int = b.rcount
+			var hd: int = b.rhead
+			for j in cnt:                                                     # oldest rings first
+				var idx := (hd - cnt + j + cap) % cap
+				var age := t - rborn[idx]
+				if age < 0.0 or age > life:
+					continue
+				var r := grow * age                                           # each ring has grown since it was dropped, and faded
+				var fade := 1.0 - age / life
+				_ellipse_line(n, Vector2(rx[idx], ry[idx]), r, r * 0.3, K.alpha(Color.WHITE, fade * 0.55), 1.0 + fade * 1.2)   # squashed: we see the water at a low angle
+			# the envelope: where the oldest living ring is, and how wide it has grown (squashed) —
+			# the V's arms fade with distance, a gradient stroke spelled as 12 segments of stepped alpha
+			var L := v * life
+			var A := grow * life * 0.3
 			for arm in [-1.0, 1.0]:
 				var armf: float = arm
 				var stern := Vector2(bx, by)
-				var tip := Vector2(bx - L, by + armf * L * spread * 0.3)
+				var tip := Vector2(bx - L, by + armf * A)
 				for sg in 12:
 					var k0 := float(sg) / 12.0
 					var k1 := float(sg + 1) / 12.0
 					K.line(n, stern.lerp(tip, k0), stern.lerp(tip, k1), K.alpha(Color.WHITE, 0.6 * (1.0 - (k0 + k1) / 2.0)), 1.0)
-			K.soft(n, Vector2(bx - 16 * s, by), 8 * s, Color.WHITE, 0.6)     # foam at the stern
-			K.poly(n, PackedVector2Array([Vector2(bx - 18 * s, by - 5 * s), Vector2(bx + 20 * s, by - 5 * s), Vector2(bx + 14 * s, by + 5 * s), Vector2(bx - 13 * s, by + 5 * s)]), D.hull)
-			K.line(n, Vector2(bx, by - 5 * s), Vector2(bx, by - 40 * s), D.hull, 1.0)
+			n.draw_set_transform(Vector2(bx, by), b.pitch, Vector2.ONE)       # the hull: heaved and pitched by the springs
+			K.soft(n, Vector2(-16 * s, 0.0), 8 * s, Color.WHITE, 0.6)        # foam at the stern
+			K.poly(n, PackedVector2Array([Vector2(-18 * s, -5 * s), Vector2(20 * s, -5 * s), Vector2(14 * s, 5 * s), Vector2(-13 * s, 5 * s)]), D.hull)
+			K.line(n, Vector2(0.0, -5 * s), Vector2(0.0, -40 * s), D.hull, 1.0)
 			var sail: Color = D.sail                                          # the sail bellies: light → dark across it
-			_grad_poly(n, PackedVector2Array([Vector2(bx + s, by - 38 * s), Vector2(bx + s, by - 7 * s), Vector2(bx + 22 * s, by - 7 * s)]),
-				0, bx, bx + 22 * s, [K.shade(sail, 0.1), sail, K.shade(sail, -0.3)])
+			_grad_poly(n, PackedVector2Array([Vector2(s, -38 * s), Vector2(s, -7 * s), Vector2(22 * s, -7 * s)]),
+				0, 0.0, 22 * s, [K.shade(sail, 0.1), sail, K.shade(sail, -0.3)])
+			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			K.label(n, b, D.label) })
 
 	# ---- X · Xebec ---------------------------------------------------------
 	d.append({ "letter": "X", "name": "Xebec", "drag": true,
-		"hint": "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the sails breathe, the hull rocks, the sea recedes behind",
+		"hint": "a ship with lateen sails: each triangle filled dark → light across its width reads as a bellied curve — the hull rides the swell under it on a spring, rolls to the water's slope on another, and the sails fill and slacken on a third that chases the roll and overshoots; the sea recedes behind — click right = a stiffer wind",
 		"dials": { "sky": [Color("F5C169"), Color("F5E1B0"), Color("8FB8E0")], "sea": Color("2A5A8A"), "air": Color("E8D8B8"), "hull": Color("4A2A1A"), "sail": Color("F0E6D0"),
-			"rows": 6, "belly": 1.0, "alpha": 1.0,                             # alpha: how solid the ship is
-			"label": "a triangle with a sideways gradient is a curved sail; far rows, then the ship, then the near row" },
+			"rows": 6,
+			"belly": 1.0,                                                     # the belly the wind asks for — the sails' spring chases it
+			"alpha": 1.0,                                                     # how solid the ship is
+			"k": 16.0, "damp": 0.4,                                           # the hull's heave spring toward the water under it: stiffness, and damping as a fraction of critical (2√k)
+			"roll_k": 12.0, "roll_damp": 0.35,                                # the roll spring — its rest is the water's slope under the hull × roll_gain
+			"roll_gain": 0.35,                                                # radians of roll per unit of slope (dy/dx)
+			"sail_k": 25.0, "sail_damp": 0.25,                                # the sails' belly spring, chasing the hull's roll — less damped, so the rig lags and overshoots at the top of each roll
+			"sail_gain": 3.0,                                                 # how much a radian of roll swells (or slackens) the belly
+			"label": "a sideways gradient bends a triangle into a sail; hull chases the swell, roll chases its slope, the rig chases the roll — three springs" },
 		"rhyme": { "name": "Ghost ship", "hint": "the same ship in grey under a night sky, drawn at half alpha so the sea shows through the hull — translucency is the whole haunting",
 			"dials": { "sky": [Color("3A4A6A"), Color("1A2040"), Color("05051A")], "sea": Color("0A1A2A"), "air": Color("2A3A5A"), "hull": Color("3A4A5A"), "sail": Color("A8C8D8"),
 				"alpha": 0.55,
 				"label": "globalAlpha 0.55: the far rows show through the hull, so the ship reads as less THERE — alpha is presence" } },
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.belly = 0.3 + (pos.x / b.W) * 1.5,   # click right = a stiffer wind fills the sails
+		"init": func(b: Dictionary) -> void:
+			b.sy = b.H * 0.66                             # the hull's height and heave velocity
+			b.vy = 0.0
+			b.roll = 0.0                                  # the hull's roll and its rate
+			b.rv = 0.0
+			b.bel = float(b.D.belly) * 0.85               # the sails' belly and its rate
+			b.bv = 0.0,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# three springs, each chasing the one before. the hull chases the water
+			# height under it — the same sine its sea row draws — and overshoots each
+			# crest a little (damp < 1). the roll chases the water's SLOPE there, so
+			# the ship leans down the face of each swell and rights itself past
+			# vertical. the sails chase the roll on a looser spring: they fill as the
+			# hull rolls toward the wind, lag behind it, and swell past the rest at
+			# the top of the roll — the rig is the last thing to settle. a press moves
+			# the belly's target; the sails take their own time getting there.
+			var D: Dictionary = b.D
+			var H: float = b.H
+			var rows: int = D.rows
+			var SY := H * 0.66
+			var wave := _sea_at(b, maxi(0, rows - 3), rows, b.W * 0.5, -1.0)   # the water under the hull: its height, and its slope
+			var water := SY + wave.x
+			var slope := wave.y
+			var k: float = D.k
+			var damp: float = float(D.damp) * 2.0 * sqrt(k)                   # each damping is a fraction of its own critical
+			var rk: float = D.roll_k
+			var rdamp: float = float(D.roll_damp) * 2.0 * sqrt(rk)
+			var rgain: float = D.roll_gain
+			var sk: float = D.sail_k
+			var sdamp: float = float(D.sail_damp) * 2.0 * sqrt(sk)
+			var sgain: float = D.sail_gain
+			var belly: float = D.belly
+			# symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var sy: float = b.sy
+			var vy: float = b.vy
+			var roll: float = b.roll
+			var rv: float = b.rv
+			var bel: float = b.bel
+			var bv: float = b.bv
+			for _s in sub:
+				vy += (k * (water - sy) - damp * vy) * h                      # heave: chase the water height
+				sy += vy * h
+				var rrest := clampf(slope * rgain, -0.4, 0.4)                 # roll: chase the water's slope
+				rv += (rk * (rrest - roll) - rdamp * rv) * h
+				roll = clampf(roll + rv * h, -0.6, 0.6)
+				var brest := belly * (0.85 + sgain * roll)                    # belly: chase the roll, on the loosest spring
+				bv += (sk * (brest - bel) - sdamp * bv) * h
+				bel = clampf(bel + bv * h, 0.05, 3.0)
+			b.sy = clampf(sy, SY - H * 0.2, SY + H * 0.2)
+			b.vy = vy
+			b.roll = roll
+			b.rv = rv
+			b.bel = bel
+			b.bv = bv,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.belly = 0.3 + (pos.x / b.W) * 1.5,   # click right = a stiffer wind — it moves the belly's target, and the sails' spring follows
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var sky: Array = D.sky
 			K.sky(n, b, [[0.0, sky[2]], [0.6, sky[1]], [1.0, sky[0]]])
 			var HY: float = b.H * 0.45
 			var s: float = b.W * 0.0045
 			var sx: float = b.W * 0.5
-			var sy: float = b.H * 0.66 + sin(t * 0.9) * 2.0
+			var sy: float = b.sy                                              # the sprung hull
 			K.soft(n, Vector2(b.W * 0.7, HY), b.W * 0.3, sky[0], 0.5)         # a low sun behind the ship
 			var sea: Color = D.sea
 			var air: Color = D.air
@@ -791,10 +1026,10 @@ static func defs() -> Array:
 			var al: float = D.alpha
 			var hull := K.alpha(D.hull, al)
 			var sail := K.alpha(D.sail, al)
-			var belly: float = D.belly
-			n.draw_set_transform(Vector2(sx, sy), sin(t * 0.9) * 0.05, Vector2.ONE)   # the hull rocks
-			_lateen(n, -2 * s, 58 * s, s, sail, hull, belly, t)
-			_lateen(n, 28 * s, 42 * s, s, sail, hull, belly, t)
+			var bel: float = b.bel
+			n.draw_set_transform(Vector2(sx, sy), b.roll, Vector2.ONE)        # the hull: heaved and rolled by its springs
+			_lateen(n, -2 * s, 58 * s, s, sail, hull, bel)
+			_lateen(n, 28 * s, 42 * s, s, sail, hull, bel)
 			_grad_poly(n, PackedVector2Array([Vector2(-40 * s, -6 * s), Vector2(44 * s, -9 * s), Vector2(36 * s, 6 * s), Vector2(-34 * s, 6 * s)]),
 				1, -8 * s, 6 * s, [K.shade(hull, 0.2), K.shade(hull, -0.4)])   # dark at the waterline
 			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -803,40 +1038,108 @@ static func defs() -> Array:
 
 	# ---- Y · Yacht ---------------------------------------------------------
 	d.append({ "letter": "Y", "name": "Yacht",
-		"hint": "a yacht heeling in the wind: one tall triangle shaded across its width as a curved sail, the whole boat rotated by the heel — rows of sea behind and in front",
+		"hint": "a yacht heeling in the wind: one tall triangle shaded across its width as a curved sail, the whole boat rotated by the heel — the heel is an under-damped spring, so a tack swings past upright and settles back, and the hull rides its row's swell on another; rows of sea behind and in front — click = tack",
 		"dials": { "sky": [Color("3A7FD0"), Color("B8D8F5")], "sea": Color("1E5A8F"), "air": Color("C8DCEE"), "hull": Color("F5F0E0"), "sail": Color.WHITE, "trim": Color("D82A2A"),
-			"rows": 6, "boats": 1, "heel": 0.22, "speed": 1.0,                 # heel: radians of lean
-			"label": "a triangle with a gradient across it is a sail; the heel is one rotate — rows behind, boat, rows in front" },
+			"rows": 6, "boats": 1,
+			"heel": 0.22,                                                     # radians of lean the wind asks for
+			"speed": 1.0,
+			"k": 16.0, "damp": 0.35,                                          # the heel spring: ω = √k ≈ 4 rad/s, and damping as a fraction of critical (2√k) — under 1, so a tack overshoots
+			"slope_gain": 0.25,                                               # radians of extra heel per unit of the water's slope under the hull — the swell rocks the boat
+			"bob_k": 30.0, "bob_damp": 0.4,                                   # the hull's heave spring toward the water under it
+			"label": "a triangle with a gradient across it is a sail; the heel is one rotate on a spring — a tack swings past and settles; rows behind, boat, rows in front" },
 		"rhyme": { "name": "Regatta", "hint": "three of the same yacht, each on its own row — the far ones smaller and paler by the row they sit on — leaning harder, sailing faster",
 			"dials": { "boats": 3, "heel": 0.3, "speed": 1.6,
-				"label": "count 1 → 3: each boat is drawn right after its row, so the near sea covers the far hulls — order is depth" } },
+				"label": "count 1 → 3: each boat is drawn right after its row, so the near sea covers the far hulls — and each tacks on its own spring" } },
 		"init": func(b: Dictionary) -> void:
+			var D: Dictionary = b.D
+			var rows: int = D.rows
+			var boats: int = maxi(1, int(D.boats))
+			var HY: float = b.H * 0.4
 			b.dir = 1.0
-			b.lean = b.D.heel,
+			b.n = boats
+			var row_of := PackedInt32Array()              # which row each boat sits on, and where — fixed for the card's life
+			var bx := PackedFloat32Array()
+			var th := PackedFloat32Array()                # sized here: a packed array read back from b is a copy
+			var om := PackedFloat32Array()
+			var by := PackedFloat32Array()
+			var vy := PackedFloat32Array()
+			for bt in boats:
+				var r: int = rows - 2 if boats == 1 else int(round(1.0 + (float(bt) / (boats - 1)) * (rows - 3)))
+				row_of.append(r)
+				bx.append(b.W * (0.5 + (bt - (boats - 1) / 2.0) * 0.3))
+				th.append(float(D.heel))
+				om.append(0.0)
+				by.append(_row_y(b, HY, r, rows) - 2.0)
+				vy.append(0.0)
+			b.row_of = row_of
+			b.bx = bx
+			b.th = th                                     # each boat's heel and its rate
+			b.om = om
+			b.by = by                                     # each boat's height and heave velocity
+			b.vy = vy,
 		"tick": func(b: Dictionary, dt: float) -> void:
-			var heel: float = b.D.heel
+			# the heel is a damped spring toward heel·dir plus the slope of the water
+			# under the hull. a tack flips the TARGET, never the angle: the boat swings
+			# through upright, overshoots the new side by a third (ζ ≈ 0.35), and
+			# settles in about two seconds — the follow-through is what sells the
+			# weight of the boat. the hull's height is a second spring chasing the
+			# water under it, so it lifts a beat after each crest. every boat keeps
+			# its own state, so in a fleet no two are at the same point of the swing.
+			var D: Dictionary = b.D
+			var H: float = b.H
+			var rows: int = D.rows
+			var speed: float = D.speed
+			var heel: float = D.heel
 			var dir: float = b.dir
-			var lean: float = b.lean
-			b.lean = lean + (heel * dir - lean) * minf(1.0, dt * 3.0),        # the heel eases over to the wind's side
-		"press": func(b: Dictionary, _pos: Vector2) -> void: b.dir = -b.dir,   # click = the wind changes sides; the yacht tacks
+			var k: float = D.k
+			var damp: float = float(D.damp) * 2.0 * sqrt(k)                   # a fraction of critical
+			var sgain: float = D.slope_gain
+			var bk: float = D.bob_k
+			var bdamp: float = float(D.bob_damp) * 2.0 * sqrt(bk)
+			var HY := H * 0.4
+			var nn: int = b.n
+			var row_of: PackedInt32Array = b.row_of
+			var bx: PackedFloat32Array = b.bx
+			var th: PackedFloat32Array = b.th
+			var om: PackedFloat32Array = b.om
+			var by: PackedFloat32Array = b.by
+			var vy: PackedFloat32Array = b.vy
+			# symplectic euler is stable while √k·h < 2 — a coarse frame is cut into substeps of at most 0.02 s
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for i in nn:
+				var r: int = row_of[i]
+				var base := _row_y(b, HY, r, rows) - 2.0
+				var wave := _sea_at(b, r, rows, bx[i], -speed)                # the water under this hull: height and slope
+				var water := base + wave.x
+				var rest := heel * dir + clampf(wave.y * sgain, -0.3, 0.3)    # the wind's side, plus the swell's tilt
+				for _s in sub:
+					om[i] += (k * (rest - th[i]) - damp * om[i]) * h
+					th[i] = clampf(th[i] + om[i] * h, -1.2, 1.2)
+					vy[i] += (bk * (water - by[i]) - bdamp * vy[i]) * h
+					by[i] += vy[i] * h
+				by[i] = clampf(by[i], base - H * 0.15, base + H * 0.15),
+		"press": func(b: Dictionary, _pos: Vector2) -> void: b.dir = -b.dir,   # click = the wind changes sides; the target flips, the spring does the tack
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			K.sky(n, b, D.sky)
 			var HY: float = b.H * 0.4
 			var sea: Color = D.sea
 			var air: Color = D.air
 			n.draw_rect(Rect2(0, HY, b.W, b.H - HY), K.fog(sea, 0.85, air))
 			var rows: int = D.rows
-			var boats: int = D.boats
 			var speed: float = D.speed
+			var nn: int = b.n
+			var row_of: PackedInt32Array = b.row_of
+			var bx: PackedFloat32Array = b.bx
+			var th: PackedFloat32Array = b.th
+			var by: PackedFloat32Array = b.by
 			for i in rows:                                                    # rows far → near, each boat painted right after its row
 				var p := float(i + 1) / rows
-				var y := _sea_row(n, b, HY, i, rows, sea, air, -speed)
-				for bt in boats:
-					var row_of: int = rows - 2 if boats == 1 else int(round(1.0 + (float(bt) / (boats - 1)) * (rows - 3)))
-					if row_of == i:
-						_yacht(n, b, b.W * (0.5 + (bt - (boats - 1) / 2.0) * 0.3), y - 2.0 + sin(t * 1.4 * speed + bt) * 2.0, p)
+				_sea_row(n, b, HY, i, rows, sea, air, -speed)
+				for bt in nn:
+					if row_of[bt] == i:
+						_yacht(n, b, bx[bt], by[bt], p, th[bt])
 			K.label(n, b, D.label) })
 
 	# ---- Z · Zephyr --------------------------------------------------------
