@@ -143,13 +143,16 @@ const DEFS := [
 		"rhyme": { "name": "Brightnoon", "hint": "half the blob, nearly gone at the apex, with a hard edge — the sun straight overhead",
 			"dials": { "size": 0.55, "shrink": 0.85, "soft": 0.1 } } },
 	{ "id": "bloom", "letter": "B", "name": "Bloom",
-		"hint": "a GLOW MASK: only bulbs and the laser go to a layer, blurred by offset copies and added back; the scene stays crisp (ch06 glow) — press to hang a bulb",
+		"hint": "a GLOW MASK: only bulbs and the laser go to a layer, blurred by offset copies and added back; the scene stays crisp (ch06 glow) — press to hang a bulb: it swings in on its wire and rings down, halo and all",
 		"dials": { "radius": 5,          # blur radius, px (scaled to the card)
 			"strength": 1,               # how much of the blur is added back
 			"mask": "emitters",          # "emitters": only the light sources bloom · "all": the whole frame does
 			"laser": true,               # a sweeping laser among the emitters
 			"max": 8,                    # hung bulbs kept (the oldest falls when a new one comes)
-			"label": "mask → Σ offset copies (r, then 2r) → lighter × strength" },
+			"g": 2.0,                    # gravity, in H per second² — a hung bulb is a pendulum on its wire: θ'' = −(g/L)·sin θ − damp·θ'
+			"damp": 1.0,                 # the wire's drag, per second: the swing's envelope is e^(−damp·t/2), so it rings down in a few seconds
+			"swing": 1.6,                # the angular speed a bulb is let go with, rad/s — the hand that hung it
+			"label": "mask → Σ offset copies (r, then 2r) → lighter × strength · bulb: θ'' = −(g/L)·sin θ − damp·θ'" },
 		"rhyme": { "name": "Blaze", "hint": "no mask at all: the whole frame goes to the blur and comes back added — the overexposed look, every edge haloed",
 			"dials": { "mask": "all", "strength": 0.75, "radius": 7 } } },
 	{ "id": "interior", "letter": "I", "name": "Interior",
@@ -469,13 +472,17 @@ static func _strike(b: Dictionary, x: float) -> void:
 
 ## Bloom: ONLY the light sources — the lamp bulbs, the hung bulbs, the
 ## laser and its hit. Drawn crisp into the scene, and again as the mask.
+## Where a hung bulb is now: its wire's anchor, swung by its pendulum angle.
+static func _bulb_at(bl: Dictionary) -> Vector2:
+	return Vector2(float(bl.ax) + sin(float(bl.th)) * float(bl.L), cos(float(bl.th)) * float(bl.L))
+
 static func _emitters(n: CanvasItem, b: Dictionary, hit_x: float) -> void:
 	var D: Dictionary = b.D
 	var S: float = b.h / 170.0
 	for px in b.posts:
 		Kit.dot(n, Vector2(px, b.postY), 5.0, Kit.SUN)
 	for bl in b.bulbs:
-		Kit.dot(n, bl, 3.5 * S, Kit.SUN)
+		Kit.dot(n, _bulb_at(bl), 3.5 * S, Kit.SUN)
 	if D.laser:
 		Kit.line(n, Vector2(b.lx0, b.ly0), Vector2(hit_x, b.gy), Kit.HOT, 1.5 * S)
 		Kit.dot(n, Vector2(hit_x, b.gy), 3.0 * S, Kit.SPARK)
@@ -495,8 +502,9 @@ static func _halo(n: CanvasItem, b: Dictionary, hit_x: float) -> void:
 		Kit.glow(n, p, 5.0 + 3.0 * r, Kit.SUN, 0.55 * k)
 		Kit.glow(n, p, 5.0 + 1.5 * r, Kit.SUN, 0.45 * k)
 	for bl in b.bulbs:
-		Kit.glow(n, bl, 3.5 * S + 3.0 * r, Kit.SUN, 0.55 * k)
-		Kit.glow(n, bl, 3.5 * S + 1.5 * r, Kit.SUN, 0.45 * k)
+		var p := _bulb_at(bl)
+		Kit.glow(n, p, 3.5 * S + 3.0 * r, Kit.SUN, 0.55 * k)
+		Kit.glow(n, p, 3.5 * S + 1.5 * r, Kit.SUN, 0.45 * k)
 	if D.laser:
 		var a := Vector2(b.lx0, b.ly0)
 		var c := Vector2(hit_x, b.gy)
@@ -731,10 +739,14 @@ static func init(b: Dictionary) -> void:
 			# that — eight offset copies at 1/8 alpha, twice — and add it back with
 			# "lighter". the scene underneath never blurs. mask: "all" shows the
 			# difference: the whole frame goes to the blur, and everything overexposes.
+			# a hung bulb is a PENDULUM: its wire is the length L, the press lets it go
+			# with a push, and θ'' = −(g/L)·sin θ − damp·θ' swings it in and rings it
+			# down. the emitter moves, so its bloom moves with it — the mask is drawn
+			# from the same swung positions as the scene.
 			b.r = D.radius * H / 170.0
 			b.posts = [W * 0.25, W * 0.75]
 			b.postY = GY - H * 0.3 - 8.0
-			b.bulbs = []
+			b.bulbs = []                                 # a bulb: { ax: the wire's anchor x, L: its length, th: the angle from hanging straight, w: its angular speed }
 			b.lx0 = W * 0.06
 			b.ly0 = H * 0.12
 		"interior":
@@ -842,7 +854,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			var bulbs: Array = b.bulbs
 			if bulbs.size() >= int(D.max):
 				bulbs.pop_front()
-			bulbs.append(Vector2(pos.x, minf(pos.y, GY - 6.0 * S)))
+			bulbs.append({ "ax": pos.x, "L": maxf(H * 0.08, minf(pos.y, GY - 6.0 * S)), "th": 0.0, "w": (1.0 if pos.x < W / 2.0 else -1.0) * float(D.swing) })   # let go with a push toward the middle of the stage
 		"interior":
 			b.target = _room_of(b, clampf(pos.x, b.x0, b.x1), 1 if pos.y < b.mid else 0)
 			b.tour = b.target
@@ -1028,8 +1040,24 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if b.autoOK and b.x > W * 0.33:
 					b.autoOK = false
 					_blob_jump(b)
-		"bloom":
-			pass                                         # the laser's sweep is a function of t; the bulbs only change on a press
+		"bloom":                                      # the laser's sweep is a function of t; the bulbs swing on their wires
+			var gH: float = H * float(D.g)
+			var damp: float = D.damp
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for bl in b.bulbs:                           # every bulb's pendulum: θ'' = −(g/L)·sin θ − damp·θ', symplectic euler in ≤ 20 ms steps
+				var bq: Dictionary = bl
+				var gL: float = gH / float(bq.L)
+				var th: float = bq.th
+				var w: float = bq.w
+				for _s in sub:
+					w += (-gL * sin(th) - damp * w) * h
+					th += w * h
+				if absf(th) > 2.5:
+					th = clampf(th, -2.5, 2.5)
+					w = 0.0
+				bq.th = th
+				bq.w = w
 		"interior":
 			var tfloor: int = 1 if b.target >= 2 else 0
 			var rooms: Array = b.rooms
@@ -1645,9 +1673,9 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var ang := 0.9 + sin(t * 0.7) * 0.45         # the laser turret's floor hit
 			var hit_x := lx0 + cos(ang) * (GY - ly0) / sin(ang)
 			Kit.rect(n, Rect2(lx0 - 5.0 * S, ly0 - 4.0 * S, 10.0 * S, 8.0 * S), POST)
-			for bl in b.bulbs:
-				var bq: Vector2 = bl
-				Kit.line(n, Vector2(bq.x, 0.0), bq, _al(Kit.INK, 0.35))
+			for bl in b.bulbs:                           # the wire, swung with the bulb
+				var bq: Dictionary = bl
+				Kit.line(n, Vector2(bq.ax, 0.0), _bulb_at(bq), _al(Kit.INK, 0.35))
 			_emitters(n, b, hit_x)                       # crisp, in the scene
 			# the bloom pass, approximated (see _halo): glows and wide strokes for the
 			# offset-copy blur. mask "all" has no layer to blur either — the hero is

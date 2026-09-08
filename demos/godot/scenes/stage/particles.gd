@@ -42,13 +42,15 @@ const DEFS := [
 		"rhyme": { "name": "Puddlepool", "hint": "a pool of twelve that starves in one burst — every newcomer steals the oldest slot, so the tail of each burst eats its head",
 			"dials": { "size": 12, "burst": 10, "steal": true } } },
 	{ "id": "disintegrate", "letter": "D", "name": "Disintegrate",
-		"hint": "EMIT FROM A SPRITE'S PIXELS: pixelsOf reads the hero's opaque pixels; each becomes a particle that flies off and reassembles — press to send it there",
+		"hint": "EMIT FROM A SPRITE'S PIXELS: pixelsOf reads the hero's opaque pixels; each becomes a particle on a spring chasing its flight path — lagging on the way out, overshooting and snapping home as it reassembles — press to send it there",
 		"dials": { "mode": "disintegrate",   # "disintegrate" (feet first, blown away) / "teleport" (a vertical streak) / "assemble" (rain in, top first)
 			"hold": 1.6,                # seconds whole between trips
 			"fly": 1.2,                 # seconds for the pixels to leave, and again to arrive
 			"scatter": 0.45,            # how far the pixels roam, ×H
 			"wind": 0.5,                # the disintegrate drift, ×W
-			"label": "pixelsOf(sprite): one particle per opaque pixel · k = ease(p·1.8 − delay)" },
+			"spring": 80,                # each pixel's position spring: stiffness (ω = √spring ≈ 9 /s)
+			"damp": 0.3,                 # its damping as a fraction of critical — under 1, so pixels overshoot and snap home
+			"label": "pixelsOf(sprite): one particle per opaque pixel · target: k = ease(p·1.8 − delay) · x'' = spring·(target − x) − c·x'" },
 		"rhyme": { "name": "Dustup", "hint": "the assemble mode, slowly: the pixels rain in from a wide cloud above and lock in top row first — a summoning",
 			"dials": { "mode": "assemble", "fly": 2, "scatter": 0.6 } } },
 	{ "id": "hail", "letter": "H", "name": "Hail",
@@ -994,6 +996,10 @@ static func init(b: Dictionary) -> void:
 			# its own DELAY, ordered by row (feet first to disintegrate, top first to
 			# assemble), and the mode decides where "scattered" is. the codex's Teleport
 			# blink and the grimoire's Dust burst are this trick with one mode each.
+			# the eased clock is only the TARGET: every pixel is a particle with a
+			# position and a velocity, on an under-damped spring toward that target —
+			# so it lags behind on the way out, and on the way home it overshoots and
+			# snaps into place, and the whole sprite rings for a moment after it lands.
 			# (here the "canvas" is Kit.hero_cells(): the same 14 × 19 grid, anchor (7, 18).)
 			b.px = []
 			for cell in Kit.hero_cells({}):
@@ -1006,6 +1012,25 @@ static func init(b: Dictionary) -> void:
 			b.timer = 0.0
 			b.nextX = W * 0.7
 			_dis_plan(b)
+			var un0 := Kit.hero_unit(b)
+			var nn: int = (b.px as Array).size()
+			var X := PackedFloat32Array()                # each pixel's sprung position and velocity (sized here: a packed array read back from b is a copy)
+			var Y := PackedFloat32Array()
+			var VX := PackedFloat32Array()
+			var VY := PackedFloat32Array()
+			X.resize(nn)
+			Y.resize(nn)
+			VX.resize(nn)
+			VY.resize(nn)
+			for i in nn:
+				var qd: Dictionary = b.px[i]
+				X[i] = float(b.hx) + float(qd.ox) * un0
+				Y[i] = GY + float(qd.oy) * un0
+			b.X = X
+			b.Y = Y
+			b.VX = VX
+			b.VY = VY
+			b.ring = 0.0                                 # the fastest pixel, px/s: while any still moves at home, the hero is drawn from its pixels
 		"hail":
 			# chapter 06's sparks fell through the floor; these stop. each particle
 			# carries a radius and asks three questions a frame: am I below the GROUND,
@@ -1373,12 +1398,20 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.vx *= 0.7
 		"disintegrate":
 			b.timer += dt
+			var X: PackedFloat32Array = b.X
+			var Y: PackedFloat32Array = b.Y
+			var VX: PackedFloat32Array = b.VX
+			var VY: PackedFloat32Array = b.VY
+			var nn: int = X.size()
 			if b.phase == 0 and b.timer > D.hold:
 				_dis_go(b)
 			if b.phase == 1:
 				b.p = minf(1.0, b.p + dt / D.fly)
-				if b.p >= 1.0:
+				if b.p >= 1.0:                           # the home moves while the cloud is invisible (alpha = 1 − k = 0 up here): the cloud moves with it, offsets and velocities kept, so the springs never see the jump
 					b.phase = 2
+					var jump: float = b.nextX - b.hx
+					for i in nn:
+						X[i] += jump
 					b.hx = b.nextX
 					b.nextX = randf_range(W * 0.15, W * 0.85)
 			elif b.phase == 2:
@@ -1386,6 +1419,33 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if b.p <= 0.0:
 					b.phase = 0
 					b.timer = 0.0
+			# every pixel's spring chases its target — home → scattered by the eased clock — in substeps of ≤ 20 ms
+			var un: float = Kit.hero_unit(b)
+			var hx: float = b.hx
+			var phase: int = b.phase
+			var pp: float = b.p
+			var px: Array = b.px
+			var kS: float = maxf(1.0, float(D.spring))
+			var cS: float = 2.0 * clampf(float(D.damp), 0.0, 0.99) * sqrt(kS)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var ring := 0.0
+			for i in nn:
+				var qd: Dictionary = px[i]
+				var ox: float = qd.ox
+				var oy: float = qd.oy
+				var k: float = 0.0 if phase == 0 else _ease(pp * 1.8 - float(qd.d))
+				var tx: float = hx + ox * un + (float(qd.sx) - ox * un) * k
+				var ty: float = GY + oy * un + (float(qd.sy) - oy * un) * k
+				for _s in sub:
+					VX[i] += (kS * (tx - X[i]) - cS * VX[i]) * h
+					VY[i] += (kS * (ty - Y[i]) - cS * VY[i]) * h
+					X[i] += VX[i] * h
+					Y[i] += VY[i] * h
+				X[i] = clampf(X[i], -W, 2.0 * W)
+				Y[i] = clampf(Y[i], -H, 2.0 * H)
+				ring = maxf(ring, maxf(absf(VX[i]), absf(VY[i])))
+			b.ring = ring
 		"hail":
 			var r: float = b.r
 			b.clock += dt
@@ -1870,20 +1930,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var pp: float = b.p
 			var mode: String = D.mode
 			var px: Array = b.px
-			if phase == 0:
+			var X: PackedFloat32Array = b.X
+			var Y: PackedFloat32Array = b.Y
+			if phase == 0 and float(b.ring) < 2.0:
 				Kit.hero(n, b, Vector2(hx, GY), { "pose": "stand", "frame": t })
 			else:
-				for q in px:                             # each pixel between home and scattered by its own eased clock
-					var qd: Dictionary = q
-					var ox: float = qd.ox
-					var oy: float = qd.oy
+				for i in px.size():                      # each pixel where its spring has carried it (stepped in tick), fading by its target's clock
+					var qd: Dictionary = px[i]
 					var col: Color = qd.c
-					var k := _ease(pp * 1.8 - qd.d)
-					if k <= 0.0 and mode != "teleport":
-						Kit.rect(n, Rect2(hx + ox * un, GY + oy * un, un, un), col)
-						continue
-					var x: float = hx + ox * un + (qd.sx - ox * un) * k
-					var y: float = GY + oy * un + (qd.sy - oy * un) * k
+					var k: float = 0.0 if phase == 0 else _ease(pp * 1.8 - float(qd.d))
+					var x: float = X[i]
+					var y: float = Y[i]
 					col.a = clampf(1.0 - k, 0.0, 1.0)
 					if mode == "teleport":
 						Kit.rect(n, Rect2(x, y - un * 5.0 * k * (1.0 - k), un, un * (1.0 + 10.0 * k * (1.0 - k))), col)
