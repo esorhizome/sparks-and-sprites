@@ -30,7 +30,7 @@ const DEFS := [
 		"rhyme": { "name": "Pinprick", "hint": "a tiny r and a faster hand — hundreds of points, evenly strewn: a star field with no clumps",
 			"dials": { "r": 0.022, "perBeat": 14 } } },
 	{ "id": "terrain", "letter": "T", "name": "Terrain",
-		"hint": "a side-view ground from layered 1-d noise — octaves at doubling frequency and halving amplitude, biomes by height — press to reroll",
+		"hint": "a side-view ground from layered 1-d noise — octaves at doubling frequency and halving amplitude, biomes by height — the mote rides it on a spring, hopping off the crests — press to reroll",
 		"dials": { "octaves": 5,        # noise layers, added one per beat
 			"persistence": 0.5,         # each octave's amplitude, as a fraction of the last
 			"scale": 2.6,               # cycles of the first octave across the width
@@ -39,10 +39,14 @@ const DEFS := [
 			"beat": 0.7,                # seconds between octaves
 			"rest": 2.4,                # seconds to rest on the finished ground
 			"walk": 0.09,               # the mote's pace, in widths per second
+			"hopK": 90,                 # the mote's height spring: stiffness toward the ground under it
+			"hopDamp": 0.35,            # its damping, as a fraction of critical — under 1, so a crest launches it
+			"tiltK": 40,                # the tilt spring: stiffness toward the slope
+			"tiltDamp": 0.6,            # its damping, as a fraction of critical — it leans a beat late
 			"seed": 11,
 			"palette": "temperate",
 			"palettes": { "temperate": ["#3A6FB5", "#E2C98A", "#6FAF5E", "#8C8698", "#F0F2FA"], "snow": ["#4A6E9C", "#B9C4D6", "#DCE6F2", "#9AA3B8", "#FFFFFF"] },
-			"label": "h(x) = Σ noise(x·2ⁱ) · ½ⁱ · biome by height band" },
+			"label": "h(x) = Σ noise(x·2ⁱ) · ½ⁱ · biome by height band · mote: y'' = k·(ground − y) − d·y'" },
 		"rhyme": { "name": "Tundra", "hint": "three octaves, half the range and a snow palette — a flat white plain with a low grey sea",
 			"dials": { "octaves": 3, "height": 0.3, "palette": "snow" } } },
 	{ "id": "voronoi", "letter": "V", "name": "Voronoi",
@@ -489,6 +493,11 @@ static func init(b: Dictionary) -> void:
 			b.seed = int(D.seed)
 			b.wx = 0.0
 			_terrain_reroll(b)
+			var hgt0: PackedFloat32Array = b.hgt                  # the mote's body: height, tilt, and their velocities
+			b.my = minf(_terrain_y(b, hgt0[1]), _terrain_y(b, float(D.sea)))
+			b.mvy = 0.0
+			b.mang = 0.0
+			b.mangv = 0.0
 		"voronoi":
 			# VORONOI regions. drop N seeds; every point in the plane belongs to the
 			# seed it is NEAREST to, and the plane shatters into N cells with straight
@@ -576,6 +585,42 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 					b.seed += 1
 					_terrain_reroll(b)
 			b.wx = fposmod(float(b.wx) + dt * float(D.walk) * float(b.w), float(b.w))   # the mote walks the ground it is given
+			# the mote is a BODY, not a stamp: its height is a damped spring toward the
+			# ground under it (y'' = k·(ground − y) − d·y'), so a crest that drops away
+			# leaves it airborne for a moment and a rising slope catches it with a
+			# thump; it may never sink below the ground, and landing kills the fall.
+			# its tilt is the same spring toward the slope, so it leans a beat late.
+			# symplectic: velocity first, then position — and the step is cut so that
+			# √k·h < 2 even on the runtime's coarsest frame (S·Substep)
+			var hgt: PackedFloat32Array = b.hgt
+			var cols: int = b.cols
+			var sea: float = D.sea
+			var yw := _terrain_y(b, sea)
+			var ci := clampi(int(floorf(float(b.wx) / 2.0)), 1, cols - 2)
+			var gy := minf(_terrain_y(b, hgt[ci]), yw)
+			var ang := 0.0 if hgt[ci] < sea else atan2(_terrain_y(b, hgt[ci + 1]) - _terrain_y(b, hgt[ci - 1]), 4.0)
+			var hopK: float = D.hopK
+			var tiltK: float = D.tiltK
+			var dY: float = float(D.hopDamp) * 2.0 * sqrt(hopK)
+			var dA: float = float(D.tiltDamp) * 2.0 * sqrt(tiltK)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var hs := dt / sub
+			var my: float = b.my
+			var mvy: float = b.mvy
+			var mang: float = b.mang
+			var mangv: float = b.mangv
+			for _s in sub:
+				mvy += (hopK * (gy - my) - dY * mvy) * hs
+				my += mvy * hs
+				if my > gy:                                     # the ground is solid: land, never sink
+					my = gy
+					mvy = minf(0.0, mvy)
+				mangv += (tiltK * (ang - mang) - dA * mangv) * hs
+				mang += mangv * hs
+			b.my = my
+			b.mvy = mvy
+			b.mang = mang
+			b.mangv = mangv
 		"voronoi":
 			var rows: int = D.rows
 			var cols: float = D.cols
@@ -718,10 +763,7 @@ static func draw(n: CanvasItem, b: Dictionary, _t: float) -> void:
 				_txt(n, "×" + tag, w - 4.0, top + 10.0 + o * 11.0, Kit.BONE if on else Kit.DIM, "right")
 				amp *= persistence
 			var wx: float = b.wx
-			var i := clampi(int(floorf(wx / 2.0)), 1, cols - 2)
-			var gy := minf(_terrain_y(b, hgt[i]), yw)
-			var ang := atan2(_terrain_y(b, hgt[i + 1]) - _terrain_y(b, hgt[i - 1]), 4.0)
-			Kit.mote(n, b, Vector2(wx, gy - 7.0), 0.0 if hgt[i] < sea else ang)
+			Kit.mote(n, b, Vector2(wx, float(b.my) - 7.0), float(b.mang))   # where the spring put it, leaning as it lags
 			_txt(n, "octaves %d / %d · persistence %s" % [shown, octaves, str(persistence)], 4.0, 11.0)
 			_txt(n, D.label, w / 2.0, h - 6.0, Color(0.91, 0.898, 0.957, 0.55), "center")
 		"voronoi":

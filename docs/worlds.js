@@ -420,7 +420,7 @@ def("P", "Poisson", "scatter", "random points that keep a minimum distance r (br
 });
 rhymeOf("Poisson", "Pinprick", "a tiny r and a faster hand — hundreds of points, evenly strewn: a star field with no clumps", { r: 0.022, perBeat: 14 });
 
-def("T", "Terrain", "scatter", "a side-view ground from layered 1-d noise — octaves at doubling frequency and halving amplitude, biomes by height — press to reroll", function (u) {
+def("T", "Terrain", "scatter", "a side-view ground from layered 1-d noise — octaves at doubling frequency and halving amplitude, biomes by height — the mote rides it on a spring, hopping off the crests — press to reroll", function (u) {
   var D = { octaves: 5,          // noise layers, added one per beat
             persistence: 0.5,    // each octave's amplitude, as a fraction of the last
             scale: 2.6,          // cycles of the first octave across the width
@@ -429,10 +429,14 @@ def("T", "Terrain", "scatter", "a side-view ground from layered 1-d noise — oc
             beat: 0.7,           // seconds between octaves
             rest: 2.4,           // seconds to rest on the finished ground
             walk: 0.09,          // the mote's pace, in widths per second
+            hopK: 90,            // the mote's height spring: stiffness toward the ground under it
+            hopDamp: 0.35,       // its damping, as a fraction of critical — under 1, so a crest launches it
+            tiltK: 40,           // the tilt spring: stiffness toward the slope
+            tiltDamp: 0.6,       // its damping, as a fraction of critical — it leans a beat late
             seed: 11,
             palette: "temperate",
             palettes: { temperate: ["#3A6FB5", "#E2C98A", "#6FAF5E", "#8C8698", "#F0F2FA"], snow: ["#4A6E9C", "#B9C4D6", "#DCE6F2", "#9AA3B8", "#FFFFFF"] },
-            label: "h(x) = Σ noise(x·2ⁱ) · ½ⁱ · biome by height band" };
+            label: "h(x) = Σ noise(x·2ⁱ) · ½ⁱ · biome by height band · mote: y'' = k·(ground − y) − d·y'" };
   const { ctx, W, H, stage, line, rect, mote, label, rng, noise, clamp, rgba, DIM, BONE } = u;
   // 1-D NOISE TERRAIN. one octave of smooth noise is a rolling hill; add a
   // second at twice the frequency and half the amplitude and the hill
@@ -458,6 +462,7 @@ def("T", "Terrain", "scatter", "a side-view ground from layered 1-d noise — oc
   const yOf = (hn) => base - hn * H * D.height;
   function biome(hn) { return hn < D.sea ? 0 : hn < D.sand ? 1 : hn < D.grass ? 2 : hn < D.rock ? 3 : 4; }
   reroll();
+  let my = Math.min(yOf(h[1]), yOf(D.sea)), mvy = 0, mang = 0, mangv = 0;   // the mote's body: height, tilt, and their velocities
   return {
     press() { seed++; reroll(); },
     frame(dt, t) {
@@ -487,8 +492,22 @@ def("T", "Terrain", "scatter", "a side-view ground from layered 1-d noise — oc
       }
       wx = (wx + dt * D.walk * W) % W;                 // the mote walks the ground it is given
       const i = clamp(Math.floor(wx / 2), 1, cols - 2);
-      const gy = Math.min(yOf(h[i]), yw), ang = Math.atan2(yOf(h[i + 1]) - yOf(h[i - 1]), 4);
-      mote(wx, gy - 7, h[i] < D.sea ? 0 : ang);
+      const gy = Math.min(yOf(h[i]), yw), ang = h[i] < D.sea ? 0 : Math.atan2(yOf(h[i + 1]) - yOf(h[i - 1]), 4);
+      // the mote is a BODY, not a stamp: its height is a damped spring toward the
+      // ground under it (y'' = k·(ground − y) − d·y'), so a crest that drops away
+      // leaves it airborne for a moment and a rising slope catches it with a
+      // thump; it may never sink below the ground, and landing kills the fall.
+      // its tilt is the same spring toward the slope, so it leans a beat late.
+      // symplectic: velocity first, then position — and the step is cut so that
+      // √k·h < 2 even on the runtime's coarsest frame (S·Substep)
+      const sub = Math.max(1, Math.ceil(dt * 50)), hs = dt / sub;
+      const dY = D.hopDamp * 2 * Math.sqrt(D.hopK), dA = D.tiltDamp * 2 * Math.sqrt(D.tiltK);
+      for (let s = 0; s < sub; s++) {
+        mvy += (D.hopK * (gy - my) - dY * mvy) * hs; my += mvy * hs;
+        if (my > gy) { my = gy; mvy = Math.min(0, mvy); }   // the ground is solid: land, never sink
+        mangv += (D.tiltK * (ang - mang) - dA * mangv) * hs; mang += mangv * hs;
+      }
+      mote(wx, my - 7, mang);
       label("octaves " + shown + " / " + D.octaves + " · persistence " + D.persistence, 4, 11);
       label(D.label, W / 2, H - 6, null, "center");
     }
@@ -1361,7 +1380,7 @@ def("D", "Dice", "dice", "loot by weight (a bar per rarity), a shuffle bag that 
 });
 rhymeOf("Dice", "Drops", "a short, steep pity timer — the legendary weight climbs fast and is forced within twenty rolls", { pityMax: 20, pityRamp: 0.6 });
 
-def("H", "Horde", "dice", "a director's curve — intensity over time, peaks and rests — sets the spawn rate; enemies enter off-screen and march on the base — press to spike it", function (u) {
+def("H", "Horde", "dice", "a director's curve — intensity over time, peaks and rests — sets the spawn rate; enemies enter off-screen and steer for the base — a velocity chasing a heading, so they arc in and spread — press to spike it", function (u) {
   var D = { period: 12,          // seconds per wave cycle
             peaks: 4,            // bursts per cycle
             peakH: 1,            // the tallest burst
@@ -1369,10 +1388,14 @@ def("H", "Horde", "dice", "a director's curve — intensity over time, peaks and
             floor: 0.06,         // intensity between bursts — the trickle
             rate: 5,             // spawns per second at intensity 1
             speed: 0.13,         // enemy speed, in widths per second
+            turn: 3,             // how fast a velocity chases its desired heading, per second — low turns wide
+            drag: 0.4,           // velocity lost per second — the turn is a turn, not a slide
+            sepR: 0.05,          // separation radius, in widths — closer than this, two enemies push apart
+            sepF: 0.5,           // the push at zero distance, as a multiple of the steering pull
             spikeH: 1.2, spikeDecay: 1.6,   // what a press adds, and how fast it fades per second
             maxE: 70,
             seed: 9,
-            label: "spawns/s = rate × intensity(t) · spawn off-screen · march to the base" };
+            label: "spawns/s = rate × intensity(t) · v' = (desired − v)·turn − drag·v + push from neighbours" };
   const { ctx, W, H, stage, rng, label, line, dot, ring, rect, arrow, mote, len, clamp, rgba, DIM, BONE, HOT, TARGET, MOVER, GOOD } = u;
   // a SPAWN DIRECTOR. the horde is not a list of enemies, it is a CURVE:
   // intensity against time, a few seeded bumps on a low floor, and the
@@ -1415,13 +1438,37 @@ def("H", "Horde", "dice", "a director's curve — intensity over time, peaks and
         acc -= 1;
         const s = spawners[Math.floor(r2() * spawners.length)];
         if (E.length >= D.maxE) E.shift();
-        E.push({ x: s.x + (r2() - 0.5) * W * 0.04, y: s.y + (r2() - 0.5) * H * 0.06, w: r2() * 6.28, k: 0.8 + r2() * 0.4 });
+        const ex = s.x + (r2() - 0.5) * W * 0.04, ey = s.y + (r2() - 0.5) * H * 0.06, ew = r2() * 6.28, ek = 0.8 + r2() * 0.4;
+        const v0 = D.speed * W * ek * 0.5;             // born moving, in a random direction — the steering has to swing it round
+        E.push({ x: ex, y: ey, w: ew, k: ek, vx: Math.cos(ew) * v0, vy: Math.sin(ew) * v0 });
       }
+      // every enemy is a VELOCITY now, not a position stamped along a line: each
+      // step it steers — v += (desired − v)·turn·dt, desired being full speed
+      // straight at the base — so a spawn facing the wrong way swings round in
+      // an arc instead of snapping; drag bleeds speed so the turn is a turn and
+      // not a slide; and a cheap SEPARATION (every pair closer than sepR pushes
+      // apart, harder the closer) spreads the mob so it arrives as a crowd, not
+      // a stack. symplectic: velocity first, then position; substepped so the
+      // coarsest frame is still stable (turn·h and drag·h well under 1)
+      const sub = Math.max(1, Math.ceil(dt * 50)), hs = dt / sub, R = D.sepR * W, R2 = R * R;
+      for (let s = 0; s < sub; s++)
+        for (let i = 0; i < E.length; i++) {
+          const e = E[i], dx = bx - e.x, dy = by - e.y, d = Math.max(1e-6, len(dx, dy)), spd = D.speed * W * e.k;
+          let ax = (dx / d * spd - e.vx) * D.turn, ay = (dy / d * spd - e.vy) * D.turn;   // chase the heading
+          e.w += hs * 6;                               // the old wobble, now a small sideways push
+          const wob = Math.cos(e.w) * spd * D.turn * 0.3;
+          ax += -dy / d * wob; ay += dx / d * wob;
+          for (let j = 0; j < E.length; j++) {         // separation: O(n²), but n ≤ maxE and the test is one subtraction
+            if (j === i) continue;
+            const o = E[j], ox = e.x - o.x, oy = e.y - o.y, q2 = ox * ox + oy * oy;
+            if (q2 < R2 && q2 > 1e-6) { const q = Math.sqrt(q2), f = (1 - q / R) * spd * D.sepF * D.turn; ax += ox / q * f; ay += oy / q * f; }
+          }
+          e.vx += (ax - e.vx * D.drag) * hs; e.vy += (ay - e.vy * D.drag) * hs;
+          e.x += e.vx * hs; e.y += e.vy * hs;
+        }
       for (let i = E.length - 1; i >= 0; i--) {
-        const e = E[i], dx = bx - e.x, dy = by - e.y, d = Math.max(1e-6, len(dx, dy)), v = D.speed * W * e.k * dt;
-        e.w += dt * 6;
-        e.x += dx / d * v + Math.cos(e.w) * v * 0.3; e.y += dy / d * v + Math.sin(e.w) * v * 0.3;
-        if (d < 10) { E.splice(i, 1); reached++; hit = 1; }
+        const e = E[i];
+        if (len(bx - e.x, by - e.y) < 10) { E.splice(i, 1); reached++; hit = 1; }
       }
       const top = D.peakH * 1.15 + D.floor + 0.6;      // the graph
       const gx = (x) => 8 + x / D.period * (W - 16), gyv = (v) => gy0 + gh - clamp(v / top, 0, 1.4) * gh;
@@ -1440,7 +1487,7 @@ def("H", "Horde", "dice", "a director's curve — intensity over time, peaks and
       ctx.setLineDash([]);
       label("screen", sx0 + 4, sy1 - 4, DIM);
       for (const s of spawners) { ring(s.x, s.y, 5, HOT, 1.2); arrow(s.x, s.y, s.x + (bx - s.x) * 0.12, s.y + (by - s.y) * 0.12, rgba(HOT, 0.6)); }
-      for (const e of E) { const a = Math.atan2(by - e.y, bx - e.x); dot(e.x, e.y, 3, HOT); dot(e.x + Math.cos(a) * 3.5, e.y + Math.sin(a) * 3.5, 1.5, HOT); }
+      for (const e of E) { const a = Math.atan2(e.vy, e.vx); dot(e.x, e.y, 3, HOT); dot(e.x + Math.cos(a) * 3.5, e.y + Math.sin(a) * 3.5, 1.5, HOT); }   // the nose follows the velocity
       if (hit > 0) ring(bx, by, 10 + (1 - hit) * 14, rgba(HOT, hit), 2);
       mote(bx, by, -Math.PI / 2, MOVER, 7);
       label(E.length + " alive · reached " + reached, sx0 + 4, sy0 + 10, null);

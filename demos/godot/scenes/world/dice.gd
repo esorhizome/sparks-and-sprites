@@ -33,7 +33,7 @@ const DEFS := [
 		"rhyme": { "name": "Drops", "hint": "a short, steep pity timer — the legendary weight climbs fast and is forced within twenty rolls",
 			"dials": { "pityMax": 20, "pityRamp": 0.6 } } },
 	{ "id": "horde", "letter": "H", "name": "Horde",
-		"hint": "a director's curve — intensity over time, peaks and rests — sets the spawn rate; enemies enter off-screen and march on the base — press to spike it",
+		"hint": "a director's curve — intensity over time, peaks and rests — sets the spawn rate; enemies enter off-screen and steer for the base — a velocity chasing a heading, so they arc in and spread — press to spike it",
 		"dials": { "period": 12,               # seconds per wave cycle
 			"peaks": 4,                        # bursts per cycle
 			"peakH": 1,                        # the tallest burst
@@ -41,10 +41,14 @@ const DEFS := [
 			"floor": 0.06,                     # intensity between bursts — the trickle
 			"rate": 5,                         # spawns per second at intensity 1
 			"speed": 0.13,                     # enemy speed, in widths per second
+			"turn": 3,                         # how fast a velocity chases its desired heading, per second — low turns wide
+			"drag": 0.4,                       # velocity lost per second — the turn is a turn, not a slide
+			"sepR": 0.05,                      # separation radius, in widths — closer than this, two enemies push apart
+			"sepF": 0.5,                       # the push at zero distance, as a multiple of the steering pull
 			"spikeH": 1.2, "spikeDecay": 1.6,  # what a press adds, and how fast it fades per second
 			"maxE": 70,
 			"seed": 9,
-			"label": "spawns/s = rate × intensity(t) · spawn off-screen · march to the base" },
+			"label": "spawns/s = rate × intensity(t) · v' = (desired − v)·turn − drag·v + push from neighbours" },
 		"rhyme": { "name": "Hush", "hint": "two small peaks in a long cycle — most of the time is rest, and the trickle is the tension: a stealth game's pacing",
 			"dials": { "peaks": 2, "peakH": 0.4, "period": 20 } } },
 	{ "id": "save", "letter": "S", "name": "Save",
@@ -565,21 +569,62 @@ static func tick(b: Dictionary, dt: float, _t: float) -> void:
 				var sp: Dictionary = spawners[_pick(r2, spawners.size())]
 				if E.size() >= maxE:
 					E.pop_front()
-				E.append({ "x": float(sp.x) + (r2.randf() - 0.5) * b.w * 0.04, "y": float(sp.y) + (r2.randf() - 0.5) * b.h * 0.06,
-					"w": r2.randf() * 6.28, "k": 0.8 + r2.randf() * 0.4 })
+				var ex: float = float(sp.x) + (r2.randf() - 0.5) * b.w * 0.04
+				var ey: float = float(sp.y) + (r2.randf() - 0.5) * b.h * 0.06
+				var ew: float = r2.randf() * 6.28
+				var ek: float = 0.8 + r2.randf() * 0.4
+				var v0: float = float(D.speed) * b.w * ek * 0.5     # born moving, in a random direction — the steering has to swing it round
+				E.append({ "x": ex, "y": ey, "w": ew, "k": ek, "vx": cos(ew) * v0, "vy": sin(ew) * v0 })
 			var bx: float = b.bx
 			var by: float = b.by
 			var speed: float = D.speed
+			var turn: float = D.turn
+			var drag: float = D.drag
+			var sepF: float = D.sepF
+			var R: float = float(D.sepR) * b.w
+			var R2 := R * R
+			# every enemy is a VELOCITY now, not a position stamped along a line: each
+			# step it steers — v += (desired − v)·turn·dt, desired being full speed
+			# straight at the base — so a spawn facing the wrong way swings round in
+			# an arc instead of snapping; drag bleeds speed so the turn is a turn and
+			# not a slide; and a cheap SEPARATION (every pair closer than sepR pushes
+			# apart, harder the closer) spreads the mob so it arrives as a crowd, not
+			# a stack. symplectic: velocity first, then position; substepped so the
+			# coarsest frame is still stable (turn·h and drag·h well under 1)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var hs := dt / sub
+			for _s in sub:
+				for i in E.size():
+					var e: Dictionary = E[i]
+					var dx: float = bx - float(e.x)
+					var dy: float = by - float(e.y)
+					var d := maxf(1e-6, Vector2(dx, dy).length())
+					var spd: float = speed * b.w * float(e.k)
+					var ax: float = (dx / d * spd - float(e.vx)) * turn   # chase the heading
+					var ay: float = (dy / d * spd - float(e.vy)) * turn
+					e.w += hs * 6.0                                 # the old wobble, now a small sideways push
+					var wob: float = cos(float(e.w)) * spd * turn * 0.3
+					ax += -dy / d * wob
+					ay += dx / d * wob
+					for j in E.size():                              # separation: O(n²), but n ≤ maxE and the test is one subtraction
+						if j == i:
+							continue
+						var o: Dictionary = E[j]
+						var ox: float = float(e.x) - float(o.x)
+						var oy: float = float(e.y) - float(o.y)
+						var q2 := ox * ox + oy * oy
+						if q2 < R2 and q2 > 1e-6:
+							var q := sqrt(q2)
+							var f := (1.0 - q / R) * spd * sepF * turn
+							ax += ox / q * f
+							ay += oy / q * f
+					e.vx += (ax - float(e.vx) * drag) * hs
+					e.vy += (ay - float(e.vy) * drag) * hs
+					e.x += float(e.vx) * hs
+					e.y += float(e.vy) * hs
 			for i in range(E.size() - 1, -1, -1):
 				var e: Dictionary = E[i]
-				var dx: float = bx - float(e.x)
-				var dy: float = by - float(e.y)
-				var d := maxf(1e-6, Vector2(dx, dy).length())
-				var v: float = speed * b.w * float(e.k) * dt
-				e.w += dt * 6.0
-				e.x += dx / d * v + cos(e.w) * v * 0.3
-				e.y += dy / d * v + sin(e.w) * v * 0.3
-				if d < 10.0:
+				if Vector2(bx - float(e.x), by - float(e.y)).length() < 10.0:
 					E.remove_at(i)
 					b.reached += 1
 					b.hit = 1.0
@@ -761,7 +806,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var E: Array = b.E
 			for e: Dictionary in E:
 				var ep := Vector2(e.x, e.y)
-				var a := atan2(by - ep.y, bx - ep.x)
+				var a := atan2(float(e.vy), float(e.vx))           # the nose follows the velocity
 				Kit.dot(n, ep, 3.0, Kit.HOT)
 				Kit.dot(n, ep + Vector2(cos(a), sin(a)) * 3.5, 1.5, Kit.HOT)
 			var hit: float = b.hit

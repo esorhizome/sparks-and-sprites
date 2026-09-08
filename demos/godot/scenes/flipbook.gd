@@ -594,16 +594,21 @@ func _make_defs() -> Array:
 					_starc(c, p, 3.0 * (1.0 - sc), 1.1 * (1.0 - sc), 4, Color(0.75, 0.9, 0.98, 1.0 - sc), sc * 3.0 + j2) })
 
 	d.append({ "letter": "M", "name": "Meteor", "fam": 1, "n": 12, "fps": 20.0, "loop": false, "add": true,
-		"hint": "falls for 60% of the strip, lands for the rest — the impact frame is a hard cut",
+		"hint": "accelerates in for 60% of the strip, lands for the rest — the impact frame is a hard cut",
 		"paint": func(c: CanvasItem, i: int, n: int) -> void:
 			var k := float(i) / (n - 1)
 			var p0 := Vector2(10.0, 8.0)
 			var p1 := Vector2(45.0, 55.0)
 			if k < 0.6:
 				var p := k / 0.6
-				var h := p0 + (p1 - p0) * p
-				_streakc(c, h + Vector2(-7.5, -10.5), h, Color(0.96, 0.63, 0.35, 0.7), 4.0)
-				_streakc(c, h + Vector2(-12.0, -17.0), h, Color(0.96, 0.54, 0.35, 0.35), 6.0)
+				# a falling body covers distance as the SQUARE of its time (½g·t²), so
+				# the head hangs high in the early frames and crosses most of the line
+				# in the last two — arriving fast is what makes the cut to the flash land
+				var s := p * p                            # the distance along the line
+				var tl := 0.35 + 1.15 * p                 # the tail, longer with speed
+				var h := p0 + (p1 - p0) * s
+				_streakc(c, h + Vector2(-7.5, -10.5) * tl, h, Color(0.96, 0.63, 0.35, 0.7), 4.0)
+				_streakc(c, h + Vector2(-12.0, -17.0) * tl, h, Color(0.96, 0.54, 0.35, 0.35), 6.0)
 				_glowc(c, h, 6.0, Color("F5DC96"), 0.95)
 			else:
 				var q := (k - 0.6) / 0.4
@@ -729,8 +734,12 @@ func _make_defs() -> Array:
 				_streakc(c, Vector2(C, topY), Vector2(C, topY + r * (1.0 + p)), Color(0.54, 0.85, 0.96, 0.7), 1.5 + p)
 			elif k < 0.7:
 				var q := (k - 0.4) / 0.3
-				var y := topY + 6.0 + smoothstep(0.0, 1.0, q) * (floorY - topY - 8.0)
-				c.draw_set_transform(Vector2(i * S + C, y), 0.0, Vector2(0.7, 1.5))
+				# a drop let go from rest falls ½g·t²: the distance grows with the SQUARE
+				# of the time, so it arrives faster every frame — smoothstep would brake it
+				# into the floor, and a drip never brakes
+				var y := topY + 6.0 + q * q * (floorY - topY - 8.0)
+				var sy := 1.15 + 0.5 * q                 # the stretch grows with the speed; volume kept
+				c.draw_set_transform(Vector2(i * S + C, y), 0.0, Vector2(1.0 / sy, sy))
 				c.draw_circle(Vector2.ZERO, 3.4, Color(0.54, 0.85, 0.96, 0.9))
 				c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE)
 			else:
@@ -762,14 +771,21 @@ func _make_defs() -> Array:
 						1.4 * (1.0 - q * 0.6), Color(0.75, 0.92, 0.98, 1.0 - q)) })
 
 	d.append({ "letter": "J", "name": "Jelly", "fam": 2, "n": 12, "fps": 14.0, "loop": true, "add": false,
-		"hint": "a blob hops on pure squash-and-stretch — volume conserved, sx = 1/sy",
+		"hint": "a blob hops a parabola on pure squash-and-stretch — squashed on the floor, stretched at launch, round at the apex — sx = 1/sy",
 		"paint": func(c: CanvasItem, i: int, n: int) -> void:
-			var kl := float(i) / n
-			var sy := 1.0 + sin(kl * TAU) * 0.28
+			# one hop per lap. the first and last frames are the CONTACT — the blob
+			# squashed on the floor — and the ten between are a parabola, h = 4·H·q·(1−q)
+			# (½g·t² with the launch speed that peaks at H). the stretch follows the
+			# SPEED, |1 − 2q|: longest leaving and landing, round at the apex where the
+			# velocity is zero — squash-and-stretch is a velocity readout, not a phase
+			var HMAX := 10.5                              # the apex, px
+			var contact := i == 0 or i == n - 1
+			var q := (i - 0.5) / float(n - 2)             # 0.05..0.95 across the airborne frames
+			var hop := 0.0 if contact else 4.0 * HMAX * q * (1.0 - q)
+			var sy := 0.72 if contact else 1.0 + 0.28 * absf(1.0 - 2.0 * q)
 			var sx := 1.0 / sy
-			var hop := maxf(0.0, sin(kl * TAU)) * 7.5
 			var base := S - 15.0
-			c.draw_circle(Vector2(C, base + 3.0), 8.2 * sx * maxf(0.0, 1.0 - hop / 6.0) * 0.5 + 2.2, Color(0.07, 0.06, 0.13, 0.3))
+			c.draw_circle(Vector2(C, base + 3.0), 8.2 * sx * maxf(0.0, 1.0 - hop / 15.0) * 0.5 + 2.2, Color(0.07, 0.06, 0.13, 0.3))
 			c.draw_set_transform(Vector2(i * S + C, base - 6.8 * sy - hop), 0.0, Vector2(sx, sy))
 			c.draw_circle(Vector2.ZERO, 8.2, Color(0.61, 0.89, 0.54, 0.85))
 			c.draw_circle(Vector2(-2.6, -2.6), 2.4, Color(0.86, 0.98, 0.82, 0.6))
@@ -780,19 +796,51 @@ func _make_defs() -> Array:
 	var rL2 := RandomNumberGenerator.new(); rL2.seed = 149
 	var leafcols := [Color(0.84, 0.66, 0.47), Color(0.77, 0.55, 0.35), Color(0.61, 0.71, 0.43)]
 	var lvs2: Array = []
-	for j in 5: lvs2.append([13.0 + rL2.randf() * 45.0, rL2.randf(), 6.0 + rL2.randf() * 6.0, 2 + rL2.randi() % 2, leafcols[j % 3]])
+	for j in 5: lvs2.append([13.0 + rL2.randf() * 45.0, rL2.randf(), 6.0 + rL2.randf() * 6.0, 2 + rL2.randi() % 2, leafcols[j % 3],
+		0.9 + rL2.randf() * 0.4, rL2.randf() * TAU])
+	# a falling leaf ROCKS. the tilt swings like a pendulum, and the tilt is
+	# what steers it: edge-down the leaf slices sideways (in the direction it
+	# leans) and drops quickly; flat, it rides its own drag and barely moves.
+	# that is an integral, not a formula — so it is integrated ONCE, here, into
+	# a table of M samples per leaf, and the bake only looks the table up.
+	# the descent is normalised afterwards so every leaf still crosses the cell
+	# exactly once per loop.
+	var M_LEAF := 64
+	for L in lvs2:
+		var tx := PackedFloat32Array(); tx.resize(M_LEAF + 1)
+		var ty := PackedFloat32Array(); ty.resize(M_LEAF + 1)
+		var tt := PackedFloat32Array(); tt.resize(M_LEAF + 1)
+		var xx := 0.0
+		var yy := 0.0
+		var ds := 1.0 / M_LEAF
+		for s in M_LEAF + 1:
+			var th: float = float(L[5]) * sin(s * ds * TAU * float(L[3]) + float(L[6]))   # the rock
+			tx[s] = xx; ty[s] = yy; tt[s] = th
+			xx += sin(th) * float(L[2]) * 6.0 * ds                    # sideways when edge-down, the way it leans
+			yy += (0.4 + 0.6 * sin(th) * sin(th)) * ds                # fast edge-down, slow when flat
+		var drop := S - 16.0                                          # the cell's height, in px
+		for s2 in M_LEAF + 1:
+			ty[s2] = 7.5 + ty[s2] / yy * drop
+		L.append(tx); L.append(ty); L.append(tt)
 	d.append({ "letter": "L", "name": "Leaves", "fam": 2, "n": 16, "fps": 12.0, "loop": true, "add": false,
-		"hint": "five leaves tumble down on offset clocks, swaying wider than they fall",
+		"hint": "five leaves rock down on offset clocks — edge-down they slip sideways and drop, flat they hover: the tilt steers the fall",
 		"paint": func(c: CanvasItem, i: int, n: int) -> void:
 			var kl := float(i) / n
 			for L in lvs2:
 				var p: float = fmod(kl + L[1], 1.0)
-				var y: float = 7.5 + p * (S - 16.0)
-				var x: float = L[0] + sin(p * TAU * 2.0 + L[1] * 7.0) * L[2]
-				var rot: float = p * TAU * L[3]
+				var fi: float = p * M_LEAF                              # read the table
+				var i0 := int(floorf(fi))
+				var i1 := mini(M_LEAF, i0 + 1)
+				var fr := fi - i0
+				var tx: PackedFloat32Array = L[7]
+				var ty: PackedFloat32Array = L[8]
+				var tt: PackedFloat32Array = L[9]
+				var x: float = float(L[0]) + lerpf(tx[i0], tx[i1], fr)
+				var y: float = lerpf(ty[i0], ty[i1], fr)
+				var rot: float = lerpf(tt[i0], tt[i1], fr)
 				var a: float = p / 0.1 if p < 0.1 else ((1.0 - p) / 0.15 if p > 0.85 else 1.0)
 				var col: Color = L[4]
-				c.draw_set_transform(Vector2(i * S + x, y), rot, Vector2(1.0, 0.45 + 0.55 * absf(cos(rot))))
+				c.draw_set_transform(Vector2(i * S + x, y), rot, Vector2(1.0, 0.45 + 0.55 * absf(cos(rot))))   # the flat-side flip: edge-down reads thinner
 				c.draw_circle(Vector2.ZERO, 2.7, Color(col.r, col.g, col.b, a * 0.9))
 				c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE) })
 
@@ -954,11 +1002,18 @@ func _make_defs() -> Array:
 			var botY := S - 16.0
 			var y := topY
 			var spin := 0.0
-			if p < 0.3: y = topY + smoothstep(0.0, 1.0, p / 0.3) * (botY - topY)
+			# each act gets the easing its physics asks for: the drop is a fall from
+			# rest, so it accelerates (q²); the snap is a jerk on the string that
+			# then loses speed all the way up, so it decelerates (1 − (1−q)²)
+			if p < 0.3:
+				var q := p / 0.3                          # the drop — ½g·t²
+				y = topY + q * q * (botY - topY)
 			elif p < 0.6:
 				y = botY
 				spin = (p - 0.3) / 0.3
-			elif p < 0.85: y = botY - smoothstep(0.0, 1.0, (p - 0.6) / 0.25) * (botY - topY)
+			elif p < 0.85:
+				var q := (p - 0.6) / 0.25                 # the snap — fast, then braking
+				y = botY - (1.0 - (1.0 - q) * (1.0 - q)) * (botY - topY)
 			_streakc(c, Vector2(C, topY - 4.5), Vector2(C, y - 4.5), Color(0.79, 0.77, 0.89, 0.6), 0.8)
 			c.draw_circle(Vector2(C, y), 5.2, Color(0.96, 0.54, 0.54, 0.95))
 			_ringc(c, Vector2(C, y), 5.2, Color(0.07, 0.06, 0.13, 0.5), 1.2)
@@ -1591,19 +1646,30 @@ func _make_defs() -> Array:
 					c.draw_circle(Vector2(C - 7.5 + dd * 7.5, base + 2.2), 1.9 * dust, Color(0.63, 0.59, 0.55, dust * 0.4)) })
 
 	d.append({ "letter": "B", "name": "Bounceball", "fam": 9, "n": 14, "fps": 14.0, "loop": true, "add": false,
-		"hint": "the ball arcs; the SHADOW stays on the floor and shrinks with height — that's the 3D",
+		"hint": "the ball arcs on a real parabola and squashes for one contact frame; the SHADOW stays on the floor and shrinks with height — that's the 3D",
 		"paint": func(c: CanvasItem, i: int, n: int) -> void:
 			var kl := float(i) / n
 			var base := S - 10.5
-			var hop := absf(sin(kl * TAU))
-			var x := 12.0 + kl * (S - 24.0)
-			var h := hop * 25.5
-			var squash := 0.6 if h < 3.0 else 1.0
+			var HMAX := 25.5                              # the apex height, px
+			var DX := S - 24.0                            # the run across the cell
+			# two bounces per lap, each a PARABOLA: h = 4·H·q·(1−q) is ½g·t² with the
+			# launch speed chosen to peak at H — so the ball hangs at the apex and
+			# rushes the floor, where |sin| would have crossed every height at one speed
+			var q := fmod(kl * 2.0, 1.0)                  # 0..1 inside this bounce
+			var x := 12.0 + kl * DX
+			var h := 4.0 * HMAX * q * (1.0 - q)
+			var contact := q < 1e-6                       # the frame ON the floor
+			# squash lives only in the contact frame; every airborne frame stretches
+			# along its velocity instead — most at launch and landing (|1 − 2q| = 1),
+			# none at the apex (q = ½), where the ball is round — sx = 1/sy keeps volume
+			var vy := -4.0 * HMAX * (1.0 - 2.0 * q) * 2.0  # per lap: dh/dkl, screen-down positive
+			var sy := 0.62 if contact else 1.0 + 0.3 * absf(1.0 - 2.0 * q)
+			var ang := 0.0 if contact else atan2(vy, DX) - PI / 2.0   # lean the stretch along the flight
 			_ellipsec(c, Vector2(x, base + 2.2), 6.0 * (1.0 - h / 37.5), 1.9 * (1.0 - h / 37.5), Color(0.07, 0.06, 0.13, 0.45 - h / 90.0), 3.0)
-			c.draw_set_transform(Vector2(i * S + x, base - 4.5 - h), 0.0, Vector2(1.0 / squash, squash))
+			c.draw_set_transform(Vector2(i * S + x, base - 4.5 * sy - h), ang, Vector2(1.0 / sy, sy))
 			c.draw_circle(Vector2.ZERO, 5.2, Color(0.96, 0.54, 0.54, 0.95))
-			c.draw_circle(Vector2(-1.5, -1.5), 1.5, Color(1.0, 0.82, 0.82, 0.8))
-			c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE) })
+			c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE)
+			c.draw_circle(Vector2(x - 1.5, base - 4.5 * sy - h - 1.5), 1.5, Color(1.0, 0.82, 0.82, 0.8)) })   # the highlight stays top-left
 
 	var rC4 := RandomNumberGenerator.new(); rC4.seed = 307
 	var cbubs: Array = []
@@ -1975,7 +2041,7 @@ func _make_defs() -> Array:
 	var udrops: Array = []
 	for j in 7: udrops.append([10.5 + rU4.randf() * 51.0, rU4.randf()])
 	d.append({ "letter": "U", "name": "Umbrella", "fam": 8, "n": 14, "fps": 13.0, "loop": true, "add": false,
-		"hint": "rain meets a dome and becomes deflection ticks and edge drips",
+		"hint": "rain accelerates into a dome and becomes deflection ticks; at the rim a bead swells, lets go, and falls",
 		"paint": func(c: CanvasItem, i: int, n: int) -> void:
 			var kl := float(i) / n
 			var uy := C + 1.5
@@ -1991,14 +2057,31 @@ func _make_defs() -> Array:
 				var over: bool = absf(dr[0] - C) < 17.0
 				var hitY: float = uy - sqrt(maxf(0.0, 324.0 - (dr[0] - C) * (dr[0] - C)))
 				var floorY2: float = hitY if over else S - 6.0
-				var y: float = 3.0 + p * (floorY2 - 6.0)
-				if y < floorY2 - 2.2:
-					_streakc(c, Vector2(dr[0] + 0.8, y), Vector2(dr[0], y + 4.5), Color(0.59, 0.78, 0.96, 0.7), 0.9)
+				# Rain's clock, but the fall is ½g·t²: q² on the distance, so a drop hangs
+				# in its first frames and hits at speed — its streak lengthens with it.
+				# the last quarter of the clock is the tick it leaves on the dome
+				if p < 0.75:
+					var q: float = p / 0.75
+					var y: float = 3.0 + q * q * (floorY2 - 6.0)
+					_streakc(c, Vector2(dr[0] + 0.8, y), Vector2(dr[0], y + 4.5 * (0.4 + 0.6 * q)), Color(0.59, 0.78, 0.96, 0.7), 0.9)
 				elif over:
 					var side := -1.0 if dr[0] < C else 1.0
-					_streakc(c, Vector2(dr[0], hitY), Vector2(dr[0] + side * 3.0, hitY - 2.2), Color(0.59, 0.78, 0.96, 1.0 - p), 0.8)
+					var fade: float = 1.0 - (p - 0.75) / 0.25
+					_streakc(c, Vector2(dr[0], hitY), Vector2(dr[0] + side * 3.0, hitY - 2.2), Color(0.59, 0.78, 0.96, fade), 0.8)
+			# the edge drip is the bestiary's Molten drip: a bead HANGS at the rim and
+			# swells until it is too heavy to hold, then lets go and falls from rest —
+			# ½g·t² again — thinning as it goes. twice per lap
 			var edgeP := fmod(kl * 2.0, 1.0)
-			c.draw_circle(Vector2(C + 18.0, uy + 1.5 + edgeP * 15.0), 1.1, Color(0.59, 0.78, 0.96, 1.0 - edgeP)) })
+			if edgeP < 0.5:                               # hanging: the bead swells
+				var sw := edgeP / 0.5
+				var ry := 0.9 + sw * 1.65
+				c.draw_set_transform(Vector2(i * S + C + 18.0, uy + 0.8 + ry), 0.0, Vector2(0.75 + sw * 0.9, ry))
+				c.draw_circle(Vector2.ZERO, 1.0, Color(0.59, 0.78, 0.96, 0.85))
+			else:                                         # falling: from rest, faster every frame
+				var fq := (edgeP - 0.5) / 0.5
+				c.draw_set_transform(Vector2(i * S + C + 18.0, uy + 3.3 + fq * fq * 15.0), 0.0, Vector2(1.2, 1.95))
+				c.draw_circle(Vector2.ZERO, 1.0, Color(0.59, 0.78, 0.96, 0.85 - fq * 0.6))
+			c.draw_set_transform(Vector2(i * S, 0.0), 0.0, Vector2.ONE) })
 
 	var rV4 := RandomNumberGenerator.new(); rV4.seed = 379
 	var vconf: Array = []

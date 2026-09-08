@@ -1313,16 +1313,20 @@ def("I", "Iceshard", "hit", "crystals grow, gleam once, then shatter — three a
   };
 });
 
-def("M", "Meteor", "hit", "falls for 60% of the strip, lands for the rest — the impact frame is a hard cut", function make(u) {
+def("M", "Meteor", "hit", "accelerates in for 60% of the strip, lands for the rest — the impact frame is a hard cut", function make(u) {
   var N = 12, S = 96, FPS = 20;
   var x0 = 14, y0 = 10, x1 = 60, y1 = 74;              // the flight line
   var sheet = u.bake(N, S, function (f) {
     var k = f.k;
     if (k < 0.6) {                                     // flight: head + trailing fire
       var p = k / 0.6;
-      var x = x0 + (x1 - x0) * p, y = y0 + (y1 - y0) * p;
-      f.streak(x - 10, y - 14, x, y, "rgba(245,161,90,0.7)", 5);
-      f.streak(x - 16, y - 23, x, y, "rgba(245,138,90,0.35)", 8);
+      // a falling body covers distance as the SQUARE of its time (½g·t²), so
+      // the head hangs high in the early frames and crosses most of the line
+      // in the last two — arriving fast is what makes the cut to the flash land
+      var s = p * p, tl = 0.35 + 1.15 * p;             // s: the distance along the line; tl: the tail, longer with speed
+      var x = x0 + (x1 - x0) * s, y = y0 + (y1 - y0) * s;
+      f.streak(x - 10 * tl, y - 14 * tl, x, y, "rgba(245,161,90,0.7)", 5);
+      f.streak(x - 16 * tl, y - 23 * tl, x, y, "rgba(245,138,90,0.35)", 8);
       f.glow(x, y, 8, "rgba(245,220,150,", 0.95);
     } else {                                           // landing: flash, ring, debris
       var q = (k - 0.6) / 0.4;
@@ -1559,10 +1563,14 @@ def("D", "Drip", "smoke", "form, stretch, fall, splash — the classic animation
       f.streak(f.c, topY, f.c, topY + r * (1 + p), "rgba(138,217,245,0.7)", 2 + p);
     } else if (k < 0.7) {                              // falling: stretched by speed
       var q = (k - 0.4) / 0.3;
-      var y = topY + 8 + u.ease(q) * (floorY - topY - 10);
+      // a drop let go from rest falls ½g·t²: the distance grows with the SQUARE
+      // of the time, so it arrives faster every frame — smoothstep would brake it
+      // into the floor, and a drip never brakes
+      var y = topY + 8 + q * q * (floorY - topY - 10);
+      var sy = 1.15 + 0.5 * q, sx = 1 / sy;            // the stretch grows with the speed; volume kept
       f.g.save();
       f.g.translate(f.c, y);
-      f.g.scale(0.7, 1.5);                             // the classic falling squash
+      f.g.scale(sx, sy);                               // the classic falling stretch
       f.dot(0, 0, 4.5, "rgba(138,217,245,0.9)");
       f.g.restore();
     } else {                                           // splash: crown + ripple
@@ -1629,15 +1637,23 @@ def("G", "Geyser", "smoke", "a water column erupts, crowns, and rains back down 
   };
 });
 
-def("J", "Jelly", "smoke", "a blob hops on pure squash-and-stretch — volume conserved, sx = 1/sy", function make(u) {
+def("J", "Jelly", "smoke", "a blob hops a parabola on pure squash-and-stretch — squashed on the floor, stretched at launch, round at the apex — volume conserved, sx = 1/sy", function make(u) {
   var N = 12, S = 96, FPS = 14;
+  var HMAX = 14;                                     // the apex, px
   var sheet = u.bake(N, S, function (f) {
-    var ph = f.kl * u.TAU;
-    var sy = 1 + Math.sin(ph) * 0.28;                  // stretch…
+    var i = f.i, n = f.n;
+    // one hop per lap. the first and last frames are the CONTACT — the blob
+    // squashed on the floor — and the ten between are a parabola, h = 4·H·q·(1−q)
+    // (½g·t² with the launch speed that peaks at H). the stretch follows the
+    // SPEED, |1 − 2q|: longest leaving and landing, round at the apex where the
+    // velocity is zero — squash-and-stretch is a velocity readout, not a phase
+    var contact = i === 0 || i === n - 1;
+    var q = (i - 0.5) / (n - 2);                       // 0.05..0.95 across the airborne frames
+    var hop = contact ? 0 : 4 * HMAX * q * (1 - q);
+    var sy = contact ? 0.72 : 1 + 0.28 * Math.abs(1 - 2 * q);   // stretch…
     var sx = 1 / sy;                                   // …never gains volume
-    var hop = Math.max(0, Math.sin(ph)) * 10;          // airborne while stretched
     var base = f.S - 20;
-    f.dot(f.c, base + 4, 11 * sx * Math.max(0, 1 - hop / 8) * 0.5 + 3, "rgba(19,16,32,0.3)");  // shadow
+    f.dot(f.c, base + 4, 11 * sx * Math.max(0, 1 - hop / 20) * 0.5 + 3, "rgba(19,16,32,0.3)");  // shadow
     f.g.save();
     f.g.translate(f.c, base - 9 * sy - hop);
     f.g.scale(sx, sy);
@@ -1660,25 +1676,48 @@ def("J", "Jelly", "smoke", "a blob hops on pure squash-and-stretch — volume co
   };
 });
 
-def("L", "Leaves", "smoke", "five leaves tumble down on offset clocks, swaying wider than they fall", function make(u) {
+def("L", "Leaves", "smoke", "five leaves rock down on offset clocks — edge-down they slip sideways and drop, flat they hover: the tilt steers the fall", function make(u) {
   var N = 16, S = 96, FPS = 12;
   var R = u.rng(149);
   var cols = ["rgba(214,168,120,", "rgba(196,140,90,", "rgba(155,180,110,"];
   var lvs = [];
   for (var j = 0; j < 5; j++)
-    lvs.push({ x: 18 + R() * 60, off: R(), sway: 8 + R() * 8, spin: 2 + Math.floor(R() * 2), c: cols[j % 3] });
+    lvs.push({ x: 18 + R() * 60, off: R(), sway: 8 + R() * 8, spin: 2 + Math.floor(R() * 2), c: cols[j % 3],
+               tilt: 0.9 + R() * 0.4, ph: R() * u.TAU });
+  // a falling leaf ROCKS. the tilt swings like a pendulum, and the tilt is
+  // what steers it: edge-down the leaf slices sideways (in the direction it
+  // leans) and drops quickly; flat, it rides its own drag and barely moves.
+  // that is an integral, not a formula — so it is integrated ONCE, here, into
+  // a table of M samples per leaf, and the bake only looks the table up.
+  // the descent is normalised afterwards so every leaf still crosses the cell
+  // exactly once per loop.
+  var M = 64;
+  for (var j2 = 0; j2 < lvs.length; j2++) {
+    var L2 = lvs[j2], px = new Float32Array(M + 1), py = new Float32Array(M + 1), pt = new Float32Array(M + 1);
+    var xx = 0, yy = 0, ds = 1 / M;
+    for (var s = 0; s <= M; s++) {
+      var th = L2.tilt * Math.sin(s * ds * u.TAU * L2.spin + L2.ph);   // the rock
+      px[s] = xx; py[s] = yy; pt[s] = th;
+      xx += Math.sin(th) * L2.sway * 6 * ds;           // sideways when edge-down, the way it leans
+      yy += (0.4 + 0.6 * Math.sin(th) * Math.sin(th)) * ds;   // fast edge-down, slow when flat
+    }
+    var drop = S - 22;                                 // the cell's height, in px
+    for (var s2 = 0; s2 <= M; s2++) py[s2] = 10 + py[s2] / yy * drop;
+    L2.px = px; L2.py = py; L2.pt = pt;
+  }
   var sheet = u.bake(N, S, function (f) {
     for (var j = 0; j < lvs.length; j++) {
       var L = lvs[j];
       var p = (f.kl + L.off) % 1;
-      var y = 10 + p * (f.S - 22);
-      var x = L.x + Math.sin(p * u.TAU * 2 + L.off * 7) * L.sway;
-      var rot = p * u.TAU * L.spin;
+      var fi = p * M, i0 = Math.floor(fi), i1 = Math.min(M, i0 + 1), fr = fi - i0;   // read the table
+      var x = L.x + L.px[i0] + (L.px[i1] - L.px[i0]) * fr;
+      var y = L.py[i0] + (L.py[i1] - L.py[i0]) * fr;
+      var rot = L.pt[i0] + (L.pt[i1] - L.pt[i0]) * fr;
       var a = p < 0.1 ? p / 0.1 : (p > 0.85 ? (1 - p) / 0.15 : 1);
       f.g.save();
       f.g.translate(x, y);
       f.g.rotate(rot);
-      f.g.scale(1, 0.45 + 0.55 * Math.abs(Math.cos(rot)));   // the flat-side flip
+      f.g.scale(1, 0.45 + 0.55 * Math.abs(Math.cos(rot)));   // the flat-side flip: edge-down reads thinner
       f.dot(0, 0, 3.6, L.c + a * 0.9 + ")");
       f.g.restore();
     }
@@ -1690,7 +1729,7 @@ def("L", "Leaves", "smoke", "five leaves tumble down on offset clocks, swaying w
       u.scene(); u.mote(px, u.GY - 12);
       u.blit(sheet, i, px, py, 1.6);
       u.strip(sheet, i);
-      u.label("the y-scale flip fakes 3D tumbling on a 2D leaf — free depth", u.W / 2, u.H - 34, null, "center");
+      u.label("the rock was integrated once, at bake time — the tilt steers the drift; the y-scale flip fakes the 3D", u.W / 2, u.H - 34, null, "center");
     },
     press: function (x, y) { px = x; py = y - 20; }
   };
@@ -1978,10 +2017,13 @@ def("Y", "Yoyo", "speech", "drop, sleep, snap back — a piecewise clock where e
   var sheet = u.bake(N, S, function (f) {
     var p = f.kl;
     var topY = 14, botY = f.S - 22;
-    var y, spin = 0;
-    if (p < 0.3) y = topY + u.ease(p / 0.3) * (botY - topY);          // the drop
+    var y, spin = 0, q;
+    // each act gets the easing its physics asks for: the drop is a fall from
+    // rest, so it accelerates (q²); the snap is a jerk on the string that
+    // then loses speed all the way up, so it decelerates (1 − (1−q)²)
+    if (p < 0.3) { q = p / 0.3; y = topY + q * q * (botY - topY); }   // the drop — ½g·t²
     else if (p < 0.6) { y = botY; spin = (p - 0.3) / 0.3; }           // the sleep
-    else if (p < 0.85) y = botY - u.ease((p - 0.6) / 0.25) * (botY - topY);  // the snap
+    else if (p < 0.85) { q = (p - 0.6) / 0.25; y = botY - (1 - (1 - q) * (1 - q)) * (botY - topY); }  // the snap — fast, then braking
     else y = topY;                                                    // the rest
     f.streak(f.c, topY - 6, f.c, y - 6, "rgba(201,196,228,0.6)", 1);  // the string
     f.dot(f.c, y, 7, "rgba(245,138,138,0.95)");
@@ -3062,24 +3104,35 @@ def("A", "Anticipation", "arcade", "crouch, HOLD, launch — the hold is just th
   };
 });
 
-def("B", "Bounceball", "goofy", "the ball arcs, the SHADOW stays on the floor and shrinks with height — that's the whole 3D", function make(u) {
+def("B", "Bounceball", "goofy", "the ball arcs on a real parabola and squashes for one contact frame; the SHADOW stays on the floor and shrinks with height — that's the whole 3D", function make(u) {
   var N = 14, S = 96, FPS = 14;
+  var HMAX = 34, DX = S - 32;                         // the apex height, and the run across the cell
   var sheet = u.bake(N, S, function (f) {
     var kl = f.kl, base = f.S - 14;
-    var hop = Math.abs(Math.sin(kl * u.TAU));         // two bounces per lap
-    var x = 16 + kl * (f.S - 32);
-    var h = hop * 34;
-    var squash = h < 4 ? 0.6 : 1;                     // flat at the floor
+    // two bounces per lap, each a PARABOLA: h = 4·H·q·(1−q) is ½g·t² with the
+    // launch speed chosen to peak at H — so the ball hangs at the apex and
+    // rushes the floor, where |sin| would have crossed every height at one speed
+    var q = (kl * 2) % 1;                             // 0..1 inside this bounce
+    var x = 16 + kl * DX;
+    var h = 4 * HMAX * q * (1 - q);
+    var contact = q < 1e-6;                           // the frame ON the floor
+    // squash lives only in the contact frame; every airborne frame stretches
+    // along its velocity instead — most at launch and landing (|1 − 2q| = 1),
+    // none at the apex (q = ½), where the ball is round — sx = 1/sy keeps volume
+    var vy = -4 * HMAX * (1 - 2 * q) * 2, vx = DX;   // per lap: dh/dkl and dx/dkl
+    var sy = contact ? 0.62 : 1 + 0.3 * Math.abs(1 - 2 * q), sx = 1 / sy;
+    var ang = contact ? 0 : Math.atan2(vy, vx) - Math.PI / 2;   // lean the stretch along the flight
     f.g.beginPath();                                  // the shadow: height's witness
     f.g.ellipse(x, base + 3, 8 * (1 - h / 50), 2.6 * (1 - h / 50), 0, 0, u.TAU);
     f.g.fillStyle = "rgba(19,16,32," + (0.45 - h / 120) + ")";
     f.g.fill();
     f.g.save();
-    f.g.translate(x, base - 6 - h);
-    f.g.scale(1 / squash, squash);
+    f.g.translate(x, base - 6 * sy - h);
+    f.g.rotate(ang);
+    f.g.scale(sx, sy);
     f.dot(0, 0, 7, "rgba(245,138,138,0.95)");
-    f.dot(-2, -2, 2, "rgba(255,210,210,0.8)");
     f.g.restore();
+    f.dot(x - 2, base - 6 * sy - h - 2, 2, "rgba(255,210,210,0.8)");   // the highlight stays top-left
   });
   var px = u.W * 0.5, py = u.GY - 30;
   return {
@@ -3771,7 +3824,7 @@ def("T", "Teleport", "scifi", "one dissolve sheet, two directions: forward = lea
   };
 });
 
-def("U", "Umbrella", "cozy", "rain meets a dome and becomes deflection ticks and edge drips", function make(u) {
+def("U", "Umbrella", "cozy", "rain accelerates into a dome and becomes deflection ticks; at the rim a bead swells, lets go, and falls", function make(u) {
   var N = 14, S = 96, FPS = 13;
   var R = u.rng(373);
   var drops = [];
@@ -3795,16 +3848,33 @@ def("U", "Umbrella", "cozy", "rain meets a dome and becomes deflection ticks and
       var hitY = uy - Math.sqrt(Math.max(0, 576 - (dr.x - f.c) * (dr.x - f.c)));
       var over = Math.abs(dr.x - f.c) < 23;
       var floorY2 = over ? hitY : f.S - 8;
-      var y = 4 + p * (floorY2 - 8);
-      if (y < floorY2 - 3) {
-        f.streak(dr.x + 1, y, dr.x, y + 6, "rgba(150,200,245,0.7)", 1.2);
+      // Rain's clock, but the fall is ½g·t²: q² on the distance, so a drop hangs
+      // in its first frames and hits at speed — its streak lengthens with it.
+      // the last quarter of the clock is the tick it leaves on the dome
+      if (p < 0.75) {
+        var q = p / 0.75;
+        var y = 4 + q * q * (floorY2 - 8);
+        f.streak(dr.x + 1, y, dr.x, y + 6 * (0.4 + 0.6 * q), "rgba(150,200,245,0.7)", 1.2);
       } else if (over) {                              // deflected off the dome
-        var side = dr.x < f.c ? -1 : 1;
-        f.streak(dr.x, hitY, dr.x + side * 4, hitY - 3, "rgba(150,200,245," + (1 - p) + ")", 1);
+        var side = dr.x < f.c ? -1 : 1, fade = 1 - (p - 0.75) / 0.25;
+        f.streak(dr.x, hitY, dr.x + side * 4, hitY - 3, "rgba(150,200,245," + fade + ")", 1);
       }
     }
-    var edgeP = (f.kl * 2) % 1;                       // the patient edge drip
-    f.dot(f.c + 24, uy + 2 + edgeP * 20, 1.5, "rgba(150,200,245," + (1 - edgeP) + ")");
+    // the edge drip is the bestiary's Molten drip: a bead HANGS at the rim and
+    // swells until it is too heavy to hold, then lets go and falls from rest —
+    // ½g·t² again — thinning as it goes. twice per lap
+    var edgeP = (f.kl * 2) % 1;
+    f.g.fillStyle = "rgba(150,200,245,0.85)";
+    f.g.beginPath();
+    if (edgeP < 0.5) {                                // hanging: the bead swells
+      var sw = edgeP / 0.5, ry = 1.2 + sw * 2.2;
+      f.g.ellipse(f.c + 24, uy + 1 + ry, 1 + sw * 1.2, ry, 0, 0, u.TAU);
+    } else {                                          // falling: from rest, faster every frame
+      var fq = (edgeP - 0.5) / 0.5;
+      f.g.fillStyle = "rgba(150,200,245," + (0.85 - fq * 0.6) + ")";
+      f.g.ellipse(f.c + 24, uy + 4.4 + fq * fq * 20, 1.6, 2.6, 0, 0, u.TAU);
+    }
+    f.g.fill();
   });
   var px = u.W * 0.5, py = u.GY - 38;
   return {
