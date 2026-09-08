@@ -15,13 +15,16 @@ const TITLE := "Chains & joints"
 const BLURB := "limbs that reach and trail — inverse kinematics three ways, then the creatures built from joints"
 const DEFS := [
 	{ "id": "tentacle", "letter": "T", "name": "Tentacle",
-		"hint": "a follow-chain: the head leads, every link keeps its distance — press to point it",
+		"hint": "a follow-chain with a spine: the head leads, every link keeps its distance, and every joint is an angular spring chasing the joint before it — so the tail lags the head, whips through and settles on its own — press to point it",
 		"dials": { "n": 18, "link": 10, "taper": 0.28,        # links, the base spacing (px), shrink per link
 			"follow": 3.2,                                   # the head's lerp rate toward the target
-			"sway": 0.05, "swayFreq": 3,                     # the little life-sine on every joint, and its tempo
+			"k": 100,                                        # the first joint's stiffness: how hard it turns to trail the head (rad/s² per rad)
+			"tip": 1.25,                                     # each joint's k as a multiple of the one before: a lighter link, the same bend, a quicker righting
+			"tipdamp": 0.55,                                 # a joint's damping as a fraction of ITS OWN critical — under 1, so each joint overshoots the one before and the tail whips
+			"sway": 0.05, "swayFreq": 3,                     # the current: a noise nudge on the first joint's rest (rad), and how fast it changes
 			"sticky": 3.5, "roamX": 0.34, "roamY": 0.3,      # how long a press holds; the idle wander (of W, H)
-			"label": "each link: parent + (cos a, sin a) · length" },
-		"rhyme": { "name": "Thrash", "hint": "the same chain with six times the sway at three times the tempo and a keener head — a whip, not a drift",
+			"label": "θ₁'' = k·(trail − θ₁) − d·θ₁' · θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · dⱼ = tipdamp·2√kⱼ" },
+		"rhyme": { "name": "Thrash", "hint": "the same chain in six times the current, changing three times as fast, with a keener head — the first joint never gets to rest, so the tail is always mid-whip: a thrash, not a drift",
 			"dials": { "sway": 0.3, "swayFreq": 9, "follow": 7 } } },
 	{ "id": "ik", "letter": "I", "name": "Ik",
 		"hint": "two bones, one triangle, the Law of Cosines — press to re-aim and flip the elbow",
@@ -57,38 +60,50 @@ const DEFS := [
 		"rhyme": { "name": "Quail", "hint": "twelve followers at half the spacing and a slower stroll — a quail and her chicks, tight on her tail",
 			"dials": { "followers": 12, "spacing": 4, "speed": 55 } } },
 	{ "id": "octopus", "letter": "O", "name": "Octopus",
-		"hint": "Tentacle ×8 behind a body that swims by jet pulses — Undulate's curl, Dash's decay — press to send it off",
+		"hint": "Tentacle ×8 behind a body that swims by jet pulses — Dash's decay for the mantle, a sprung chain per arm: each joint chases the one before it plus a resting curl, and speed straightens the curl, so a jet makes the arms stream out and, as it fades, swing back and curl up again — press to send it off",
 		"dials": { "arms": 8, "links": 7, "link": 6,          # chains, joints per chain, joint spacing (px)
 			"spread": 2.4,                                   # how wide the arms fan across the back (radians)
 			"pulseEvery": 1.3, "jet": 170, "drag": 1.6,      # seconds between jets, the impulse (px/s), the decay rate
-			"curl": 0.22, "curlFreq": 4,                     # the sine on every joint's angle, and its tempo
+			"curl": 0.22,                                    # each joint's resting bend past the one before it (rad) — the arm's curl when the mantle is still
+			"stream": 90,                                    # the mantle speed (px/s) at which the arms are fully straight and trailing
+			"k": 60,                                         # the first joint's stiffness (rad/s² per rad)
+			"tip": 1.3,                                      # each joint's k as a multiple of the one before: lighter, quicker
+			"tipdamp": 0.45,                                 # a joint's damping as a fraction of ITS OWN critical — under 1, so the arms overshoot when they swing back
 			"bodyR": 11, "sticky": 4,
-			"label": "jet: v += J·dir, then v ·= e^(−drag·dt)" },
-		"rhyme": { "name": "Oracle", "hint": "a jet every three seconds, gentler, with twice the curl — a deep-sea oracle drifting on its own slow thoughts",
+			"label": "jet: v += J·dir, then v ·= e^(−drag·dt) · arm: θⱼ'' = kⱼ·(θⱼ₋₁ + curl·(1 − |v|/stream) − θⱼ) − dⱼ·θⱼ'" },
+		"rhyme": { "name": "Oracle", "hint": "a jet every three seconds, gentler, with twice the resting curl — a deep-sea oracle whose arms coil into tight spirals between its slow thoughts, and unwind only while it moves",
 			"dials": { "pulseEvery": 2.8, "jet": 120, "curl": 0.45 } } },
 	{ "id": "vine", "letter": "V", "name": "Vine",
-		"hint": "a chain that grows: each new joint bends from its parent toward the light, plus noise — press to move the sun",
+		"hint": "a chain that grows: each new joint bends from its parent toward the light, plus noise — and every joint is a spring holding its grown bend, so a gust on the tip bows the whole stem and it springs back, tip last — press to move the sun",
 		"dials": { "seg": 0.05,                               # joint length (of H)
 			"growEvery": 0.28,                               # seconds per new joint
 			"tropism": 0.35,                                 # how much of the turn-to-light each joint takes
 			"curl": 0.5, "maxBend": 0.7,                     # the noise wobble (rad), a joint's bend limit (rad)
 			"leafEvery": 3, "leafSize": 0.035,               # a leaf every k joints, its length (of H)
 			"maxSegs": 40, "reach": 14, "bloomHold": 1.6,    # give up after k joints; the win radius (px); the bloom pause (s)
-			"sway": 0.025, "rootX": 0.5,                     # the breeze (rad), where it is planted (of W)
+			"k": 120,                                        # the root joint's stiffness toward its grown angle (rad/s² per rad)
+			"tip": 1.15,                                     # each joint's k as a multiple of the one below: a thinner, lighter stem rights itself faster
+			"tipdamp": 0.6,                                  # a joint's damping as a fraction of ITS OWN critical — under 1, so the tip overshoots when a gust lets go
+			"breeze": 6, "breezeRate": 0.7,                  # the gust: a sideways push on the tip (rad/s² per card-height of lever), and how fast it changes
+			"rootX": 0.5,                                    # where it is planted (of W)
 			"sticky": 8,                                     # how long a press holds the light
-			"label": "a = parent + (light − parent)·tropism + noise" },
-		"rhyme": { "name": "Viper", "hint": "a joint every eighth of a second, triple the wobble, a weak pull to the light — a creeper that hunts, not grows",
+			"label": "grow: rest = parent + (light − parent)·tropism + noise · hold: θⱼ'' = kⱼ·(θⱼ₋₁ + Δrestⱼ − θⱼ) − dⱼ·θⱼ' + gust·lever" },
+		"rhyme": { "name": "Viper", "hint": "a joint every eighth of a second, triple the wobble, a weak pull to the light — a creeper that hunts, not grows, its long crooked stem swaying under the same gusts",
 			"dials": { "growEvery": 0.12, "curl": 1.4, "tropism": 0.15 } } },
 	{ "id": "dragon", "letter": "D", "name": "Dragon",
-		"hint": "Wander's head, Tentacle's body, Undulate's ripple; wings on that sine, fire on a timer — press to lure it",
+		"hint": "Wander's head on Tentacle's sprung body: every joint an angular spring chasing the one ahead, so the head's swerves run down the body as a ripple that the tail whips out; wings on a spring fed by their joint's own rise and fall, fire on a timer — press to lure it",
 		"dials": { "n": 22, "link": 9, "taper": 0.18,         # body joints, their spacing (px), shrink toward the tail
 			"speed": 80, "ahead": 40, "rim": 22, "jitter": 2.8,   # Wander's rig: px/s, the circle ahead, its radius, angle jitter
-			"undAmp": 5, "undFreq": 5, "undPhase": 0.55,     # Undulate's ripple: px, tempo, phase per joint
+			"k": 80,                                         # the first body joint's stiffness: how hard it turns to trail the head (rad/s² per rad)
+			"tip": 1.2,                                      # each joint's k as a multiple of the one ahead: lighter toward the tail, so quicker
+			"tipdamp": 0.55,                                 # a joint's damping as a fraction of ITS OWN critical — under 1, so the ripple overshoots joint by joint
 			"wingAt": 6, "wingSpan": 26,                     # which joint wears the wings, their reach (px)
+			"wingRate": 9, "wingDamp": 0.4,                  # the flap spring: its ω (rad/s), its damping ratio (under 1: the beat lags and overshoots)
+			"wingLift": 0.25,                                # the joint's vertical speed (of H per s) that asks for a full stroke
 			"fireEvery": 4.5, "fireDur": 1.1, "fireLen": 0.2,   # the breath schedule (s) and its length (of W)
 			"sticky": 4,                                     # how long a lure holds
-			"label": "body: follow-chain + sin(t·f − i·φ) sideways" },
-		"rhyme": { "name": "Drake", "hint": "a twelve-joint body at nearly double the speed, breathing fire every two seconds — a small, cross, quick drake",
+			"label": "body: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · wings: f'' = ω²·(−vy/lift − f) − 2ζω·f'" },
+		"rhyme": { "name": "Drake", "hint": "a twelve-joint body at nearly double the speed, breathing fire every two seconds — a small, cross, quick drake whose short tail snaps round after every swerve",
 			"dials": { "n": 12, "speed": 130, "fireEvery": 1.8 } } },
 	{ "id": "echo", "letter": "E", "name": "Echo",
 		"hint": "Queue's buffer, but of the whole state — pose, heading, colour — replayed by clones — press to change the spacing",
@@ -109,27 +124,30 @@ const DEFS := [
 		"rhyme": { "name": "Wiggler", "hint": "half the reach and a slide three times as quick — a busy little wiggler that never stops swapping anchors",
 			"dials": { "lmin": 0.06, "lmax": 0.16, "dur": 0.25 } } },
 	{ "id": "spider", "letter": "S", "name": "Spider",
-		"hint": "six Ik legs on a TRIPOD gait — Gait's homes and thresholds, three feet always down — press to send it off",
+		"hint": "six Ik legs on a TRIPOD gait — Gait's homes and thresholds, three feet always down — and a body on a spring toward the mean of its feet, so every step lifts it, drops it and lets it bob — press to send it off",
 		"dials": { "legs": 6, "thigh": 0.13, "shin": 0.15,    # leg count, the two bones (of H)
 			"spread": 0.07, "hipGap": 0.02,                  # foot homes and hips along the body (of W)
 			"thresh": 0.055, "lead": 0.25,                   # Gait's step trigger (of W); how far homes lead velocity
 			"dur": 0.22, "lift": 0.05,                       # step time (s), step arc height (of H)
 			"ride": 0.12, "maxV": 0.3,                       # body height above the feet (of H), top speed (of W per s)
+			"omega": 14, "zeta": 0.5,                        # the body spring: its ω (rad/s) and damping ratio (under 1: it sags past and bobs back)
 			"hill": 0.05,                                    # the terrain's bumps (of H)
-			"label": "tripod: 0,2,4 then 1,3,5 · body y = mean(feet)" },
-		"rhyme": { "name": "Skitter", "hint": "nearly twice the speed, steps in a tenth of a second at half the threshold — a skitter, all blur and legs",
+			"label": "tripod: 0,2,4 then 1,3,5 · body: y'' = ω²·(mean(feet) − ride − y) − 2ζω·y'" },
+		"rhyme": { "name": "Skitter", "hint": "nearly twice the speed, steps in a tenth of a second at half the threshold — a skitter, all blur and legs, its body never quite catching up with its feet",
 			"dials": { "maxV": 0.55, "dur": 0.11, "thresh": 0.03 } } },
 	{ "id": "mech", "letter": "M", "name": "Mech",
-		"hint": "Gait made heavy — long slow strides, a thump that shakes the card, a Lookat cannon — press to send it somewhere",
+		"hint": "Gait made heavy — long slow strides, a thump that shakes the card and rocks the torso on an under-damped spring, a Lookat cannon — press to send it somewhere",
 		"dials": { "thigh": 0.2,                              # each leg bone (of H)
 			"thresh": 0.2, "maxV": 0.22,                     # Gait's step trigger and top speed (of W)
 			"dur": 0.55, "lift": 0.07,                       # seconds per stride, the foot's arc (of H)
 			"hipW": 0.05, "bodyH": 0.36,                     # hip spacing (of W), hip height (of H)
 			"shake": 6, "shakeDecay": 6, "shakeFreq": 40,    # the thump: px, how fast it dies (per s), its rattle (rad/s)
 			"dust": 7,                                       # dust dots per plant
-			"lean": 0.0015, "aim": 5,                        # torso lean per px/s² of acceleration; the cannon's tracking rate
-			"label": "shake ·= e^(−k·dt) · cannon = lerp_angle" },
-		"rhyme": { "name": "Mantis", "hint": "short quick strides at twice the speed on a third of the threshold — a mantis, all knees and no tonnage",
+			"lean": 0.0015, "aim": 5,                        # torso lean asked for, per px/s² of acceleration; the cannon's tracking rate
+			"leanRate": 8, "leanDamp": 0.3,                  # the torso spring: its ω (rad/s) and damping ratio (well under 1: it rocks past and settles)
+			"kick": 1.1,                                     # the angular speed a thump throws into the torso (rad/s), toward the foot that landed
+			"label": "shake ·= e^(−k·dt) · torso: θ'' = ω²·(a·lean − θ) − 2ζω·θ', θ' += kick per thump · cannon = lerp_angle" },
+		"rhyme": { "name": "Mantis", "hint": "short quick strides at twice the speed on a third of the threshold — a mantis, all knees and no tonnage, its torso kicked so often it never stops rocking",
 			"dials": { "dur": 0.2, "thresh": 0.08, "maxV": 0.45 } } },
 ]
 
@@ -140,9 +158,11 @@ static func _from_euler(e: Vector3) -> Quaternion:
 	# build the SAME pose both ways: yaw about Y, pitch about X, roll about Z
 	return Quaternion(Vector3.UP, e.x) * Quaternion(Vector3.RIGHT, e.y) * Quaternion(Vector3.BACK, e.z)
 
-## Vine's reset: a new seed for the wobble, an empty chain, no bloom.
+## Vine's reset: a new seed for the wobble, an empty chain (grown angles, shown angles, velocities), no bloom.
 static func _vine_reset(b: Dictionary) -> void:
 	b.angs = []
+	b.cur = PackedFloat32Array()
+	b.om = PackedFloat32Array()
 	b.seed = randf_range(0.0, 100.0)
 	b.growT = 0.0
 	b.bloom = 0.0
@@ -169,15 +189,34 @@ static func init(b: Dictionary) -> void:
 	var D: Dictionary = b.D
 	match b.id:
 		"tentacle":
-			# the cheapest limb in games: move the head, then walk down the chain
-			# placing each link at a fixed distance from the one before, along the
-			# line between them (a distance constraint, solved by pure geometry —
-			# each link's position is polar-to-Cartesian from its parent). drag
-			# does the animating; the sway is one small sine for life.
+			# the cheapest limb in games, given a spine. move the head, then walk down
+			# the chain placing each link at a fixed distance from the one before —
+			# the distance constraint, kept by construction (each link is polar-to-
+			# Cartesian from its parent). what changed is the DIRECTION a link takes.
+			# it used to be whatever direction it already had, plus a sine for life;
+			# now every joint is an angle with an angular VELOCITY, a damped spring
+			# toward the joint before it (stagecraft's Grass, laid on its side). the
+			# first joint's rest is the TRAIL — the direction the head just came from
+			# — so the head's own motion is what torques the chain: turn the head and
+			# joint 1 swings after it, overshoots (its damping is under critical),
+			# joint 2 chases joint 1 later still, and the lag stacks up into a whip
+			# that runs to the tip and dies out by itself. each joint is stiffer than
+			# the one before (k · tip: a lighter link rights itself faster) and damped
+			# as a fraction of its own critical, so the whole chain settles in about a
+			# second. no clock in the body: the only clock is a faint noise current on
+			# the first joint's rest, so a tentacle that has stopped still drifts.
 			var N: int = int(D.n)
 			b.segs = []
 			for i in N:
 				b.segs.append(Vector2(b.w / 2.0 - i * 9.0, b.h / 2.0))
+			var ang := PackedFloat32Array()               # joint i: the direction of link i from link i − 1 (sized here: a packed array read back from b is a copy)
+			var om := PackedFloat32Array()                # and its angular velocity
+			ang.resize(N)
+			om.resize(N)
+			ang.fill(PI)
+			b.ang = ang
+			b.om = om
+			b.trail = PI
 			b.tgt = Vector2(b.w * 0.7, b.h * 0.4)
 			b.sticky = 0.0
 		"ik":
@@ -240,9 +279,17 @@ static func init(b: Dictionary) -> void:
 			# an octopus is three cards wearing a hat. the body swims by JET pulses:
 			# every pulseEvery seconds an IMPULSE toward the target (Dash), and
 			# between pulses only drag — v ·= e^(−k·dt) — so each squirt eases out
-			# by itself. the eight arms are Tentacle's follow-chain, rooted around
-			# the back of the mantle, with Undulate's phase-shifted sine on every
-			# joint so they curl instead of trailing dead straight.
+			# by itself. the eight arms are Tentacle's sprung chain, rooted around
+			# the back of the mantle: every joint is an angular spring toward the
+			# joint before it PLUS a resting curl, so a still octopus holds its arms
+			# in eight lazy spirals. the curl is scaled by the mantle's SPEED — at
+			# full stream it is zero and the first joint's rest swings from its
+			# place in the fan to the trail — so a jet straightens the arms and
+			# streams them behind, and as the drag eats the speed the rest returns,
+			# the springs swing the arms back, overshoot (damping under critical),
+			# and curl them up again. no clock in the arms at all.
+			var arms: int = int(D.arms)
+			var links: int = int(D.links)
 			b.p = Vector2(b.w * 0.4, b.h * 0.5)
 			b.v = Vector2.ZERO
 			b.hd = 0.0
@@ -251,18 +298,34 @@ static func init(b: Dictionary) -> void:
 			b.sticky = 0.0
 			b.tgt = Vector2(b.w * 0.7, b.h * 0.4)
 			b.arms = []
-			for _a in int(D.arms):
+			for _a in arms:
 				var chain := []
-				for i in int(D.links):
+				for i in links:
 					chain.append(Vector2(b.p.x - i * D.link, b.p.y))
 				b.arms.append(chain)
+			var ang := PackedFloat32Array()               # joint angles, arm-major: ang[a * links + i] (sized here: a packed array read back from b is a copy)
+			var om := PackedFloat32Array()                # and their angular velocities
+			ang.resize(arms * links)
+			om.resize(arms * links)
+			ang.fill(PI)
+			b.ang = ang
+			b.om = om
 		"vine":
 			# PHOTOTROPISM, one joint at a time: a plant is a chain that adds a link
 			# every so often, and each new link copies its parent's ANGLE, then turns
 			# a fraction of the way toward the light (a lerp on an angle — wrapAngle
-			# first) plus a little noise for the wobble real stems have. the angles
-			# are the memory: the chain is re-laid from the root every frame with a
-			# tiny sway, so nothing drifts. reach the light: bloom, rest, regrow.
+			# first) plus a little noise for the wobble real stems have. those grown
+			# angles are the memory — the REST pose. what the chain shows is a second
+			# set of angles, one per joint, each a damped spring toward its rest
+			# (Jangle's rule): the root toward its own grown angle, clamped at the
+			# ground; every joint above toward the joint below's CURRENT angle plus
+			# the bend it grew with, so bending the stem low carries the whole top
+			# with it. the breeze is a sideways FORCE on the tip, and a joint feels a
+			# force at the tip as torque through its lever — the longer the stem
+			# above it, the harder it bows — so a gust bends the whole stem and,
+			# when it lets go, the stem springs back from the root up, the tip last
+			# and past its rest (damping under critical). the chain is re-laid from
+			# the root every frame, so nothing drifts. reach the light: bloom, rest, regrow.
 			b.sticky = 0.0
 			b.light = Vector2(b.w * 0.72, b.h * 0.2)
 			b.pts = [Vector2(b.w * D.rootX, b.gy)]
@@ -270,20 +333,37 @@ static func init(b: Dictionary) -> void:
 		"dragon":
 			# a dragon is a Wander rig with a tail. the head steers at a jittering
 			# point on a circle held out front (card W); the body is Tentacle's
-			# follow-chain, so every joint keeps its distance from the one ahead;
-			# the ripple is Undulate's PHASE OFFSET sine, added SIDEWAYS (along each
-			# joint's normal) at draw time only — the chain stays smooth, the skin
-			# waves. the wings flap on the same sine as their joint, and the fire
-			# is a schedule: (t mod every) < duration. no keyframes anywhere.
+			# chain — every joint keeps its distance from the one ahead, and every
+			# joint is an angular SPRING toward the direction of the joint ahead,
+			# the first one toward the trail of the head. so the ripple is no longer
+			# a sine painted on at draw time: it IS the chain. every swerve of the
+			# head turns joint 1, which turns joint 2 a beat later, and the wave runs
+			# down the body — later, and a little larger, at every joint (damping
+			# under critical) — until the tail whips it out. the wings are one more
+			# spring: their joint's own vertical speed asks for a stroke (rising:
+			# spread; diving: tuck) and the flap chases that, lagging and overshooting,
+			# so a beat comes free from the body's rise and fall. the fire is still a
+			# schedule: (t mod every) < duration. no keyframes anywhere.
+			var N: int = int(D.n)
 			b.p = Vector2(b.w * 0.5, b.h * 0.5)
 			b.v = Vector2(D.speed, 0.0)
 			b.wa = 0.0
 			b.sticky = 0.0
 			b.tgt = Vector2.ZERO
-			b.WA = mini(int(D.wingAt), int(D.n) - 2)
+			b.WA = mini(int(D.wingAt), N - 2)
 			b.segs = []
-			for i in int(D.n):
+			for i in N:
 				b.segs.append(Vector2(b.p.x - i * D.link, b.p.y))
+			var ang := PackedFloat32Array()               # joint i: the direction of link i from the joint ahead (sized here: a packed array read back from b is a copy)
+			var om := PackedFloat32Array()                # and its angular velocity
+			ang.resize(N)
+			om.resize(N)
+			ang.fill(PI)
+			b.ang = ang
+			b.om = om
+			b.flap = 0.0                                 # the wing stroke (−1 tucked … 1 spread), its speed, the wing joint's last y
+			b.flapV = 0.0
+			b.wingY = b.p.y
 		"echo":
 			# MOTION ECHO: Queue kept only positions; this buffer keeps the mote's
 			# whole STATE each tick — x, y, heading, and a colour phase — and N
@@ -318,8 +398,12 @@ static func init(b: Dictionary) -> void:
 			# its hip, pushed ahead by velocity, and steps when the home drifts
 			# past a THRESHOLD. the gait is a TRIPOD: legs 0, 2, 4 fly together
 			# while 1, 3, 5 hold, then swap — an insect is never off balance. the
-			# body has no height of its own: it hangs a fixed ride above the MEAN
-			# of its feet, so hills lift it and hollows drop it, for free.
+			# body has no height of its own: it wants to hang a fixed ride above
+			# the MEAN of its feet, and gets there on a spring (Quadruped's body,
+			# damped a little under critical) — so hills lift it and hollows drop
+			# it, three feet in the air raise the mean and the body follows late,
+			# three feet landing drop it and it sags past and bobs back. nothing
+			# here is told to bob.
 			var N: int = int(D.legs)
 			b.bx = b.w * 0.3
 			b.vx = 0.0
@@ -332,18 +416,26 @@ static func init(b: Dictionary) -> void:
 			b.group = -1                                 # which tripod is in the air, its progress, whose turn
 			b.gk = 1.0
 			b.next = 0
+			b.body_y = _terra(b, b.bx) - b.h * D.ride    # the body's height and its speed: spring state, not a formula
+			b.body_v = 0.0
 		"mech":
 			# Gait's recipe with the numbers turned to "heavy": homes, a wide
 			# threshold, slow strides, two-bone IK legs. what sells the tonnage is
 			# the THUMP: on every plant a screen-shake amplitude jumps up and then
 			# decays — shake ·= e^(−k·dt) — while the whole scene is drawn through
 			# ctx.translate(shake · sin(fast t)); plus a puff of dust dots. the
-			# torso leans into its ACCELERATION (not its speed), and the cannon is
+			# torso is a mass on a spring: its rest is a lean into the body's
+			# ACCELERATION (not its speed), and it gets there on an under-damped
+			# angle spring, so a change of pace rocks it past and it settles; and
+			# every thump throws angular speed into it toward the foot that landed,
+			# so forty tons visibly lurch and recover on each stride. the cannon is
 			# Lookat: lerp_angle toward the last click at a smoothing rate.
 			b.bx = b.w * 0.35
 			b.vx = 0.0
 			b.pvx = 0.0
 			b.ax = 0.0
+			b.lean = 0.0                                 # the torso's angle and angular speed: spring state, kicked by thumps
+			b.leanV = 0.0
 			b.tx = b.w * 0.7
 			b.auto_t = 0.0
 			b.cannon_tgt = Vector2(b.w * 0.8, b.h * 0.3)
@@ -368,6 +460,7 @@ static func _retarget(b: Dictionary) -> void:
 static func _thump(b: Dictionary, x: float) -> void:
 	var D: Dictionary = b.D
 	b.shake = float(D.shake)                             # the amplitude jumps...
+	b.leanV += float(D.kick) * (1.0 if x > b.bx else -1.0)   # ...and the torso is thrown toward the foot that landed (a velocity, never a pose)
 	for _i in int(D.dust):
 		b.dust.append({ "p": Vector2(x, b.gy), "v": Vector2(randf_range(-60, 60), randf_range(-90, -20)), "a": 1.0 })
 	while b.dust.size() > 40:
@@ -448,13 +541,35 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.sticky <= 0.0:                          # resume its own errand
 				b.tgt = Vector2(b.w / 2.0 + cos(t * 0.6) * b.w * D.roamX, b.h / 2.0 + sin(t * 0.9) * b.h * D.roamY)
 			var k: float = 1.0 - exp(-D.follow * dt)     # the head is a lerp-follower
-			b.segs[0] += (b.tgt - b.segs[0] as Vector2) * k
+			var moved: Vector2 = (b.tgt - b.segs[0] as Vector2) * k
+			b.segs[0] += moved
+			if moved.length() > 0.1:                     # the trail: where the head just came from (a still head keeps the last one)
+				b.trail = (-moved).angle()
+			var rest: float = b.trail + Kit.noise(t * D.swayFreq) * D.sway   # the current nudges the first joint's rest, nothing else
+			var ang: PackedFloat32Array = b.ang
+			var om: PackedFloat32Array = b.om
+			var kk: float = D.k
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			# the joints get stiffer down the chain (k · tip per joint), and a symplectic
+			# step is only stable while √k·h < 2 — so a coarse frame is cut into substeps
+			# of at most 0.02 s (the lexicon's Substep), and k is capped where that would
+			# stop being enough: one step at 60 fps, exactly the cost it was
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				var below: float = rest
+				var kj: float = kk / tip
+				for i in range(1, N):
+					kj = minf(kj * tip, 2500.0)          # quicker with every link (lighter link, same bend), capped for the step
+					var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+					om[i] += (kj * wrapf(below - ang[i], -PI, PI) - dj * om[i]) * h
+					ang[i] = wrapf(ang[i] + om[i] * h, -PI, PI)   # kept in −π..π: only differences matter, and nothing can run away
+					below = ang[i]
 			for i in range(1, N):
-				var parent: Vector2 = b.segs[i - 1]
 				var L: float = maxf(2.0, D.link - i * D.taper)   # links shorten toward the tail
-				var a: float = (b.segs[i] - parent as Vector2).angle() + sin(t * D.swayFreq - i * 0.5) * D.sway   # the sway
-				b.segs[i] = parent + Vector2(cos(a), sin(a)) * L   # ← the whole constraint:
-		"ik":                                            #   same direction, fixed length
+				b.segs[i] = (b.segs[i - 1] as Vector2) + Vector2(cos(ang[i]), sin(ang[i])) * L   # ← the constraint, kept by construction:
+		"ik":                                            #   the joint's own direction, fixed length
 			b.sticky -= dt
 			var sh := Vector2(b.w * D.shoulderX, b.h * D.shoulderY)
 			if b.sticky <= 0.0:
@@ -524,20 +639,44 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.p.y > b.h - m:
 				b.p.y = b.h - m
 				b.v.y = -absf(b.v.y) * 0.5
-			if (b.v as Vector2).length() > 8.0:
+			var sp: float = (b.v as Vector2).length()
+			if sp > 8.0:
 				b.hd += wrapf((b.v as Vector2).angle() - b.hd, -PI, PI) * minf(1.0, 6.0 * dt)
 			var p: Vector2 = b.p
 			var h: float = b.hd
+			# the arms: speed decides the rest pose. still, each arm points to its place
+			# in the fan and every joint curls past the one before; at full stream the
+			# first joint's rest is the trail and the curl is gone. the springs do the rest
+			var streaming: float = clampf(sp / D.stream, 0.0, 1.0)
+			var trail: float = (-(b.v as Vector2)).angle() if sp > 8.0 else h + PI
+			var ang: PackedFloat32Array = b.ang
+			var om: PackedFloat32Array = b.om
+			var kk: float = D.k
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var curl0: float = D.curl
+			var sub := maxi(1, ceili(dt * 50.0))         # substeps of at most 0.02 s: √k·h < 2 keeps the step stable
+			var hh := dt / float(sub)
 			for a in arms:
 				var chain: Array = b.arms[a]
-				var root: float = h + PI + ((a + 0.5) / float(arms) - 0.5) * D.spread   # rooted on the back
+				var fan: float = (a + 0.5) / float(arms) - 0.5
+				var root: float = h + PI + fan * D.spread   # rooted on the back
 				chain[0] = p + Vector2(cos(root), sin(root)) * D.bodyR * 0.8
-				for i in range(1, links):
-					var par: Vector2 = chain[i - 1]
-					var aa: float = (chain[i] - par as Vector2).angle()   # Tentacle's constraint...
-					aa += wrapf(root - aa, -PI, PI) * 0.08              # ...a whisper of "trail behind"
-					aa += sin(t * D.curlFreq - i * 0.7 + a * 0.9) * D.curl   # ...and Undulate's curl
-					chain[i] = par + Vector2(cos(aa), sin(aa)) * D.link
+				var rest: float = root + wrapf(trail - root, -PI, PI) * streaming   # the first joint: its place in the fan, or the trail at speed
+				var curl: float = (-1.0 if fan < 0.0 else 1.0) * curl0 * (1.0 - streaming)   # outward, and straightened by speed
+				for _s in sub:
+					var below: float = rest
+					var kj: float = kk / tip
+					for i in range(1, links):
+						kj = minf(kj * tip, 2500.0)
+						var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+						var idx := a * links + i
+						om[idx] += (kj * wrapf(below + curl - ang[idx], -PI, PI) - dj * om[idx]) * hh
+						ang[idx] = wrapf(ang[idx] + om[idx] * hh, -PI, PI)   # kept in −π..π
+						below = ang[idx]
+				for i in range(1, links):                # the constraint, kept by construction
+					var aa: float = ang[a * links + i]
+					chain[i] = (chain[i - 1] as Vector2) + Vector2(cos(aa), sin(aa)) * D.link
 		"vine":
 			b.sticky -= dt
 			if b.sticky <= 0.0:                          # the sun wanders, slowly
@@ -545,14 +684,38 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			var light: Vector2 = b.light
 			var L: float = b.h * D.seg
 			var angs: Array = b.angs
-			var q := Vector2(b.w * D.rootX, b.gy)
+			var cur: PackedFloat32Array = b.cur
+			var om: PackedFloat32Array = b.om
+			var nn: int = angs.size()
 			var pts: Array = b.pts
+			# the springs: substeps of at most 0.02 s keep the symplectic step stable
+			# (√k·h < 2), and k is capped up the stem where that would stop being enough.
+			# the lever of joint i is the height of the tip above its base, from the
+			# last lay (pts[i] is where joint i starts)
+			var gust: float = Kit.noise(t * D.breezeRate) * D.breeze
+			var tip_y: float = (pts[pts.size() - 1] as Vector2).y if pts.size() > 0 else b.gy
+			var kk: float = D.k
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				var below := 0.0
+				var kj: float = kk / tip
+				for i in nn:
+					kj = minf(kj * tip, 2500.0)
+					var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+					var rest: float = angs[0] if i == 0 else below + (float(angs[i]) - float(angs[i - 1]))   # the root holds its grown angle; a joint holds its grown bend from the joint below
+					var lever: float = ((pts[i] as Vector2).y - tip_y) / b.h   # the tip's force, felt here as torque
+					om[i] += (kj * wrapf(rest - cur[i], -PI, PI) - dj * om[i] + gust * lever) * h
+					cur[i] = float(angs[i]) + clampf(wrapf(cur[i] + om[i] * h - float(angs[i]), -PI, PI), -1.2, 1.2)   # a stem bends only so far from how it grew
+					below = cur[i]
+			var q := Vector2(b.w * D.rootX, b.gy)
 			pts.clear()
 			pts.append(q)
-			for i in angs.size():                        # re-lay the chain from its angles
-				var a: float = angs[i] + sin(t * 1.3 - i * 0.35) * D.sway * (1.0 + i * 0.1)
-				var g: float = clampf(b.growT / D.growEvery, 0.05, 1.0) if i == angs.size() - 1 else 1.0   # the tip grows in
-				q += Vector2(cos(a), sin(a)) * L * g
+			for i in nn:                                 # re-lay the chain from the angles it shows
+				var g: float = clampf(b.growT / D.growEvery, 0.05, 1.0) if i == nn - 1 else 1.0   # the tip grows in
+				q += Vector2(cos(cur[i]), sin(cur[i])) * L * g
 				pts.append(q)
 			if b.bloom > 0.0:
 				b.bloom -= dt
@@ -562,11 +725,14 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.growT += dt
 				if b.growT >= D.growEvery:
 					b.growT = 0.0
-					var parent: float = angs[angs.size() - 1] if angs.size() > 0 else -PI / 2.0   # the seed points up
+					var parent: float = angs[nn - 1] if nn > 0 else -PI / 2.0   # the seed points up
 					var to_light: float = (light - q).angle()
 					var bend: float = wrapf(to_light - parent, -PI, PI) * D.tropism \
-						+ Kit.noise(angs.size() * 0.9 + b.seed) * D.curl   # ← phototropism, ← the wobble
-					angs.append(parent + clampf(bend, -D.maxBend, D.maxBend))
+						+ Kit.noise(nn * 0.9 + b.seed) * D.curl   # ← phototropism, ← the wobble
+					var grown: float = parent + clampf(bend, -D.maxBend, D.maxBend)
+					angs.append(grown)
+					cur.append(cur[nn - 1] + (grown - parent) if nn > 0 else grown)   # born unstrained: its grown bend from the joint below, as that joint is now
+					om.append(0.0)
 				if angs.size() > 0 and (light - q).length() < D.reach:
 					b.bloom = float(D.bloomHold)
 					b.won = true
@@ -603,14 +769,47 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.p = p
 			b.v = v
 			b.segs[0] = p
-			for i in range(1, N):                        # Tentacle's constraint, link by link
-				var par: Vector2 = b.segs[i - 1]
-				var dd: Vector2 = b.segs[i] - par
-				var ddl: float = dd.length()
-				if ddl == 0.0:
-					ddl = 1.0
+			# the body: Tentacle's sprung chain. the first joint's rest is the trail of
+			# the head (it always cruises, so it always has one); each joint after it
+			# chases the joint ahead on a quicker, under-damped spring. a symplectic step
+			# needs √k·h < 2, so a coarse frame is cut into substeps of at most 0.02 s
+			# and k is capped where that would stop being enough
+			var trail: float = (-v).angle()
+			var ang: PackedFloat32Array = b.ang
+			var om: PackedFloat32Array = b.om
+			var kk: float = D.k
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				var below: float = trail
+				var kj: float = kk / tip
+				for i in range(1, N):
+					kj = minf(kj * tip, 2500.0)
+					var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+					om[i] += (kj * wrapf(below - ang[i], -PI, PI) - dj * om[i]) * h
+					ang[i] = wrapf(ang[i] + om[i] * h, -PI, PI)   # kept in −π..π: only differences matter
+					below = ang[i]
+			for i in range(1, N):                        # the constraint, kept by construction: fixed length, the joint's own direction
 				var L: float = maxf(3.0, D.link - i * D.taper)
-				b.segs[i] = par + dd / ddl * L
+				b.segs[i] = (b.segs[i - 1] as Vector2) + Vector2(cos(ang[i]), sin(ang[i])) * L
+			# the wings: their joint's vertical speed asks for a stroke, and the flap is a
+			# spring chasing that ask — so it lags the body's rise and overshoots it
+			var WA: int = b.WA
+			var wy: float = (b.segs[WA] as Vector2).y
+			var wvy: float = (wy - b.wingY) / maxf(dt, 0.001)
+			b.wingY = wy
+			var want_flap: float = clampf(-wvy / (b.h * D.wingLift), -1.0, 1.0)
+			var ww: float = D.wingRate
+			var wdamp: float = D.wingDamp
+			var flap: float = b.flap
+			var flap_v: float = b.flapV
+			for _s in sub:
+				flap_v += (ww * ww * (want_flap - flap) - 2.0 * wdamp * ww * flap_v) * h
+				flap = clampf(flap + flap_v * h, -1.5, 1.5)
+			b.flap = flap
+			b.flapV = flap_v
 		"echo":
 			b.acc = minf(b.acc + dt, 0.1)
 			var guard := 0
@@ -686,6 +885,22 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 						var f: Dictionary = b.feet[i]
 						f.y = _terra(b, f.x)
 					b.group = -1
+			var mean_y := 0.0
+			for i in N:
+				mean_y += (b.feet[i] as Dictionary).y
+			mean_y /= N
+			var want_y: float = mean_y - b.h * D.ride    # rule 4: the ride above the mean — as a spring's rest, not the body's place
+			var w: float = D.omega
+			var zeta: float = D.zeta
+			var body_y: float = b.body_y
+			var body_v: float = b.body_v
+			var sub := maxi(1, ceili(dt * 50.0))         # substeps of at most 0.02 s keep the step stable
+			var h := dt / float(sub)
+			for _s in sub:
+				body_v += (w * w * (want_y - body_y) - 2.0 * zeta * w * body_v) * h
+				body_y += body_v * h
+			b.body_y = clampf(body_y, want_y - b.h * 0.3, want_y + b.h * 0.3)   # never further from its rest than a body-height
+			b.body_v = body_v
 		"mech":
 			b.auto_t += dt
 			if b.auto_t > 6.0:
@@ -693,9 +908,21 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.tx = randf_range(b.w * 0.12, b.w * 0.88)
 			var want: float = clampf((b.tx - b.bx) * 1.5, -b.w * D.maxV, b.w * D.maxV)
 			b.vx += (want - b.vx) * minf(1.0, 2.5 * dt)
-			b.ax += ((b.vx - b.pvx) / maxf(dt, 0.001) - b.ax) * minf(1.0, 6.0 * dt)   # smoothed acceleration
+			b.ax = (b.vx - b.pvx) / maxf(dt, 0.001)      # the acceleration, raw: the torso spring does the smoothing
 			b.pvx = b.vx
 			b.bx += b.vx * dt
+			var want_lean: float = clampf(b.ax * D.lean, -0.35, 0.35)   # the rest: a lean into the acceleration
+			var lw: float = D.leanRate
+			var ldamp: float = D.leanDamp
+			var lean: float = b.lean
+			var lean_v: float = b.leanV
+			var sub := maxi(1, ceili(dt * 50.0))         # substeps of at most 0.02 s keep the step stable
+			var h := dt / float(sub)
+			for _s in sub:
+				lean_v += (lw * lw * (want_lean - lean) - 2.0 * ldamp * lw * lean_v) * h
+				lean = clampf(lean + lean_v * h, -0.6, 0.6)   # a torso only rocks so far
+			b.lean = lean
+			b.leanV = lean_v
 			for i in 2:                                  # Gait's rules 1 and 2: homes, threshold
 				var home: float = b.bx + (1.0 if i == 1 else -1.0) * b.w * D.hipW + b.vx * 0.3
 				if b.stepping < 0 and absf(home - (b.feet[i] as Dictionary).x) > b.w * D.thresh:
@@ -887,13 +1114,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					ddl = 1.0
 				var u: Vector2 = dd / ddl                # toward the head, and its normal
 				var nv := Vector2(-u.y, u.x)
-				var off: float = sin(t * D.undFreq - i * D.undPhase) * D.undAmp * (0.3 + i / float(N))   # the ripple
-				var q: Vector2 = s + nv * off
+				var q: Vector2 = s                       # the ripple is in the chain now: nothing added at draw time
 				var r: float = maxf(1.5, 8.0 - i * 0.32)
-				if i == WA:                              # the wings, flapping on the same sine
-					var flap: float = 0.35 + 0.65 * (0.5 + 0.5 * sin(t * D.undFreq - i * D.undPhase))
+				if i == WA:                              # the wings, on the flap spring
+					var stroke: float = 0.35 + 0.65 * (0.5 + 0.5 * float(b.flap))
 					for side in [-1.0, 1.0]:
-						var reach: float = D.wingSpan * flap * side
+						var reach: float = D.wingSpan * stroke * side
 						var wa: Vector2 = q - u * 4.0
 						var wb: Vector2 = q + nv * reach - u * D.wingSpan * 0.45
 						var wc: Vector2 = q + nv * reach * 0.55 - u * D.wingSpan * 0.9
@@ -971,11 +1197,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var SHIN: float = b.h * D.shin
 			var bx: float = b.bx
 			var group: int = b.group
-			var mean_y := 0.0
-			for i in N:
-				mean_y += (b.feet[i] as Dictionary).y
-			mean_y /= N
-			var body_y: float = mean_y - b.h * D.ride - (sin(clampf(b.gk, 0.0, 1.0) * PI) * 2.0 if group >= 0 else 0.0)   # rule 4
+			var body_y: float = b.body_y                 # rule 4, wherever the spring has got to
 			var hill := PackedVector2Array([Vector2(0, _terra(b, 0.0))])   # the hill itself
 			var hx := 4.0
 			while hx <= b.w:
@@ -1032,7 +1254,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var knee := hip + Vector2(cos(a), sin(a)) * THIGH
 				n.draw_polyline(PackedVector2Array([hip, knee, foot]), Kit.BONE, 5.0)
 				Kit.rect(n, Rect2(f.x - 7.0, f.y - 4.0, 14.0, 4.0), Kit.BONE)   # a flat, heavy foot
-			var lean: float = clampf(b.ax * D.lean, -0.35, 0.35)   # into the acceleration
+			var lean: float = b.lean                     # the spring's angle, wherever it has got to
 			n.draw_set_transform(origin + shake_off + Vector2(hip_x, hip_y), lean, Vector2.ONE)
 			Kit.rect(n, Rect2(-14.0, -28.0, 28.0, 28.0), Kit.MOVER)   # the torso
 			Kit.dot(n, Vector2(0, -18), 4.0, Kit.NIGHT)              # the cockpit

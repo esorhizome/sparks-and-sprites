@@ -4945,22 +4945,37 @@ rhymeOf("Juggle", "Jester", "five balls thrown higher — the same beat arithmet
    ring buffer, and the creatures built from all of it: octopus, vine,
    dragon, echo, inchworm, spider, mech. Every one is a list of joints. */
 
-def("T", "Tentacle", "chains", "a follow-chain: the head leads, every link keeps its distance — press to point it", function (u) {
+def("T", "Tentacle", "chains", "a follow-chain with a spine: the head leads, every link keeps its distance, and every joint is an angular spring chasing the joint before it — so the tail lags the head, whips through and settles on its own — press to point it", function (u) {
   var D = { n: 18, link: 10, taper: 0.28,              // links, the base spacing (px), shrink per link
             follow: 3.2,                               // the head's lerp rate toward the target
-            sway: 0.05, swayFreq: 3,                   // the little life-sine on every joint, and its tempo
+            k: 100,                                    // the first joint's stiffness: how hard it turns to trail the head (rad/s² per rad)
+            tip: 1.25,                                 // each joint's k as a multiple of the one before: a lighter link, the same bend, a quicker righting
+            tipdamp: 0.55,                             // a joint's damping as a fraction of ITS OWN critical — under 1, so each joint overshoots the one before and the tail whips
+            sway: 0.05, swayFreq: 3,                   // the current: a noise nudge on the first joint's rest (rad), and how fast it changes
             sticky: 3.5, roamX: 0.34, roamY: 0.3,      // how long a press holds; the idle wander (of W, H)
-            label: "each link: parent + (cos a, sin a) · length" };
-  const { ctx, W, H, TAU, stage, dot, label, rand, len, MOVER, TARGET } = u;
-  // the cheapest limb in games: move the head, then walk down the chain
-  // placing each link at a fixed distance from the one before, along the
-  // line between them (a distance constraint, solved by pure geometry —
-  // each link's position is polar-to-Cartesian from its parent). drag
-  // does the animating; the sway is one small sine for life.
+            label: "θ₁'' = k·(trail − θ₁) − d·θ₁' · θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · dⱼ = tipdamp·2√kⱼ" };
+  const { ctx, W, H, TAU, stage, dot, label, rand, len, wrapAngle, noise, MOVER, TARGET } = u;
+  // the cheapest limb in games, given a spine. move the head, then walk down
+  // the chain placing each link at a fixed distance from the one before —
+  // the distance constraint, kept by construction (each link is polar-to-
+  // Cartesian from its parent). what changed is the DIRECTION a link takes.
+  // it used to be whatever direction it already had, plus a sine for life;
+  // now every joint is an angle with an angular VELOCITY, a damped spring
+  // toward the joint before it (stagecraft's Grass, laid on its side). the
+  // first joint's rest is the TRAIL — the direction the head just came from
+  // — so the head's own motion is what torques the chain: turn the head and
+  // joint 1 swings after it, overshoots (its damping is under critical),
+  // joint 2 chases joint 1 later still, and the lag stacks up into a whip
+  // that runs to the tip and dies out by itself. each joint is stiffer than
+  // the one before (k · tip: a lighter link rights itself faster) and damped
+  // as a fraction of its own critical, so the whole chain settles in about a
+  // second. no clock in the body: the only clock is a faint noise current on
+  // the first joint's rest, so a tentacle that has stopped still drifts.
   const N = D.n;
   const segs = [];
   for (let i = 0; i < N; i++) segs.push({ x: W / 2 - i * 9, y: H / 2 });
-  let tx = W * 0.7, ty = H * 0.4, sticky = 0;
+  const ang = new Float32Array(N).fill(Math.PI), om = new Float32Array(N);   // joint i: the direction of link i from link i − 1, and its angular velocity
+  let tx = W * 0.7, ty = H * 0.4, sticky = 0, trail = Math.PI;
   return {
     press(px, py) { tx = px; ty = py; sticky = D.sticky; },
     frame(dt, t) {
@@ -4970,18 +4985,33 @@ def("T", "Tentacle", "chains", "a follow-chain: the head leads, every link keeps
         tx = W / 2 + Math.cos(t * 0.6) * W * D.roamX;
         ty = H / 2 + Math.sin(t * 0.9) * H * D.roamY;
       }
-      const head = segs[0];
+      const head = segs[0], hx0 = head.x, hy0 = head.y;
       const k = 1 - Math.exp(-D.follow * dt);          // the head is a lerp-follower
       head.x += (tx - head.x) * k;
       head.y += (ty - head.y) * k;
+      const mvx = head.x - hx0, mvy = head.y - hy0;
+      if (len(mvx, mvy) > 0.1) trail = Math.atan2(-mvy, -mvx);   // the trail: where the head just came from (a still head keeps the last one)
+      const rest = trail + noise(t * D.swayFreq) * D.sway;       // the current nudges the first joint's rest, nothing else
+      // the joints get stiffer down the chain (k · tip per joint), and a symplectic
+      // step is only stable while √k·h < 2 — so a coarse frame is cut into substeps
+      // of at most 0.02 s (the lexicon's Substep), and k is capped where that would
+      // stop being enough: one step at 60 fps, exactly the cost it was
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let below = rest, kj = D.k / D.tip;
+        for (let i = 1; i < N; i++) {
+          kj = Math.min(kj * D.tip, 2500);             // quicker with every link (lighter link, same bend), capped for the step
+          const dj = D.tipdamp * 2 * Math.sqrt(kj);    // a fraction of THIS joint's critical damping
+          om[i] += (kj * wrapAngle(below - ang[i]) - dj * om[i]) * h;
+          ang[i] = wrapAngle(ang[i] + om[i] * h);      // kept in −π..π: only differences matter, and nothing can run away
+          below = ang[i];
+        }
+      }
       for (let i = 1; i < N; i++) {
         const p = segs[i - 1], s = segs[i];
         const L = Math.max(2, D.link - i * D.taper);   // links shorten toward the tail
-        let dx = s.x - p.x, dy = s.y - p.y;
-        const d = len(dx, dy) || 1;
-        const a = Math.atan2(dy, dx) + Math.sin(t * D.swayFreq - i * 0.5) * D.sway;  // the sway
-        s.x = p.x + Math.cos(a) * L;                   // ← the whole constraint:
-        s.y = p.y + Math.sin(a) * L;                   //   same direction, fixed length
+        s.x = p.x + Math.cos(ang[i]) * L;              // ← the constraint, kept by construction:
+        s.y = p.y + Math.sin(ang[i]) * L;              //   the joint's own direction, fixed length
       }
       for (let i = N - 1; i >= 0; i--) {
         const r = Math.max(1.6, 8.5 - i * 0.42);
@@ -4997,7 +5027,7 @@ def("T", "Tentacle", "chains", "a follow-chain: the head leads, every link keeps
     }
   };
 });
-rhymeOf("Tentacle", "Thrash", "the same chain with six times the sway at three times the tempo and a keener head — a whip, not a drift", { sway: 0.3, swayFreq: 9, follow: 7 });
+rhymeOf("Tentacle", "Thrash", "the same chain in six times the current, changing three times as fast, with a keener head — the first joint never gets to rest, so the tail is always mid-whip: a thrash, not a drift", { sway: 0.3, swayFreq: 9, follow: 7 });
 
 def("I", "Ik", "chains", "two bones, one triangle, the Law of Cosines — press to re-aim and flip the elbow", function (u) {
   var D = { shoulderX: 0.34, shoulderY: 0.42,          // the fixed joint (of W, H)
@@ -5249,20 +5279,30 @@ def("Q", "Queue", "chains", "leader following: each body steps into where the le
 });
 rhymeOf("Queue", "Quail", "twelve followers at half the spacing and a slower stroll — a quail and her chicks, tight on her tail", { followers: 12, spacing: 4, speed: 55 });
 
-def("O", "Octopus", "chains", "Tentacle ×8 behind a body that swims by jet pulses — Undulate's curl, Dash's decay — press to send it off", function (u) {
+def("O", "Octopus", "chains", "Tentacle ×8 behind a body that swims by jet pulses — Dash's decay for the mantle, a sprung chain per arm: each joint chases the one before it plus a resting curl, and speed straightens the curl, so a jet makes the arms stream out and, as it fades, swing back and curl up again — press to send it off", function (u) {
   var D = { arms: 8, links: 7, link: 6,                // chains, joints per chain, joint spacing (px)
             spread: 2.4,                               // how wide the arms fan across the back (radians)
             pulseEvery: 1.3, jet: 170, drag: 1.6,      // seconds between jets, the impulse (px/s), the decay rate
-            curl: 0.22, curlFreq: 4,                   // the sine on every joint's angle, and its tempo
+            curl: 0.22,                                // each joint's resting bend past the one before it (rad) — the arm's curl when the mantle is still
+            stream: 90,                                // the mantle speed (px/s) at which the arms are fully straight and trailing
+            k: 60,                                     // the first joint's stiffness (rad/s² per rad)
+            tip: 1.3,                                  // each joint's k as a multiple of the one before: lighter, quicker
+            tipdamp: 0.45,                             // a joint's damping as a fraction of ITS OWN critical — under 1, so the arms overshoot when they swing back
             bodyR: 11, sticky: 4,
-            label: "jet: v += J·dir, then v ·= e^(−drag·dt)" };
+            label: "jet: v += J·dir, then v ·= e^(−drag·dt) · arm: θⱼ'' = kⱼ·(θⱼ₋₁ + curl·(1 − |v|/stream) − θⱼ) − dⱼ·θⱼ'" };
   const { ctx, W, H, TAU, stage, dot, ring, label, len, clamp, wrapAngle, MOVER, TARGET } = u;
   // an octopus is three cards wearing a hat. the body swims by JET pulses:
   // every pulseEvery seconds an IMPULSE toward the target (Dash), and
   // between pulses only drag — v ·= e^(−k·dt) — so each squirt eases out
-  // by itself. the eight arms are Tentacle's follow-chain, rooted around
-  // the back of the mantle, with Undulate's phase-shifted sine on every
-  // joint so they curl instead of trailing dead straight.
+  // by itself. the eight arms are Tentacle's sprung chain, rooted around
+  // the back of the mantle: every joint is an angular spring toward the
+  // joint before it PLUS a resting curl, so a still octopus holds its arms
+  // in eight lazy spirals. the curl is scaled by the mantle's SPEED — at
+  // full stream it is zero and the first joint's rest swings from its
+  // place in the fan to the trail — so a jet straightens the arms and
+  // streams them behind, and as the drag eats the speed the rest returns,
+  // the springs swing the arms back, overshoot (damping under critical),
+  // and curl them up again. no clock in the arms at all.
   let x = W * 0.4, y = H * 0.5, vx = 0, vy = 0, h = 0, pulseT = 0.6, age = 9, sticky = 0;
   let tx = W * 0.7, ty = H * 0.4;
   const arms = [];
@@ -5271,6 +5311,7 @@ def("O", "Octopus", "chains", "Tentacle ×8 behind a body that swims by jet puls
     for (let i = 0; i < D.links; i++) chain.push({ x: x - i * D.link, y: y });
     arms.push(chain);
   }
+  const ang = new Float32Array(D.arms * D.links).fill(Math.PI), om = new Float32Array(D.arms * D.links);   // joint angles + velocities, arm-major: [a · links + i]
   return {
     press(px, py) { tx = px; ty = py; sticky = D.sticky; },
     frame(dt, t) {
@@ -5295,18 +5336,34 @@ def("O", "Octopus", "chains", "Tentacle ×8 behind a body that swims by jet puls
       if (x > W - m) { x = W - m; vx = -Math.abs(vx) * 0.5; }
       if (y < m) { y = m; vy = Math.abs(vy) * 0.5; }
       if (y > H - m) { y = H - m; vy = -Math.abs(vy) * 0.5; }
-      if (len(vx, vy) > 8) h += wrapAngle(Math.atan2(vy, vx) - h) * Math.min(1, 6 * dt);
+      const sp = len(vx, vy);
+      if (sp > 8) h += wrapAngle(Math.atan2(vy, vx) - h) * Math.min(1, 6 * dt);
       const squeeze = Math.exp(-age * 5);              // the mantle contracts on each jet
+      // the arms: speed decides the rest pose. still, each arm points to its place
+      // in the fan and every joint curls past the one before; at full stream the
+      // first joint's rest is the trail and the curl is gone. the springs do the rest
+      const streaming = clamp(sp / D.stream, 0, 1), trail = sp > 8 ? Math.atan2(-vy, -vx) : h + Math.PI;
+      const sub = Math.max(1, Math.ceil(dt * 50)), hh = dt / sub;   // substeps of at most 0.02 s: √k·h < 2 keeps the step stable
       for (let a = 0; a < D.arms; a++) {
         const chain = arms[a];
-        const root = h + Math.PI + ((a + 0.5) / D.arms - 0.5) * D.spread;   // rooted on the back
+        const fan = (a + 0.5) / D.arms - 0.5;
+        const root = h + Math.PI + fan * D.spread;     // rooted on the back
         chain[0].x = x + Math.cos(root) * D.bodyR * 0.8;
         chain[0].y = y + Math.sin(root) * D.bodyR * 0.8;
-        for (let i = 1; i < D.links; i++) {
-          const p = chain[i - 1], s = chain[i];
-          let aa = Math.atan2(s.y - p.y, s.x - p.x);   // Tentacle's constraint...
-          aa += wrapAngle(root - aa) * 0.08;           // ...a whisper of "trail behind"
-          aa += Math.sin(t * D.curlFreq - i * 0.7 + a * 0.9) * D.curl;   // ...and Undulate's curl
+        const rest = root + wrapAngle(trail - root) * streaming;   // the first joint: its place in the fan, or the trail at speed
+        const curl = (fan < 0 ? -1 : 1) * D.curl * (1 - streaming);   // outward, and straightened by speed
+        for (let s = 0; s < sub; s++) {
+          let below = rest, kj = D.k / D.tip;
+          for (let i = 1; i < D.links; i++) {
+            kj = Math.min(kj * D.tip, 2500);
+            const dj = D.tipdamp * 2 * Math.sqrt(kj), idx = a * D.links + i;   // a fraction of THIS joint's critical damping
+            om[idx] += (kj * wrapAngle(below + curl - ang[idx]) - dj * om[idx]) * hh;
+            ang[idx] = wrapAngle(ang[idx] + om[idx] * hh);   // kept in −π..π
+            below = ang[idx];
+          }
+        }
+        for (let i = 1; i < D.links; i++) {            // the constraint, kept by construction
+          const p = chain[i - 1], s = chain[i], aa = ang[a * D.links + i];
           s.x = p.x + Math.cos(aa) * D.link;
           s.y = p.y + Math.sin(aa) * D.link;
         }
@@ -5331,29 +5388,42 @@ def("O", "Octopus", "chains", "Tentacle ×8 behind a body that swims by jet puls
     }
   };
 });
-rhymeOf("Octopus", "Oracle", "a jet every three seconds, gentler, with twice the curl — a deep-sea oracle drifting on its own slow thoughts", { pulseEvery: 2.8, jet: 120, curl: 0.45 });
+rhymeOf("Octopus", "Oracle", "a jet every three seconds, gentler, with twice the resting curl — a deep-sea oracle whose arms coil into tight spirals between its slow thoughts, and unwind only while it moves", { pulseEvery: 2.8, jet: 120, curl: 0.45 });
 
-def("V", "Vine", "chains", "a chain that grows: each new joint bends from its parent toward the light, plus noise — press to move the sun", function (u) {
+def("V", "Vine", "chains", "a chain that grows: each new joint bends from its parent toward the light, plus noise — and every joint is a spring holding its grown bend, so a gust on the tip bows the whole stem and it springs back, tip last — press to move the sun", function (u) {
   var D = { seg: 0.05,                                 // joint length (of H)
             growEvery: 0.28,                           // seconds per new joint
             tropism: 0.35,                             // how much of the turn-to-light each joint takes
             curl: 0.5, maxBend: 0.7,                   // the noise wobble (rad), a joint's bend limit (rad)
             leafEvery: 3, leafSize: 0.035,             // a leaf every k joints, its length (of H)
             maxSegs: 40, reach: 14, bloomHold: 1.6,    // give up after k joints; the win radius (px); the bloom pause (s)
-            sway: 0.025, rootX: 0.5,                   // the breeze (rad), where it is planted (of W)
+            k: 120,                                    // the root joint's stiffness toward its grown angle (rad/s² per rad)
+            tip: 1.15,                                 // each joint's k as a multiple of the one below: a thinner, lighter stem rights itself faster
+            tipdamp: 0.6,                              // a joint's damping as a fraction of ITS OWN critical — under 1, so the tip overshoots when a gust lets go
+            breeze: 6, breezeRate: 0.7,                // the gust: a sideways push on the tip (rad/s² per card-height of lever), and how fast it changes
+            rootX: 0.5,                                // where it is planted (of W)
             sticky: 8,                                 // how long a press holds the light
-            label: "a = parent + (light − parent)·tropism + noise" };
+            label: "grow: rest = parent + (light − parent)·tropism + noise · hold: θⱼ'' = kⱼ·(θⱼ₋₁ + Δrestⱼ − θⱼ) − dⱼ·θⱼ' + gust·lever" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, poly, arrow, label, rand, len, clamp, wrapAngle, noise, GOOD, TARGET, MAGIC, DIM } = u;
   // PHOTOTROPISM, one joint at a time: a plant is a chain that adds a link
   // every so often, and each new link copies its parent's ANGLE, then turns
   // a fraction of the way toward the light (a lerp on an angle — wrapAngle
-  // first) plus a little noise for the wobble real stems have. the angles
-  // are the memory: the chain is re-laid from the root every frame with a
-  // tiny sway, so nothing drifts. reach the light: bloom, rest, regrow.
-  let angs = [], seed = 0, growT = 0, bloom = 0, won = false, sticky = 0;
+  // first) plus a little noise for the wobble real stems have. those grown
+  // angles are the memory — the REST pose. what the chain shows is a second
+  // set of angles, one per joint, each a damped spring toward its rest
+  // (Jangle's rule): the root toward its own grown angle, clamped at the
+  // ground; every joint above toward the joint below's CURRENT angle plus
+  // the bend it grew with, so bending the stem low carries the whole top
+  // with it. the breeze is a sideways FORCE on the tip, and a joint feels a
+  // force at the tip as torque through its lever — the longer the stem
+  // above it, the harder it bows — so a gust bends the whole stem and,
+  // when it lets go, the stem springs back from the root up, the tip last
+  // and past its rest (damping under critical). the chain is re-laid from
+  // the root every frame, so nothing drifts. reach the light: bloom, rest, regrow.
+  let angs = [], cur = [], w = [], seed = 0, growT = 0, bloom = 0, won = false, sticky = 0;   // grown angles (the rest), the angles shown, their angular velocities
   let lx = W * 0.72, ly = H * 0.2;
   const pts = [];
-  function reset() { angs = []; seed = rand(0, 100); growT = 0; bloom = 0; won = false; }
+  function reset() { angs = []; cur = []; w = []; seed = rand(0, 100); growT = 0; bloom = 0; won = false; }
   reset();
   return {
     press(px, py) { lx = px; ly = py; sticky = D.sticky; },
@@ -5364,13 +5434,31 @@ def("V", "Vine", "chains", "a chain that grows: each new joint bends from its pa
         lx = W / 2 + Math.cos(t * 0.23) * W * 0.36;
         ly = H * 0.3 + Math.sin(t * 0.31) * H * 0.16;
       }
-      const L = H * D.seg;
+      const L = H * D.seg, n = angs.length;
+      // the springs: substeps of at most 0.02 s keep the symplectic step stable
+      // (√k·h < 2), and k is capped up the stem where that would stop being enough.
+      // the lever of joint i is the height of the tip above its base, from the
+      // last lay (pts[i] is where joint i starts)
+      const gust = noise(t * D.breezeRate) * D.breeze;
+      const tipY = pts.length ? pts[pts.length - 1][1] : GY;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let below = 0, kj = D.k / D.tip;
+        for (let i = 0; i < n; i++) {
+          kj = Math.min(kj * D.tip, 2500);
+          const dj = D.tipdamp * 2 * Math.sqrt(kj);    // a fraction of THIS joint's critical damping
+          const rest = i === 0 ? angs[0] : below + (angs[i] - angs[i - 1]);   // the root holds its grown angle; a joint holds its grown bend from the joint below
+          const lever = (pts[i][1] - tipY) / H;        // the tip's force, felt here as torque
+          w[i] += (kj * wrapAngle(rest - cur[i]) - dj * w[i] + gust * lever) * h;
+          cur[i] = angs[i] + clamp(wrapAngle(cur[i] + w[i] * h - angs[i]), -1.2, 1.2);   // a stem bends only so far from how it grew
+          below = cur[i];
+        }
+      }
       let x = W * D.rootX, y = GY;
       pts.length = 0; pts.push([x, y]);
-      for (let i = 0; i < angs.length; i++) {          // re-lay the chain from its angles
-        const a = angs[i] + Math.sin(t * 1.3 - i * 0.35) * D.sway * (1 + i * 0.1);
-        const g = i === angs.length - 1 ? clamp(growT / D.growEvery, 0.05, 1) : 1;   // the tip grows in
-        x += Math.cos(a) * L * g; y += Math.sin(a) * L * g;
+      for (let i = 0; i < n; i++) {                    // re-lay the chain from the angles it shows
+        const g = i === n - 1 ? clamp(growT / D.growEvery, 0.05, 1) : 1;   // the tip grows in
+        x += Math.cos(cur[i]) * L * g; y += Math.sin(cur[i]) * L * g;
         pts.push([x, y]);
       }
       if (bloom > 0) { bloom -= dt; if (bloom <= 0) reset(); }
@@ -5378,11 +5466,14 @@ def("V", "Vine", "chains", "a chain that grows: each new joint bends from its pa
         growT += dt;
         if (growT >= D.growEvery) {
           growT = 0;
-          const parent = angs.length ? angs[angs.length - 1] : -Math.PI / 2;   // the seed points up
+          const parent = n ? angs[n - 1] : -Math.PI / 2;   // the seed points up
           const toLight = Math.atan2(ly - y, lx - x);
           const bend = wrapAngle(toLight - parent) * D.tropism            // ← phototropism
-                     + noise(angs.length * 0.9 + seed) * D.curl;          // ← the wobble
-          angs.push(parent + clamp(bend, -D.maxBend, D.maxBend));
+                     + noise(n * 0.9 + seed) * D.curl;                    // ← the wobble
+          const grown = parent + clamp(bend, -D.maxBend, D.maxBend);
+          angs.push(grown);
+          cur.push(n ? cur[n - 1] + (grown - parent) : grown);           // born unstrained: its grown bend from the joint below, as that joint is now
+          w.push(0);
         }
         if (angs.length && len(lx - x, ly - y) < D.reach) { bloom = D.bloomHold; won = true; }
         else if (angs.length >= D.maxSegs) bloom = D.bloomHold * 0.4;   // too long: wilt, try again
@@ -5415,29 +5506,41 @@ def("V", "Vine", "chains", "a chain that grows: each new joint bends from its pa
     }
   };
 });
-rhymeOf("Vine", "Viper", "a joint every eighth of a second, triple the wobble, a weak pull to the light — a creeper that hunts, not grows", { growEvery: 0.12, curl: 1.4, tropism: 0.15 });
+rhymeOf("Vine", "Viper", "a joint every eighth of a second, triple the wobble, a weak pull to the light — a creeper that hunts, not grows, its long crooked stem swaying under the same gusts", { growEvery: 0.12, curl: 1.4, tropism: 0.15 });
 
-def("D", "Dragon", "chains", "Wander's head, Tentacle's body, Undulate's ripple; wings on that sine, fire on a timer — press to lure it", function (u) {
+def("D", "Dragon", "chains", "Wander's head on Tentacle's sprung body: every joint an angular spring chasing the one ahead, so the head's swerves run down the body as a ripple that the tail whips out; wings on a spring fed by their joint's own rise and fall, fire on a timer — press to lure it", function (u) {
   var D = { n: 22, link: 9, taper: 0.18,               // body joints, their spacing (px), shrink toward the tail
             speed: 80, ahead: 40, rim: 22, jitter: 2.8,   // Wander's rig: px/s, the circle ahead, its radius, angle jitter
-            undAmp: 5, undFreq: 5, undPhase: 0.55,     // Undulate's ripple: px, tempo, phase per joint
+            k: 80,                                     // the first body joint's stiffness: how hard it turns to trail the head (rad/s² per rad)
+            tip: 1.2,                                  // each joint's k as a multiple of the one ahead: lighter toward the tail, so quicker
+            tipdamp: 0.55,                             // a joint's damping as a fraction of ITS OWN critical — under 1, so the ripple overshoots joint by joint
             wingAt: 6, wingSpan: 26,                   // which joint wears the wings, their reach (px)
+            wingRate: 9, wingDamp: 0.4,                // the flap spring: its ω (rad/s), its damping ratio (under 1: the beat lags and overshoots)
+            wingLift: 0.25,                            // the joint's vertical speed (of H per s) that asks for a full stroke
             fireEvery: 4.5, fireDur: 1.1, fireLen: 0.2,   // the breath schedule (s) and its length (of W)
             sticky: 4,                                 // how long a lure holds
-            label: "body: follow-chain + sin(t·f − i·φ) sideways" };
-  const { ctx, W, H, TAU, stage, dot, poly, line, label, rand, len, noise, MOVER, MAGIC, HOT, TARGET } = u;
+            label: "body: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · wings: f'' = ω²·(−vy/lift − f) − 2ζω·f'" };
+  const { ctx, W, H, TAU, stage, dot, poly, line, label, rand, len, clamp, wrapAngle, noise, MOVER, MAGIC, HOT, TARGET } = u;
   // a dragon is a Wander rig with a tail. the head steers at a jittering
   // point on a circle held out front (card W); the body is Tentacle's
-  // follow-chain, so every joint keeps its distance from the one ahead;
-  // the ripple is Undulate's PHASE OFFSET sine, added SIDEWAYS (along each
-  // joint's normal) at draw time only — the chain stays smooth, the skin
-  // waves. the wings flap on the same sine as their joint, and the fire
-  // is a schedule: (t mod every) < duration. no keyframes anywhere.
+  // chain — every joint keeps its distance from the one ahead, and every
+  // joint is an angular SPRING toward the direction of the joint ahead,
+  // the first one toward the trail of the head. so the ripple is no longer
+  // a sine painted on at draw time: it IS the chain. every swerve of the
+  // head turns joint 1, which turns joint 2 a beat later, and the wave runs
+  // down the body — later, and a little larger, at every joint (damping
+  // under critical) — until the tail whips it out. the wings are one more
+  // spring: their joint's own vertical speed asks for a stroke (rising:
+  // spread; diving: tuck) and the flap chases that, lagging and overshooting,
+  // so a beat comes free from the body's rise and fall. the fire is still a
+  // schedule: (t mod every) < duration. no keyframes anywhere.
   let x = W * 0.5, y = H * 0.5, vx = D.speed, vy = 0, wa = 0, sticky = 0;
   let tx = 0, ty = 0;
   const WA = Math.min(D.wingAt, D.n - 2);
   const segs = [];
   for (let i = 0; i < D.n; i++) segs.push({ x: x - i * D.link, y: y });
+  const ang = new Float32Array(D.n).fill(Math.PI), om = new Float32Array(D.n);   // joint i: the direction of link i from the joint ahead, and its angular velocity
+  let flap = 0, flapV = 0, wingY = y;                  // the wing stroke (−1 tucked … 1 spread), its speed, the wing joint's last y
   return {
     press(px, py) { tx = px; ty = py; sticky = D.sticky; },
     frame(dt, t) {
@@ -5456,24 +5559,48 @@ def("D", "Dragon", "chains", "Wander's head, Tentacle's body, Undulate's ripple;
       vx *= D.speed / s2; vy *= D.speed / s2;          // a constant cruise
       x += vx * dt; y += vy * dt;
       segs[0].x = x; segs[0].y = y;
-      for (let i = 1; i < D.n; i++) {                  // Tentacle's constraint, link by link
+      // the body: Tentacle's sprung chain. the first joint's rest is the trail of
+      // the head (it always cruises, so it always has one); each joint after it
+      // chases the joint ahead on a quicker, under-damped spring. a symplectic step
+      // needs √k·h < 2, so a coarse frame is cut into substeps of at most 0.02 s
+      // and k is capped where that would stop being enough
+      const trail = Math.atan2(-vy, -vx);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let below = trail, kj = D.k / D.tip;
+        for (let i = 1; i < D.n; i++) {
+          kj = Math.min(kj * D.tip, 2500);
+          const dj = D.tipdamp * 2 * Math.sqrt(kj);    // a fraction of THIS joint's critical damping
+          om[i] += (kj * wrapAngle(below - ang[i]) - dj * om[i]) * h;
+          ang[i] = wrapAngle(ang[i] + om[i] * h);      // kept in −π..π: only differences matter
+          below = ang[i];
+        }
+      }
+      for (let i = 1; i < D.n; i++) {                  // the constraint, kept by construction: fixed length, the joint's own direction
         const p = segs[i - 1], s = segs[i];
-        const ddx = s.x - p.x, ddy = s.y - p.y, dd = len(ddx, ddy) || 1;
         const L = Math.max(3, D.link - i * D.taper);
-        s.x = p.x + ddx / dd * L; s.y = p.y + ddy / dd * L;
+        s.x = p.x + Math.cos(ang[i]) * L; s.y = p.y + Math.sin(ang[i]) * L;
+      }
+      // the wings: their joint's vertical speed asks for a stroke, and the flap is a
+      // spring chasing that ask — so it lags the body's rise and overshoots it
+      const wvy = (segs[WA].y - wingY) / Math.max(dt, 0.001);
+      wingY = segs[WA].y;
+      const wantFlap = clamp(-wvy / (H * D.wingLift), -1, 1), ww = D.wingRate;
+      for (let s = 0; s < sub; s++) {
+        flapV += (ww * ww * (wantFlap - flap) - 2 * D.wingDamp * ww * flapV) * h;
+        flap = clamp(flap + flapV * h, -1.5, 1.5);
       }
       const fire = (t % D.fireEvery) < D.fireDur;      // the breath is a schedule
       for (let i = D.n - 1; i >= 1; i--) {             // tail first, head on top
         const p = segs[i - 1], s = segs[i];
         const ddx = p.x - s.x, ddy = p.y - s.y, dd = len(ddx, ddy) || 1;
         const ux = ddx / dd, uy = ddy / dd, nx = -uy, ny = ux;   // toward the head, and its normal
-        const off = Math.sin(t * D.undFreq - i * D.undPhase) * D.undAmp * (0.3 + i / D.n);   // the ripple
-        const px = s.x + nx * off, py = s.y + ny * off;
+        const px = s.x, py = s.y;                      // the ripple is in the chain now: nothing added at draw time
         const r = Math.max(1.5, 8 - i * 0.32);
-        if (i === WA) {                                // the wings, flapping on the same sine
-          const flap = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * D.undFreq - i * D.undPhase));
+        if (i === WA) {                                // the wings, on the flap spring
+          const stroke = 0.35 + 0.65 * (0.5 + 0.5 * flap);
           for (let side = -1; side <= 1; side += 2) {
-            const reach = D.wingSpan * flap * side;
+            const reach = D.wingSpan * stroke * side;
             poly([[px - ux * 4, py - uy * 4],
                   [px + nx * reach - ux * D.wingSpan * 0.45, py + ny * reach - uy * D.wingSpan * 0.45],
                   [px + nx * reach * 0.55 - ux * D.wingSpan * 0.9, py + ny * reach * 0.55 - uy * D.wingSpan * 0.9],
@@ -5501,7 +5628,7 @@ def("D", "Dragon", "chains", "Wander's head, Tentacle's body, Undulate's ripple;
     }
   };
 });
-rhymeOf("Dragon", "Drake", "a twelve-joint body at nearly double the speed, breathing fire every two seconds — a small, cross, quick drake", { n: 12, speed: 130, fireEvery: 1.8 });
+rhymeOf("Dragon", "Drake", "a twelve-joint body at nearly double the speed, breathing fire every two seconds — a small, cross, quick drake whose short tail snaps round after every swerve", { n: 12, speed: 130, fireEvery: 1.8 });
 
 def("E", "Echo", "chains", "Queue's buffer, but of the whole state — pose, heading, colour — replayed by clones — press to change the spacing", function (u) {
   var D = { clones: 8, spacings: [5, 12, 24],          // ghosts, and the delays (ticks) a press cycles through
@@ -5615,22 +5742,27 @@ def("W", "Worm", "chains", "Gait's planted foot, Undulate's arch — one anchor 
 });
 rhymeOf("Worm", "Wiggler", "half the reach and a slide three times as quick — a busy little wiggler that never stops swapping anchors", { lmin: 0.06, lmax: 0.16, dur: 0.25 });
 
-def("S", "Spider", "chains", "six Ik legs on a TRIPOD gait — Gait's homes and thresholds, three feet always down — press to send it off", function (u) {
+def("S", "Spider", "chains", "six Ik legs on a TRIPOD gait — Gait's homes and thresholds, three feet always down — and a body on a spring toward the mean of its feet, so every step lifts it, drops it and lets it bob — press to send it off", function (u) {
   var D = { legs: 6, thigh: 0.13, shin: 0.15,          // leg count, the two bones (of H)
             spread: 0.07, hipGap: 0.02,                // foot homes and hips along the body (of W)
             thresh: 0.055, lead: 0.25,                 // Gait's step trigger (of W); how far homes lead velocity
             dur: 0.22, lift: 0.05,                     // step time (s), step arc height (of H)
             ride: 0.12, maxV: 0.3,                     // body height above the feet (of H), top speed (of W per s)
+            omega: 14, zeta: 0.5,                      // the body spring: its ω (rad/s) and damping ratio (under 1: it sags past and bobs back)
             hill: 0.05,                                // the terrain's bumps (of H)
-            label: "tripod: 0,2,4 then 1,3,5 · body y = mean(feet)" };
+            label: "tripod: 0,2,4 then 1,3,5 · body: y'' = ω²·(mean(feet) − ride − y) − 2ζω·y'" };
   const { ctx, W, H, GY, TAU, stage, dot, ring, label, clamp, ease, lerp, len, rand, BONE, MOVER, TARGET } = u;
   // Gait, times three. each leg is two bones solved by the Law of Cosines
   // (card I), its knee chosen to point UP; each foot owns a HOME beside
   // its hip, pushed ahead by velocity, and steps when the home drifts
   // past a THRESHOLD. the gait is a TRIPOD: legs 0, 2, 4 fly together
   // while 1, 3, 5 hold, then swap — an insect is never off balance. the
-  // body has no height of its own: it hangs a fixed ride above the MEAN
-  // of its feet, so hills lift it and hollows drop it, for free.
+  // body has no height of its own: it wants to hang a fixed ride above
+  // the MEAN of its feet, and gets there on a spring (Quadruped's body,
+  // damped a little under critical) — so hills lift it and hollows drop
+  // it, three feet in the air raise the mean and the body follows late,
+  // three feet landing drop it and it sags past and bobs back. nothing
+  // here is told to bob.
   const N = D.legs, THIGH = H * D.thigh, SHIN = H * D.shin;
   function terra(x) { return GY - H * D.hill * (0.55 + 0.45 * Math.sin(x * 0.021 + 1) * Math.cos(x * 0.009)); }
   function off(i) { return i - (N - 1) / 2; }
@@ -5641,6 +5773,7 @@ def("S", "Spider", "chains", "six Ik legs on a TRIPOD gait — Gait's homes and 
     feet.push({ x: fx, y: terra(fx), from: fx, fromY: terra(fx), to: fx });
   }
   let group = -1, gk = 1, next = 0;                    // which tripod is in the air, its progress, whose turn
+  let bodyY = terra(bx) - H * D.ride, bodyV = 0;      // the body's height and its speed: spring state, not a formula
   return {
     press(px) { tx = clamp(px, W * 0.1, W * 0.9); autoT = -8; },
     frame(dt, t) {
@@ -5679,7 +5812,13 @@ def("S", "Spider", "chains", "six Ik legs on a TRIPOD gait — Gait's homes and 
       let meanY = 0;
       for (let i = 0; i < N; i++) meanY += feet[i].y;
       meanY /= N;
-      const bodyY = meanY - H * D.ride - (group >= 0 ? Math.sin(clamp(gk, 0, 1) * Math.PI) * 2 : 0);   // rule 4
+      const wantY = meanY - H * D.ride, w = D.omega;   // rule 4: the ride above the mean — as a spring's rest, not the body's place
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of at most 0.02 s keep the step stable
+      for (let s = 0; s < sub; s++) {
+        bodyV += (w * w * (wantY - bodyY) - 2 * D.zeta * w * bodyV) * h;
+        bodyY += bodyV * h;
+      }
+      bodyY = clamp(bodyY, wantY - H * 0.3, wantY + H * 0.3);   // never further from its rest than a body-height
       ctx.fillStyle = "rgba(150,145,190,0.13)";        // the hill itself
       ctx.strokeStyle = "rgba(201,196,228,0.55)";
       ctx.lineWidth = 1.5;
@@ -5720,32 +5859,40 @@ def("S", "Spider", "chains", "six Ik legs on a TRIPOD gait — Gait's homes and 
     }
   };
 });
-rhymeOf("Spider", "Skitter", "nearly twice the speed, steps in a tenth of a second at half the threshold — a skitter, all blur and legs", { maxV: 0.55, dur: 0.11, thresh: 0.03 });
+rhymeOf("Spider", "Skitter", "nearly twice the speed, steps in a tenth of a second at half the threshold — a skitter, all blur and legs, its body never quite catching up with its feet", { maxV: 0.55, dur: 0.11, thresh: 0.03 });
 
-def("M", "Mech", "chains", "Gait made heavy — long slow strides, a thump that shakes the card, a Lookat cannon — press to send it somewhere", function (u) {
+def("M", "Mech", "chains", "Gait made heavy — long slow strides, a thump that shakes the card and rocks the torso on an under-damped spring, a Lookat cannon — press to send it somewhere", function (u) {
   var D = { thigh: 0.2,                                // each leg bone (of H)
             thresh: 0.2, maxV: 0.22,                   // Gait's step trigger and top speed (of W)
             dur: 0.55, lift: 0.07,                     // seconds per stride, the foot's arc (of H)
             hipW: 0.05, bodyH: 0.36,                   // hip spacing (of W), hip height (of H)
             shake: 6, shakeDecay: 6, shakeFreq: 40,    // the thump: px, how fast it dies (per s), its rattle (rad/s)
             dust: 7,                                   // dust dots per plant
-            lean: 0.0015, aim: 5,                      // torso lean per px/s² of acceleration; the cannon's tracking rate
-            label: "shake ·= e^(−k·dt) · cannon = lerp_angle" };
+            lean: 0.0015, aim: 5,                      // torso lean asked for, per px/s² of acceleration; the cannon's tracking rate
+            leanRate: 8, leanDamp: 0.3,                // the torso spring: its ω (rad/s) and damping ratio (well under 1: it rocks past and settles)
+            kick: 1.1,                                 // the angular speed a thump throws into the torso (rad/s), toward the foot that landed
+            label: "shake ·= e^(−k·dt) · torso: θ'' = ω²·(a·lean − θ) − 2ζω·θ', θ' += kick per thump · cannon = lerp_angle" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, label, clamp, ease, rand, len, wrapAngle, smooth, BONE, MOVER, TARGET, HOT } = u;
   // Gait's recipe with the numbers turned to "heavy": homes, a wide
   // threshold, slow strides, two-bone IK legs. what sells the tonnage is
   // the THUMP: on every plant a screen-shake amplitude jumps up and then
   // decays — shake ·= e^(−k·dt) — while the whole scene is drawn through
   // ctx.translate(shake · sin(fast t)); plus a puff of dust dots. the
-  // torso leans into its ACCELERATION (not its speed), and the cannon is
+  // torso is a mass on a spring: its rest is a lean into the body's
+  // ACCELERATION (not its speed), and it gets there on an under-damped
+  // angle spring, so a change of pace rocks it past and it settles; and
+  // every thump throws angular speed into it toward the foot that landed,
+  // so forty tons visibly lurch and recover on each stride. the cannon is
   // Lookat: lerp_angle toward the last click at a smoothing rate.
   let bx = W * 0.35, vx = 0, pvx = 0, ax = 0, tx = W * 0.7, autoT = 0;
   let cx = W * 0.8, cy = H * 0.3, aim = 0, shake = 0;
+  let lean = 0, leanV = 0;                             // the torso's angle and angular speed: spring state, kicked by thumps
   const feet = [{ x: bx - W * D.hipW, y: GY }, { x: bx + W * D.hipW, y: GY }];
   let stepping = -1, from = 0, to = 0, k = 0;
   const dust = [];
   function thump(x) {
     shake = D.shake;                                   // the amplitude jumps...
+    leanV += D.kick * (x > bx ? 1 : -1);               // ...and the torso is thrown toward the foot that landed (a velocity, never a pose)
     for (let i = 0; i < D.dust; i++) dust.push({ x: x, y: GY, vx: rand(-60, 60), vy: rand(-90, -20), a: 1 });
     while (dust.length > 40) dust.shift();
   }
@@ -5757,9 +5904,15 @@ def("M", "Mech", "chains", "Gait made heavy — long slow strides, a thump that 
       if (autoT > 6) { autoT = 0; tx = rand(W * 0.12, W * 0.88); }
       const want = clamp((tx - bx) * 1.5, -W * D.maxV, W * D.maxV);
       vx += (want - vx) * Math.min(1, 2.5 * dt);
-      ax += ((vx - pvx) / Math.max(dt, 0.001) - ax) * Math.min(1, 6 * dt);   // smoothed acceleration
+      ax = (vx - pvx) / Math.max(dt, 0.001);           // the acceleration, raw: the torso spring does the smoothing
       pvx = vx;
       bx += vx * dt;
+      const wantLean = clamp(ax * D.lean, -0.35, 0.35), lw = D.leanRate;   // the rest: a lean into the acceleration
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of at most 0.02 s keep the step stable
+      for (let s = 0; s < sub; s++) {
+        leanV += (lw * lw * (wantLean - lean) - 2 * D.leanDamp * lw * leanV) * h;
+        lean = clamp(lean + leanV * h, -0.6, 0.6);     // a torso only rocks so far
+      }
       for (let i = 0; i < 2; i++) {                    // Gait's rules 1 and 2: homes, threshold
         const home = bx + (i ? 1 : -1) * W * D.hipW + vx * 0.3;
         if (stepping < 0 && Math.abs(home - feet[i].x) > W * D.thresh) {
@@ -5808,10 +5961,9 @@ def("M", "Mech", "chains", "Gait made heavy — long slow strides, a thump that 
         ctx.lineCap = "butt";
         rect(f.x - 7, f.y - 4, 14, 4, BONE);           // a flat, heavy foot
       }
-      const lean = clamp(ax * D.lean, -0.35, 0.35);    // into the acceleration
       ctx.save();
       ctx.translate(hipX, hipY);
-      ctx.rotate(lean);
+      ctx.rotate(lean);                                // the spring's angle, wherever it has got to
       rect(-14, -28, 28, 28, MOVER);                   // the torso
       dot(0, -18, 4, "#131020");                       // the cockpit
       ctx.restore();
@@ -5827,7 +5979,7 @@ def("M", "Mech", "chains", "Gait made heavy — long slow strides, a thump that 
     }
   };
 });
-rhymeOf("Mech", "Mantis", "short quick strides at twice the speed on a third of the threshold — a mantis, all knees and no tonnage", { dur: 0.2, thresh: 0.08, maxV: 0.45 });
+rhymeOf("Mech", "Mantis", "short quick strides at twice the speed on a third of the threshold — a mantis, all knees and no tonnage, its torso kicked so often it never stops rocking", { dur: 0.2, thresh: 0.08, maxV: 0.45 });
 
 /* ============================== BODIES & GROUND ==============================
    Honest physics you can read. VERLET integration stores no velocity at
