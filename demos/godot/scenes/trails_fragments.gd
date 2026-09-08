@@ -2,6 +2,8 @@ extends Node2D
 ## FRAGMENTED TRAILS — a comet of pieces, spawned BY DISTANCE MOVED.
 ## The web demo's whole secret: fragments are born only while the pointer
 ## travels (Unity calls this Rate over Distance; Niagara, spawn-per-unit).
+## The head has MASS: a spring pulls it toward the mouse and only drag slows
+## it, so a flick makes it overshoot and loop back through its own trail.
 ## Keys 1–4 change the fragment costume: ember, star, drop, sparkle.
 ## Move the mouse. Esc = menu. Chapter 06 (and chapter 12, as a cursor trail).
 
@@ -9,6 +11,8 @@ const SPAWN_EVERY := 9.0        # pixels of travel per fragment
 const STYLES := ["ember", "star", "drop", "sparkle"]
 
 var style := "ember"
+var head := Vector2.ZERO        # the comet head, chasing the mouse on a spring
+var head_v := Vector2.ZERO
 var last_pos := Vector2.ZERO
 var travelled := 0.0
 var frags: Array = []           # untyped: filter() hands back a plain Array
@@ -19,13 +23,17 @@ func _ready() -> void:
 	info.position = Vector2(24, 16)
 	add_child(info)
 	_caption()
-	last_pos = get_global_mouse_position()
+	head = get_global_mouse_position()
+	last_pos = head
 
 func _caption() -> void:
-	info.text = "Fragmented trails: move the mouse. 1=ember 2=star 3=drop 4=sparkle.  Esc = menu.\nFragments spawn per pixel MOVED, not per second — that's the responsive feel."
+	info.text = "Fragmented trails: move the mouse. 1=ember 2=star 3=drop 4=sparkle.  Esc = menu.\nFragments spawn per pixel MOVED, not per second — and the head is a spring, so a flick overshoots and loops back."
 
 func _process(delta: float) -> void:
-	var pos := get_global_mouse_position()
+	var mouse := get_global_mouse_position()
+	head_v += ((mouse - head) * 60.0 - head_v * 7.0) * delta   # a spring toward the mouse, under-damped: it overshoots
+	head += head_v * delta
+	var pos := head
 	travelled += pos.distance_to(last_pos)
 	while travelled > SPAWN_EVERY:          # one fragment per step of travel
 		travelled -= SPAWN_EVERY

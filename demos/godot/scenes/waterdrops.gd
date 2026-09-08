@@ -5,6 +5,8 @@ extends Node2D
 ## lesson — Unity calls it Sub Emitters, Niagara calls it event handlers.
 ## Click to add rain. Esc = menu. Chapter 06.
 
+const GRAVITY := 700.0          # px/s², the web demo's number
+
 var drops: Array = []           # untyped: filter() hands back a plain Array
 var splashes: Array = []
 var ripples: Array = []
@@ -24,9 +26,10 @@ func _process(delta: float) -> void:
 	spawn_timer -= delta
 	rain_boost = maxf(0.0, rain_boost - delta * 0.5)
 	if spawn_timer <= 0.0:
-		drops.append({ "pos": Vector2(randf_range(0, w), -8.0), "vel": randf_range(260, 380) })
+		drops.append({ "pos": Vector2(randf_range(0, w), -8.0), "vel": randf_range(60, 160) })
 		spawn_timer = randf_range(0.08, 0.3) * (1.0 - rain_boost * 0.85)
 	for d in drops:
+		d.vel += GRAVITY * delta                # a drop falls: it gathers speed, same as the splash it will spawn
 		d.pos.y += d.vel * delta
 		if d.pos.y >= water_y:               # the death — and the two births
 			for i in 5:
@@ -40,7 +43,7 @@ func _process(delta: float) -> void:
 	drops = drops.filter(func(d): return d.pos.y > -1e5)
 	for s in splashes:
 		s.pos += s.vel * delta
-		s.vel.y += 340.0 * delta
+		s.vel.y += GRAVITY * delta
 		s.life -= delta * 1.4
 	splashes = splashes.filter(func(s): return s.life > 0.0)
 	for r in ripples:

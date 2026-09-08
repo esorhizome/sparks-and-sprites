@@ -7,7 +7,8 @@ extends Node2D
 var companion := Vector2.ZERO
 var last_mouse := Vector2.ZERO
 var travelled := 0.0
-var squish := 0.0
+var squish := 0.0               # 1 = flinched flat, 0 = round
+var squish_v := 0.0             # the flinch is a SPRING: it overshoots past round into a tall wobble, then settles
 var sparkles: Array = []        # untyped: filter() hands back a plain Array
 var rings: Array = []
 
@@ -43,7 +44,8 @@ func _process(delta: float) -> void:
 		r.r += 160.0 * delta
 		r.a -= 2.2 * delta
 	rings = rings.filter(func(r): return r.a > 0.0)
-	squish = maxf(0.0, squish - delta * 3.0)
+	squish_v += (-squish * 380.0 - squish_v * 14.0) * delta   # spring back to round — under-damped, so it wobbles through
+	squish += squish_v * delta
 	queue_redraw()
 
 func _draw() -> void:
