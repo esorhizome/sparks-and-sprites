@@ -19,6 +19,7 @@
 let px = W / 2, py = H / 2;       // where the pointer really is
 let cx = px, cy = py;             // where the soft circle is (it lags — on purpose)
 let squish = 1;                   // 1 = round; dips when pressed
+let squishV = 0;                  // …and how fast it is un-dipping: the flinch is a SPRING
 let parts = [], rings = [];
 
 canvas.onpointermove = (e) => {
@@ -43,7 +44,11 @@ onFrame((dt, t) => {
   const moved = Math.hypot(px - cx, py - cy);
   cx += (px - cx) * Math.min(1, dt * 12);
   cy += (py - cy) * Math.min(1, dt * 12);
-  squish += (1 - squish) * Math.min(1, dt * 10);   // spring back to round
+  // the flinch springs back to round — a real spring, under-damped, so it
+  // overshoots past round into a tall wobble before it settles. a lerp here
+  // would only ever decay, and a body that never overshoots reads as dead
+  squishV += ((1 - squish) * 380 - squishV * 14) * dt;
+  squish += squishV * dt;
 
   // moving fast sheds a sparkle or two
   if (moved > 3) parts.push({
@@ -77,8 +82,8 @@ onFrame((dt, t) => {
 
   // the cursor itself: a soft breathing circle (squishes on press)
   const breathe = 1 + 0.05 * Math.sin(t * 2.4);
-  const rx = 13 * breathe / Math.sqrt(squish);
-  const ry = 13 * breathe * Math.sqrt(squish);
+  const rx = 13 * breathe / Math.sqrt(Math.max(0.05, squish));
+  const ry = 13 * breathe * Math.sqrt(Math.max(0.05, squish));
   const soft = ctx.createRadialGradient(cx, cy, 1, cx, cy, rx * 1.9);
   soft.addColorStop(0, "rgba(201,194,255,0.75)");
   soft.addColorStop(1, "rgba(201,194,255,0)");
@@ -114,7 +119,7 @@ onFrame((dt, t) => {
   </div>
 </div>
 
-<div class="tweaks"><b>Try tweaking:</b> the chase speed <code>dt * 12</code> → <code>dt * 4</code> (dreamy) → <code>dt * 40</code> (eager) · <code>squish = 0.45</code> → <code>0.15</code> (dramatic flinch) · burst count 26 → 80 · ring speed 160 → 420 (real pop) · sparkle threshold <code>moved > 3</code> → <code>0</code> (sheds constantly).</div>
+<div class="tweaks"><b>Try tweaking:</b> the chase speed <code>dt * 12</code> → <code>dt * 4</code> (dreamy) → <code>dt * 40</code> (eager) · <code>squish = 0.45</code> → <code>0.15</code> (dramatic flinch) · the flinch spring's damping <code>14</code> → <code>40</code> (critically damped: no wobble) → <code>5</code> (jelly) · burst count 26 → 80 · ring speed 160 → 420 (real pop) · sparkle threshold <code>moved > 3</code> → <code>0</code> (sheds constantly).</div>
 <p class="hint"><b>Web (DOM):</b> <code>cursor: none</code> plus a <code>position: fixed</code> element following <code>pointermove</code> — and only where a replacement is drawn; never hide the cursor and offer nothing back. <b>In Godot:</b> <code>Input.set_custom_mouse_cursor()</code> for a static image; the living companion — hidden mouse, eased chase, distance-shed sparkles, press-pop — is <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/cursor_sparkle.gd"><code>cursor_sparkle.gd</code></a>, ready to download. <b>In Unity:</b> <code>Cursor.SetCursor()</code> / <code>Cursor.visible = false</code> + a UI element tracking the pointer. <b>In Unreal:</b> <code>SetMouseCursorWidget()</code> — a full animated UMG widget as the cursor. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">Chapter 12</a>.</p>
 </div>
 <script src="demo.js"></script>

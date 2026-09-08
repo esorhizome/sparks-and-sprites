@@ -42,8 +42,10 @@ func _process(delta: float) -> void:
 	var p: Dictionary = PRESETS[preset]
 	for s in field:
 		s.pos += p.drift * s.wander * delta
-		if preset == "fireflies":         # fireflies wander; snow just falls
+		if preset == "fireflies":         # fireflies wander
 			s.pos += Vector2(sin(t * s.wander + s.ph), cos(t * 0.7 + s.ph)) * 12.0 * delta
+		elif preset == "snow":            # a flake rides the air: it flutters side to side on its own phase as it falls
+			s.pos.x += sin(t * 1.4 * s.wander + s.ph) * 9.0 * delta
 		s.pos.x = fposmod(s.pos.x, size.x)
 		s.pos.y = fposmod(s.pos.y, size.y)
 	queue_redraw()

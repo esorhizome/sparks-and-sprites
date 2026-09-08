@@ -25,7 +25,8 @@ canvas.onpointermove = (e) => {
 };
 canvas.onpointerleave = () => { mouse = null; };
 
-let ex = W / 2, ey = H / 2;      // the comet head
+let ex = W / 2, ey = H / 2;      // the comet head…
+let hvx = 0, hvy = 0;            // …and its velocity: the head has MASS, so it overshoots and curls back
 
 // one fragment is born — what it IS depends on the style
 function spawn(x, y) {
@@ -47,11 +48,15 @@ onFrame((dt, t) => {
   ctx.fillStyle = "#14111F";
   ctx.fillRect(0, 0, W, H);
 
-  // the head wanders on its own — or eases toward your pointer
+  // the head wanders on its own — or chases your pointer. a spring pulls it
+  // toward the target and only drag slows it, so a flick makes it overshoot
+  // and loop back through its own trail: that overshoot is what makes a
+  // trail read as SPEED rather than as a line
   const tx = mouse ? mouse.x : W / 2 + Math.cos(t * 1.3) * W * 0.30;
   const ty = mouse ? mouse.y : H / 2 + Math.sin(t * 2.1) * H * 0.28;
-  ex += (tx - ex) * Math.min(1, dt * 8);
-  ey += (ty - ey) * Math.min(1, dt * 8);
+  hvx += ((tx - ex) * 60 - hvx * 7) * dt;
+  hvy += ((ty - ey) * 60 - hvy * 7) * dt;
+  ex += hvx * dt;  ey += hvy * dt;
   for (let i = 0; i < 3; i++) spawn(ex + rand(-3, 3), ey + rand(-3, 3));
 
   ctx.globalCompositeOperation = STYLE == "drops" ? "source-over" : "lighter";
@@ -101,7 +106,7 @@ onFrame((dt, t) => {
   </div>
 </div>
 
-<div class="tweaks"><b>Try tweaking:</b> <code>STYLE</code> — all four · fragments per frame 3 → 12 (opulent) → 1 (understated) · mix two styles by calling <code>spawn</code> twice with different <code>STYLE</code> values temporarily set · fire's <code>vy</code> range to <code>rand(20, 70)</code>: falling embers.</div>
+<div class="tweaks"><b>Try tweaking:</b> <code>STYLE</code> — all four · fragments per frame 3 → 12 (opulent) → 1 (understated) · mix two styles by calling <code>spawn</code> twice with different <code>STYLE</code> values temporarily set · fire's <code>vy</code> range to <code>rand(20, 70)</code>: falling embers · the head's spring <code>60</code> / drag <code>7</code> → <code>200</code> / <code>4</code> (twitchy, loops a lot) → <code>60</code> / <code>16</code> (no overshoot at all — notice how much deader it looks).</div>
 <p class="hint"><b>In Godot:</b> spawn by distance moved, one costume per fragment style — <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/demos/godot/scenes/trails_fragments.gd">download <code>trails_fragments.gd</code></a> (keys 1–4 switch ember/star/drop/sparkle); or attach a <code>CPUParticles2D</code> to the moving node. <b>In Unity:</b> a Particle System with <em>Rate over Distance</em> emission — fragments appear only while moving, which feels wonderful. <b>In Unreal:</b> a Niagara emitter using spawn-per-unit. <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/06-vfx-cookbook.md">Chapter 06</a> · <a href="https://github.com/esorhizome/sparks-and-sprites/blob/main/chapters/12-cursors-and-living-buttons.md">chapter 12</a> deploys this as a cursor trail.</p>
 </div>
 <script src="demo.js"></script>
