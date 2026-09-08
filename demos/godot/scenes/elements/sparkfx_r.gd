@@ -5,7 +5,7 @@ const Base := preload("res://scenes/elements/sparkfx.gd")
 ## SPARKS — the rhymes. Dials named per branch; the rest delegates.
 
 const RHYMES := {
-	"grindstone": { "name": "Flint wheel", "hint": "blue-white, arcing higher — gravity ÷2" },
+	"grindstone": { "name": "Flint wheel", "hint": "blue-white, arcing higher — spark gravity 300 → 140" },
 	"sparkler": { "name": "Frost sparkler", "hint": "iced over, orbiting at half speed" },
 	"flint": { "name": "Wet strike", "hint": "count starved — six reluctant sparks, a sad puff" },
 	"welding": { "name": "Solder line", "hint": "half heat — cool tones, twice the patience" },
@@ -13,8 +13,16 @@ const RHYMES := {
 	"pixie": { "name": "Soot motes", "hint": "chimney grey — falls faster, swirls less" },
 }
 
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
+
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	if b.id == "grindstone":
+		_turn(b, { "grav": 140.0 })     # dial: spark gravity 300 → 140 (they arc higher and hang)
 	if b.id == "flint":
 		b.puff = 0.0
 
@@ -41,14 +49,6 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
-		"grindstone":
-			# dial: spark gravity 300 → 140 (they arc higher and hang)
-			b.press_v = maxf(0.0, b.press_v - dt * 1.2)
-			if randf() < 0.25 + b.press_v * 0.7:
-				for i in (4 if b.press_v > 0.0 else 1):
-					b.parts.append({ "pos": Vector2(r.size.x - 6, r.size.y - 4),
-						"vel": Vector2(randf_range(30, 120), randf_range(-130, -40)), "life": randf_range(0.5, 1.0) })
-			Base._fly(b, dt, 140.0, 1.4)
 		"flint":
 			b.press_v = maxf(0.0, b.press_v - dt * 1.2)
 			b.puff = maxf(0.0, b.puff - dt * 0.8)
@@ -109,10 +109,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var c := r.get_center()
 	match b.id:
 		"grindstone":
-			# dial: warm sparks → blue-white flint sparks
+			# dial: warm sparks → blue-white flint sparks (the gravity dial is in init)
 			ElemKit.face(n, r, Color(0.08, 0.09, 0.12, 0.96), Color(0.71, 0.78, 0.9, 0.5))
 			ElemKit.label(n, r, "FLINT WHEEL", Color(0.89, 0.92, 0.97))
-			n.draw_set_transform(o + Vector2(r.size.x - 4, r.size.y - 2), t * (7.0 + pv * 8.0), Vector2.ONE)
+			n.draw_set_transform(o + Vector2(r.size.x - 4, r.size.y - 2), float(b.th), Vector2.ONE)
 			n.draw_circle(Vector2.ZERO, 7.0, Color(0.25, 0.27, 0.33))
 			n.draw_line(Vector2(-7, 0), Vector2(7, 0), Color(0.84, 0.88, 0.96, 0.6), 1.0)
 			n.draw_line(Vector2(0, -7), Vector2(0, 7), Color(0.84, 0.88, 0.96, 0.6), 1.0)

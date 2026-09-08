@@ -555,28 +555,42 @@ def("Tesla ring", "lightning", "an arc dances between button and outer ring; pre
   };
 });
 
-def("Storm cloud", "lightning", "a cloud broods overhead; press and it strikes the button", function (u) {
+def("Storm cloud", "lightning", "a cloud broods overhead, bobbing on a spring that only its own mutters nudge; press and it strikes the button — and recoils from the bolt", function (u) {
+  var D = { k: 30,                 // the cloud's vertical spring, 1/s² (ω ≈ 5.5 rad/s: a 1.1 s bob)
+            zeta: 0.15,            // damping as a fraction of critical — well under 1, so it rings a few times
+            kick: 60,              // the bolt's recoil, px/s upward, injected the instant it fires
+            mutter: 8,             // a mutter's nudge, px/s either way — the idle bob comes from these, not a clock
+            rest: 22 };            // the cloud's resting height above the button, px
   const { ctx, W, H, B, rand, face, label, TAU } = u;
   let strike = 0, flicker = 0;
+  // the cloud is one mass on a vertical spring. nothing moves it but kicks: a
+  // mutter gives a small random nudge, the bolt a big upward one (the recoil),
+  // and the under-damped spring does the rest — it rises, falls back through
+  // the rest height, and settles in a couple of swings. no sine anywhere.
+  let cy = 0, cvy = 0;                    // displacement from rest, px, and its velocity
+  const damp = D.zeta * 2 * Math.sqrt(D.k);
   const puffs = [];
   for (let i = 0; i < 5; i++)
     puffs.push({ dx: (i - 2) * 13, dy: rand(-4, 4), r: rand(9, 14) });
   return {
-    press() { strike = 1; },
+    press() { strike = 1; cvy -= D.kick; },
     frame(dt, t) {
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
-      const cy = B.y - 22 + Math.sin(t * 0.8) * 2;
-      if (Math.random() < 0.01) flicker = 0.5;    // the cloud mutters to itself
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // ≤ 0.02 s steps keep the spring honest at any frame rate
+      for (let s = 0; s < sub; s++) { cvy += (-D.k * cy - damp * cvy) * h; cy += cvy * h; }
+      cy = Math.max(-60, Math.min(60, cy));
+      const y = B.y - D.rest + cy;
+      if (Math.random() < 0.01) { flicker = 0.5; cvy += rand(-D.mutter, D.mutter); }   // the cloud mutters to itself, and shifts
       if (flicker > 0) {
         ctx.globalCompositeOperation = "lighter";
         ctx.fillStyle = "rgba(190,200,255," + flicker * 0.5 + ")";
-        ctx.beginPath(); ctx.arc(B.cx + rand(-14, 14), cy, 16, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(B.cx + rand(-14, 14), y, 16, 0, TAU); ctx.fill();
         ctx.globalCompositeOperation = "source-over";
         flicker = Math.max(0, flicker - dt * 2);
       }
       for (const p of puffs) {
         ctx.fillStyle = "rgba(90,95,120,0.9)";
-        ctx.beginPath(); ctx.arc(B.cx + p.dx, cy + p.dy, p.r, 0, TAU); ctx.fill();
+        ctx.beginPath(); ctx.arc(B.cx + p.dx, y + p.dy, p.r, 0, TAU); ctx.fill();
       }
       const hit = strike > 0.55;          // bolt exists for the first beat of the strike
       face(hit ? "rgba(120,130,180,0.95)" : "rgba(20,20,36,0.92)",
@@ -585,8 +599,8 @@ def("Storm cloud", "lightning", "a cloud broods overhead; press and it strikes t
       if (hit) {
         ctx.globalCompositeOperation = "lighter";
         ctx.strokeStyle = "rgba(230,240,255," + strike + ")"; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(B.cx + rand(-6, 6), cy + 10);
-        let px = B.cx, py = cy + 10;
+        ctx.beginPath(); ctx.moveTo(B.cx + rand(-6, 6), y + 10);
+        let px = B.cx, py = y + 10;
         while (py < B.y) { px += rand(-8, 8); py += rand(5, 10); ctx.lineTo(px, py); }
         ctx.stroke();
         ctx.globalCompositeOperation = "source-over";
@@ -799,13 +813,24 @@ def("Van de Graaff", "lightning", "charged hairs wave off the top edge; press to
 
 /* ============================== WATER ============================== */
 
-def("Bubble tank", "water", "bubbles wobble upward inside; press to pop them all", function (u) {
+def("Bubble tank", "water", "bubbles rise on buoyancy against drag — the big ones faster — and wobble on a sideways spring kicked at release; press to pop them all", function (u) {
+  var D = { buoy: 24,              // buoyancy per px of radius, px/s² — bigger bubbles pull harder
+            drag: 6,               // drag, 1/s — terminal rise = buoy·r/drag, reached in ~1/drag s
+            kx: 40,                // the sideways spring toward the line it rose from, 1/s² (a 1 s wobble)
+            zeta: 0.08,            // its damping as a fraction of critical — the wobble dies over a few swings
+            kick: 30 };            // the sideways kick as it lets go of the glass, px/s
   const { ctx, W, H, B, rand, rr, face, label, TAU } = u;
+  // a bubble is a body: buoyancy (∝ radius) up, drag (∝ speed) down, so it
+  // accelerates from rest to a terminal speed a fraction of a second after
+  // release. its wobble is the same body on a soft sideways spring around the
+  // line it rose from, kicked once as it lets go — the zigzag decays as it
+  // climbs, and no two bubbles share a clock.
   let bubbles = [], pops = [];
+  const dx = D.zeta * 2 * Math.sqrt(D.kx);
   function spawn(atBottom) {
-    bubbles.push({ x: rand(B.x + 8, B.x + B.w - 8),
-                   y: atBottom ? B.y + B.h - 4 : rand(B.y + 8, B.y + B.h - 4),
-                   r: rand(2, 6), ph: rand(0, 9) });
+    const x0 = rand(B.x + 8, B.x + B.w - 8);
+    bubbles.push({ x: x0, x0: x0, vx: rand(-D.kick, D.kick), vy: 0,
+                   y: atBottom ? B.y + B.h - 4 : rand(B.y + 8, B.y + B.h - 4), r: rand(2, 6) });
   }
   for (let i = 0; i < 10; i++) spawn(false);
   return {
@@ -819,9 +844,14 @@ def("Bubble tank", "water", "bubbles wobble upward inside; press to pop them all
       if (bubbles.length < 10 && Math.random() < 0.15) spawn(true);
       ctx.save();
       rr(B.x, B.y, B.w, B.h, B.r); ctx.clip();
-      for (const b of bubbles) {          // rise + sideways wobble
-        b.y -= (8 + b.r * 2) * dt;
-        const x = b.x + Math.sin(t * 2 + b.ph) * 3;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // ≤ 0.02 s steps for the springs
+      for (const b of bubbles) {          // buoyancy − drag upward, a kicked spring sideways
+        for (let s = 0; s < sub; s++) {
+          b.vy += (-D.buoy * b.r - D.drag * b.vy) * h;              // up is −y
+          b.vx += (D.kx * (b.x0 - b.x) - dx * b.vx) * h;
+          b.y += b.vy * h; b.x += b.vx * h;
+        }
+        const x = b.x;
         if (b.y < B.y + b.r) { pops.push({ x: x, y: B.y + b.r, r: b.r, life: 1 }); b.y = -99; continue; }
         ctx.strokeStyle = "rgba(170,220,250,0.7)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(x, b.y, b.r, 0, TAU); ctx.stroke();
@@ -927,11 +957,22 @@ def("Ripple pool", "water", "the face is still water; press to drop a stone in",
   };
 });
 
-def("Rain on glass", "water", "droplets bead and run; press to sweep the wiper", function (u) {
+def("Rain on glass", "water", "droplets bead; a heavy one lets go, gathers speed against the glass, thins as it runs and swallows what it touches; press to sweep the wiper", function (u) {
+  var D = { g: 60,                 // the pull per px of radius, px/s² — heavier drops run harder
+            stop: 1,               // the radius below which the glass wins and a runner stalls, px
+            fric: 2,               // the glass's drag, 1/s — terminal speed = g·(r − stop)/fric
+            thin: 0.012,           // radius shed per px run — the drop leaves itself behind as a trail
+            jitter: 60,            // sideways jostle, px/s² — a random force, damped like everything else
+            heavy: 1.4 };          // only drops this big can let go
   const { ctx, W, H, B, rand, rr, face, label, TAU } = u;
+  // a runner is a body: gravity (scaled by how much water it is) against the
+  // glass's drag, so it accelerates toward a terminal speed instead of moving
+  // at one. running costs it mass — the trail — so it thins, its pull fades,
+  // and below the stop radius the drag wins and it beads up again, unless it
+  // has swallowed a bead on the way and grown heavier.
   let drops = [], wiper = -1;
   for (let i = 0; i < 18; i++)
-    drops.push({ x: rand(B.x + 4, B.x + B.w - 4), y: rand(B.y + 4, B.y + B.h - 4), r: rand(1, 3), run: 0 });
+    drops.push({ x: rand(B.x + 4, B.x + B.w - 4), y: rand(B.y + 4, B.y + B.h - 4), r: rand(1, 3), run: 0, vx: 0, vy: 0 });
   return {
     press() { wiper = 0; },
     frame(dt, t) {
@@ -941,13 +982,24 @@ def("Rain on glass", "water", "droplets bead and run; press to sweep the wiper",
       ctx.save();
       rr(B.x, B.y, B.w, B.h, B.r); ctx.clip();
       if (drops.length < 22 && Math.random() < 0.2)
-        drops.push({ x: rand(B.x + 4, B.x + B.w - 4), y: rand(B.y + 4, B.y + B.h - 4), r: rand(1, 3), run: 0 });
+        drops.push({ x: rand(B.x + 4, B.x + B.w - 4), y: rand(B.y + 4, B.y + B.h - 4), r: rand(1, 3), run: 0, vx: 0, vy: 0 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const d of drops) {
-        if (d.run <= 0 && Math.random() < 0.005) d.run = rand(0.5, 1.2);
-        if (d.run > 0) {                  // a heavy drop breaks loose and slides
-          d.run -= dt; d.y += 30 * dt; d.x += Math.sin(d.y * 0.5) * 4 * dt;
+        if (!d.run && d.r > D.heavy && Math.random() < 0.005) { d.run = 1; d.vy = 1; }
+        if (d.run) {                      // a heavy drop breaks loose and slides
+          for (let s = 0; s < sub; s++) {
+            d.vy += (D.g * (d.r - D.stop) - D.fric * d.vy) * h;
+            d.vx += (rand(-D.jitter, D.jitter) - D.fric * 3 * d.vx) * h;
+            d.y += d.vy * h; d.x += d.vx * h;
+            d.r = Math.max(0.6, d.r - D.thin * Math.max(0, d.vy) * h);
+          }
+          if (d.vy <= 0) { d.run = 0; d.vy = 0; d.vx = 0; }    // it stalled: the glass holds it again
+          for (const e of drops)          // merging: a runner swallows the beads it touches
+            if (e !== d && !e.run && Math.abs(e.x - d.x) < d.r + e.r && Math.abs(e.y - d.y) < d.r + e.r) {
+              d.r = Math.min(4.5, Math.sqrt(d.r * d.r + e.r * e.r)); e.y = B.y + B.h + 99;   // gone: the filter below sweeps it up
+            }
           ctx.strokeStyle = "rgba(160,200,230,0.25)"; ctx.lineWidth = d.r;
-          ctx.beginPath(); ctx.moveTo(d.x, d.y - 6); ctx.lineTo(d.x, d.y); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(d.x, d.y - Math.min(12, d.vy * 0.2)); ctx.lineTo(d.x, d.y); ctx.stroke();
         }
         ctx.fillStyle = "rgba(190,220,245,0.6)";
         ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, TAU); ctx.fill();
@@ -1029,12 +1081,31 @@ def("Whirlpool", "water", "a slow spiral current; press to tighten the drain", f
   };
 });
 
-def("Spring tide", "water", "waves lap below; press and one crashes right over", function (u) {
+def("Spring tide", "water", "the sea is a row of masses on springs, each tied to its neighbours and pushed by a travelling wind; press and a crest heaves up over the button, crashes, and rebounds", function (u) {
+  var D = { n: 28,                 // surface masses across the width
+            k: 60,                 // neighbour coupling, 1/s² — how stiffly the surface hangs together
+            rest: 8,               // the pull back to sea level, 1/s² (ω ≈ 2.8 rad/s: a 2.2 s heave)
+            zeta: 0.2,             // damping as a fraction of critical, on that heave — under 1, so it rebounds
+            wind: 60,              // the travelling wind push, px/s²
+            windK: 0.35,           // its wavelength, radians per mass
+            windW: 2.5,            // its speed, rad/s — off the row's resonance, so the ripple stays small
+            surge: 300 };          // the press: upward speed injected under the crest, px/s (height ≈ surge/ω)
   const { ctx, W, H, B, rand, face, label, TAU } = u;
-  let surgeAmt = 0, foam = [];
+  // one mass-spring row. every point is pulled back toward sea level and
+  // toward the average of its two neighbours; the wind is a force that
+  // travels along the row. the press does not lift the sheet — it throws
+  // the middle masses upward, and the coupling spreads that into a crest
+  // that climbs, breaks over the button, drops through sea level into a
+  // trough, and rings out over a couple of seconds.
+  const n = D.n, hgt = new Float32Array(n), vel = new Float32Array(n);
+  const damp = D.zeta * 2 * Math.sqrt(D.rest);
+  let foam = [];
   return {
     press() {
-      surgeAmt = 1;
+      for (let i = 0; i < n; i++) {
+        const g = Math.exp(-Math.pow((i - (n - 1) / 2) / (n * 0.18), 2));
+        vel[i] -= D.surge * g;                                        // up is −y
+      }
       for (let i = 0; i < 14; i++)
         foam.push({ x: rand(B.x, B.x + B.w), y: B.y + rand(-6, 10),
                     vx: rand(-30, 30), vy: rand(-70, -20), life: 1 });
@@ -1043,16 +1114,23 @@ def("Spring tide", "water", "waves lap below; press and one crashes right over",
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
       face("rgba(20,18,34,0.92)", "rgba(140,200,235,0.5)");
       label("TIDE", "#D8EFFC");
-      const base = H * 0.86 - Math.sin(t * 0.5) * 6;   // the slow tide itself
-      const lift = surgeAmt * (B.h + 30);              // press: water climbs the button
-      for (let layer = 0; layer < 2; layer++) {        // two wave layers, offset phase
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // ≤ 0.02 s: √(4k + rest)·h stays well under 2
+      for (let s = 0; s < sub; s++) {
+        const ts = t - dt + h * (s + 1);
+        for (let i = 0; i < n; i++) {
+          const l = hgt[i > 0 ? i - 1 : 0], r = hgt[i < n - 1 ? i + 1 : n - 1];
+          vel[i] += (D.k * (l + r - 2 * hgt[i]) - D.rest * hgt[i] - damp * vel[i]
+                     + D.wind * Math.sin(i * D.windK - ts * D.windW)) * h;
+        }
+        for (let i = 0; i < n; i++) hgt[i] = Math.max(-H, Math.min(H, hgt[i] + vel[i] * h));
+      }
+      const base = H * 0.86;
+      for (let layer = 0; layer < 2; layer++) {        // two layers of the same row, the back one shallower
         ctx.fillStyle = layer === 0 ? "rgba(40,120,180,0.45)" : "rgba(80,180,230,0.5)";
         ctx.beginPath();
         ctx.moveTo(0, H);
-        for (let x = 0; x <= W; x += 5) {
-          const y = base - lift - layer * 5 + Math.sin(x * 0.05 + t * (2 + layer)) * 4;
-          ctx.lineTo(x, y);
-        }
+        for (let i = 0; i < n; i++)
+          ctx.lineTo(i / (n - 1) * W, base - layer * 5 + hgt[i] * (layer === 0 ? 1 : 0.85));
         ctx.lineTo(W, H);
         ctx.closePath(); ctx.fill();
       }
@@ -1064,7 +1142,6 @@ def("Spring tide", "water", "waves lap below; press and one crashes right over",
         }
       }
       foam = foam.filter(f => f.life > 0);
-      surgeAmt = Math.max(0, surgeAmt - dt * 0.7);
     }
   };
 });
@@ -1997,20 +2074,38 @@ def("Landslide", "earth", "pebbles trickle down the face; press to let the whole
   };
 });
 
-def("Geode", "earth", "plain rock outside; press to split it open on the sparkle", function (u) {
+def("Geode", "earth", "plain rock outside; press and the halves crack apart on a spring — past the stop, rocking back — then close on the sparkle", function (u) {
+  var D = { k: 60,                 // the crack's spring, 1/s² (ω ≈ 7.7 rad/s)
+            zeta: 0.25,            // damping while opening, as a fraction of critical — it overshoots the stop and rocks back
+            closeZeta: 1.1,        // damping while closing — over critical, so the halves settle shut without a bounce
+            crack: 60,             // the press: outward speed injected the instant it cracks, px/s
+            stop: 14,              // the open gap the spring aims for, px
+            hold: 1.6 };           // seconds held open (once it has arrived) before the close
   const { ctx, W, H, B, rand, rr, face, label, TAU } = u;
-  let open = 0, opening = false;
+  // the gap between the halves is a spring toward a target: the stop when
+  // opening, zero when closing. the press moves the target and throws in a
+  // little outward speed — the crack — and the lightly damped spring carries
+  // the halves past the stop and rocks them back. the close uses a heavier
+  // damping on the same spring, so it settles rather than slams.
+  let gap = 0, gapV = 0, target = 0, held = 0;
   const glitter = [];
   for (let i = 0; i < 16; i++)
     glitter.push({ x: rand(B.x + 14, B.x + B.w - 14), y: rand(B.y + 8, B.y + B.h - 8), ph: rand(0, 9) });
   return {
-    press() { opening = true; },
+    press() { target = D.stop; held = 0; gapV += D.crack; },
     frame(dt, t) {
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
-      if (opening) open = Math.min(1, open + dt * 2.4);
-      else open = Math.max(0, open - dt * 1.2);
-      if (open >= 1) opening = false;     // fully open → the slow close takes over
-      const gap = open * 14;
+      const damp = (target > 0 ? D.zeta : D.closeZeta) * 2 * Math.sqrt(D.k);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        gapV += (D.k * (target - gap) - damp * gapV) * h;
+        gap += gapV * h;
+        if (gap < 0) { gap = 0; gapV = 0; }               // the halves cannot overlap
+      }
+      gap = Math.min(gap, D.stop * 3);
+      if (target > 0 && Math.abs(gap - target) < 1 && Math.abs(gapV) < 5) held += dt;
+      if (held > D.hold) target = 0;      // arrived and rested → the close takes over
+      const open = Math.min(1, gap / D.stop);
       if (open > 0.05) {                  // the amethyst interior, revealed
         ctx.save();
         rr(B.x, B.y, B.w, B.h, B.r); ctx.clip();
@@ -2046,34 +2141,71 @@ def("Geode", "earth", "plain rock outside; press to split it open on the sparkle
   };
 });
 
-def("Tectonic", "earth", "three plates drift and grind; press to collide them", function (u) {
+def("Tectonic", "earth", "three plates creep on a slow drive, stick while the seam loads, then slip in a jerk — the grind is stress building and letting go; press to shove the outer plates in", function (u) {
+  var D = { creep: 2,              // the drive's crawl, px/s — the outer plates are pushed inward this slowly
+            range: 5,              // how far the drive walks before it reverses (convergence, then rift), px
+            k: 80,                 // the drive-to-plate spring: stress = k · (drive − plate), px/s² per px
+            stick: 200,            // static friction — the stress a stuck plate holds before it lets go, px/s²
+            slide: 60,             // sliding friction — the constant drag on a moving plate, px/s²
+            damp: 2,               // a little viscous loss while sliding, 1/s
+            shove: 6 };            // the press: how far the outer drives jump inward, px
   const { ctx, W, H, B, rand, rr, face, label } = u;
-  let clash = 0, uplift = [];
+  // stick-slip. each outer plate is a block on a spring whose far end (the
+  // drive) creeps inward and, at the range, turns round. while the block is
+  // stuck the spring loads; the moment the load beats static friction it lets
+  // go and slides — under the spring minus a smaller sliding friction — until
+  // it stops and grips again, having overshot. the middle plate is squeezed
+  // toward the mean of its neighbours. the seams glow with the stress they
+  // hold; the jerks are the grind.
+  const px = [0, 0, 0], pv = [0, 0, 0], dr = [0, 0, 0], dir = [1, 0, -1], rate = [1, 0, 0.7];
+  let uplift = [];
   return {
     press() {
-      clash = 1;
+      dr[0] = Math.min(D.range * 2, dr[0] + D.shove);
+      dr[2] = Math.max(-D.range * 2, dr[2] - D.shove);
       for (let i = 0; i < 8; i++)
         uplift.push({ x: B.x + B.w * (0.33 + (i % 2) * 0.34) + rand(-4, 4), y: B.cy,
                       vy: rand(-50, -20), life: 1 });
     },
     frame(dt, t) {
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const stress = [0, 0, 0];
+      for (let s = 0; s < sub; s++) {
+        for (const p of [0, 2]) {         // the drives creep, and turn at the range
+          dr[p] += dir[p] * D.creep * rate[p] * h;
+          if (Math.abs(dr[p]) > D.range && dr[p] * dir[p] > 0) dir[p] = -dir[p];
+        }
+        dr[1] = (px[0] + px[2]) * 0.5;    // the middle plate: squeezed by both neighbours
+        for (let p = 0; p < 3; p++) {
+          const F = D.k * (dr[p] - px[p]);
+          stress[p] = Math.abs(F) / D.stick;
+          if (pv[p] === 0) {              // stuck: hold until the load beats static friction
+            if (Math.abs(F) <= D.stick) continue;
+            pv[p] = Math.sign(F) * 1e-3;
+          }
+          const v0 = pv[p];
+          pv[p] += (F - D.slide * Math.sign(pv[p]) - D.damp * pv[p]) * h;
+          if (pv[p] * v0 <= 0) pv[p] = 0;                                    // it stopped: friction grips again
+          px[p] = Math.max(-D.range * 3, Math.min(D.range * 3, px[p] + pv[p] * h));
+        }
+      }
       const pw = B.w / 3;
-      for (let p = 0; p < 3; p++) {       // each plate drifts on its own clock
-        let off = Math.sin(t * (0.4 + p * 0.2) + p * 2) * 2;
-        off += clash * (p === 1 ? 0 : (p === 0 ? 3 : -3));  // press: outer plates shove in
+      for (let p = 0; p < 3; p++) {       // each plate sits where its own history put it
         ctx.save();
         ctx.beginPath();
         ctx.rect(B.x + p * pw, B.y - 8, pw, B.h + 16);
         ctx.clip();
-        ctx.translate(off, Math.sin(t * 0.6 + p) * 1);
+        ctx.translate(px[p], 0);
         face("#28211A", "rgba(190,165,125,0.5)");
         label("PANGAEA", "#E8DCC8");
         ctx.restore();
-        if (p < 2) {                      // the grinding seams
+        if (p < 2) {                      // the grinding seams: lit by the stress they hold, and by the slip
           const sx = B.x + (p + 1) * pw;
-          ctx.strokeStyle = "rgba(255,140,60," + (0.2 + clash * 0.7) + ")";
-          ctx.lineWidth = 1 + clash * 2;
+          const load = Math.min(1, Math.max(stress[p], stress[p + 1]));
+          const slip = Math.min(1, (Math.abs(pv[p]) + Math.abs(pv[p + 1])) / 20);
+          ctx.strokeStyle = "rgba(255,140,60," + (0.2 + load * 0.5 + slip * 0.3) + ")";
+          ctx.lineWidth = 1 + slip * 2;
           ctx.beginPath(); ctx.moveTo(sx, B.y); ctx.lineTo(sx, B.y + B.h); ctx.stroke();
         }
       }
@@ -2087,7 +2219,6 @@ def("Tectonic", "earth", "three plates drift and grind; press to collide them", 
         }
       }
       uplift = uplift.filter(up => up.life > 0);
-      clash = Math.max(0, clash - dt * 1.3);
     }
   };
 });
@@ -2212,9 +2343,28 @@ def("Zephyr", "air", "breeze lines curve around the button; press for a gust", f
   };
 });
 
-def("Cyclone", "air", "a pet tornado wanders beside the button; press to feed it", function (u) {
+def("Cyclone", "air", "a pet tornado of nine stacked rings, each dragged round and sideways by the one below it, ambling on a spring toward wherever it fancies next; press to feed it and watch the spin climb", function (u) {
+  var D = { spin: 6,               // the ground ring's driven spin, rad/s
+            feed: 6,               // the extra spin a press asks for, rad/s, fading over ~1.7 s
+            couple: 8,             // how fast each ring's spin chases the ring below, 1/s — the lag climbs the funnel
+            taper: 0.045,          // spin lost per ring going up — the top turns slower than the base
+            kx: 60,                // each ring's sideways spring toward the ring below, 1/s² — the funnel whips
+            xzeta: 0.3,            // that spring's damping as a fraction of critical
+            kw: 4,                 // the wander spring toward the current target, 1/s² (a 3 s amble)
+            wzeta: 0.35,           // its damping — under 1, so the funnel overshoots each new spot
+            retarget: 2.5 };       // seconds between picking a new place to amble to
   const { ctx, W, H, B, rand, face, label, TAU } = u;
-  let power = 0, debris = [];
+  // a chain, twice over. the ground ring is driven; every ring above has its
+  // own spin that relaxes toward the ring below's (minus a little taper), so
+  // a press spins up the base first and the change climbs the funnel. each
+  // ring's x is a spring toward the ring below's x, so when the base ambles
+  // off the top lags and whips after it. the amble itself is a spring toward
+  // a target that jumps somewhere new every few seconds — the overshoot at
+  // each arrival is the wander.
+  const N = 9, ang = new Float32Array(N), w = new Float32Array(N), X = new Float32Array(N), VX = new Float32Array(N);
+  for (let i = 0; i < N; i++) { ang[i] = i; w[i] = D.spin * Math.pow(1 - D.taper, i); X[i] = B.cx; }
+  const dx = D.xzeta * 2 * Math.sqrt(D.kx), dw = D.wzeta * 2 * Math.sqrt(D.kw);
+  let power = 0, debris = [], wx = B.cx, wvx = 0, wtarget = B.cx, wtimer = 0;
   return {
     press() {
       power = 1;
@@ -2225,25 +2375,39 @@ def("Cyclone", "air", "a pet tornado wanders beside the button; press to feed it
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
       face("rgba(20,24,32,0.92)", "rgba(180,200,220,0.5)");
       label("TWISTER", "#E2EBF2");
-      const cx = B.cx + Math.sin(t * 0.5) * B.w * 0.55;   // the wander
+      wtimer -= dt;
+      if (wtimer <= 0) { wtarget = B.cx + rand(-1, 1) * B.w * 0.55; wtimer = D.retarget; }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        wvx += (D.kw * (wtarget - wx) - dw * wvx) * h; wx += wvx * h;   // the amble
+        w[0] += ((D.spin + power * D.feed) - w[0]) * D.couple * h;      // the driven base
+        X[0] = wx; VX[0] = wvx;
+        for (let i = 1; i < N; i++) {                                    // the chain climbs
+          w[i] += (w[i - 1] * (1 - D.taper) - w[i]) * D.couple * h;
+          VX[i] += (D.kx * (X[i - 1] - X[i]) - dx * VX[i]) * h;
+          X[i] = Math.max(-W, Math.min(2 * W, X[i] + VX[i] * h));
+        }
+        for (let i = 0; i < N; i++) { ang[i] += w[i] * h; if (ang[i] > TAU) ang[i] -= TAU; }
+      }
       const baseY = B.y + B.h + 6, topY = B.y - 18 - power * 8;
       const size = 1 + power * 0.8;
-      for (let i = 0; i < 9; i++) {       // the funnel: stacked rotating dashes
-        const k = i / 8;                  // 0 = ground, 1 = top
+      for (let i = 0; i < N; i++) {       // the funnel: each ring at its own angle and its own x
+        const k = i / (N - 1);            // 0 = ground, 1 = top
         const y = baseY + (topY - baseY) * k;
         const r = (2 + k * 14) * size;
-        const a = t * (6 - k * 2) + i;
+        const a = ang[i];
         ctx.strokeStyle = "rgba(200,215,230," + (0.5 - k * 0.25 + power * 0.3) + ")";
         ctx.lineWidth = 1.4;
         ctx.beginPath();
-        ctx.ellipse(cx + Math.sin(t * 2 + k * 3) * 3, y, r, r * 0.3, 0, a, a + 4);
+        ctx.ellipse(X[i], y, r, r * 0.3, 0, a, a + 4);
         ctx.stroke();
       }
-      for (const d of debris) {           // debris caught in the spin
+      for (const d of debris) {           // debris caught in the spin, riding the ring at its height
         d.a += d.va * dt; d.h += dt * 0.5; d.life -= dt * 0.7;
         if (d.life <= 0 || d.h > 1) continue;
         const y = baseY + (topY - baseY) * d.h;
         const r = (2 + d.h * 14) * size;
+        const cx = X[Math.min(N - 1, Math.round(d.h * (N - 1)))];
         ctx.fillStyle = "rgba(190,180,160," + d.life * 0.8 + ")";
         ctx.fillRect(cx + Math.cos(d.a) * r, y + Math.sin(d.a) * r * 0.3, 2, 2);
       }
@@ -2283,32 +2447,46 @@ def("Smoke signal", "air", "one puff at a time drifts up; press to send three fa
   };
 });
 
-def("Fog bank", "air", "fog drifts across and hides the caption; press to part it", function (u) {
+def("Fog bank", "air", "fog blobs ride a slow drift through the caption, each on a soft spring to its place in it; press and an outward gust throws them apart — they drift back and settle, a little late", function (u) {
+  var D = { k: 2,                  // the spring back to a blob's place in the drift, 1/s² (ω ≈ 1.4: a 4 s return)
+            zeta: 0.5,             // damping as a fraction of critical — it comes back with a small overshoot
+            gust: 90,              // the press: outward speed, px/s, away from the centre
+            heavy: 0.8 };          // how much of the fog thins out at a full parting
   const { ctx, W, H, B, rand, face, label, TAU } = u;
-  let part = 0;
+  // each blob has a HOME that crawls across at its own drift speed and wraps,
+  // and a body on a soft, half-damped spring toward that home, with drag.
+  // the press does not move the fog: it gives each body an outward speed and
+  // the spring spends the next seconds pulling it back, overshooting a touch.
+  // the fog thins where the bodies are far from where they belong.
   const blobs = [];
-  for (let i = 0; i < 6; i++)
-    blobs.push({ ox: rand(-B.w, B.w), oy: rand(-10, 10), r: rand(14, 26), v: rand(6, 14) });
+  for (let i = 0; i < 6; i++) {
+    const home = rand(-B.w, B.w);
+    blobs.push({ home: home, x: home, vx: 0, oy: rand(-10, 10), r: rand(14, 26), v: rand(6, 14) });
+  }
+  const damp = D.zeta * 2 * Math.sqrt(D.k);
   return {
-    press() { part = 1; },
+    press() { for (const b of blobs) b.vx += D.gust * (b.x >= 0 ? 1 : -1); },
     frame(dt, t) {
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
       face("rgba(22,24,32,0.92)", "rgba(190,200,215,0.5)");
       label("PEA SOUP", "#E4E8EE");
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const b of blobs) {
-        b.ox += b.v * dt;
-        if (b.ox > B.w) b.ox = -B.w;      // loop the drift
-        let x = B.cx + b.ox * 0.6;
-        const push = part * 30 * Math.sign(b.ox || 1); // press shoves fog outward
-        x += push;
-        const a = 0.16 * (1 - part * 0.8);
+        b.home += b.v * dt;
+        if (b.home > B.w) { b.home -= 2 * B.w; b.x -= 2 * B.w; }   // loop the drift, body and home together
+        for (let s = 0; s < sub; s++) {
+          b.vx += (D.k * (b.home - b.x) - damp * b.vx) * h;
+          b.x += b.vx * h;
+        }
+        b.x = Math.max(-3 * B.w, Math.min(3 * B.w, b.x));
+        const x = B.cx + b.x * 0.6;
+        const a = 0.16 * (1 - D.heavy * Math.min(1, Math.abs(b.x - b.home) / 40));
         const g = ctx.createRadialGradient(x, B.cy + b.oy, 0, x, B.cy + b.oy, b.r);
         g.addColorStop(0, "rgba(210,215,225," + a + ")");
         g.addColorStop(1, "rgba(210,215,225,0)");
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(x, B.cy + b.oy, b.r, 0, TAU); ctx.fill();
       }
-      part = Math.max(0, part - dt * 0.5);
     }
   };
 });
@@ -2342,13 +2520,26 @@ def("Updraft", "air", "leaves ride a thermal past the button; press for a flurry
   };
 });
 
-def("Vacuum", "air", "dust drifts inward forever; press to slam the airlock", function (u) {
+def("Vacuum", "air", "dust falls toward the centre on an inverse-square pull, fighting drag — the near misses whip past and spiral in; press to slam the airlock", function (u) {
+  var D = { G: 20000,              // the pull's strength, px³/s² — acceleration = G / d²
+            amax: 300,             // the cap on that acceleration, px/s², so the centre is no singularity
+            drag: 0.4,             // air drag, 1/s — bleeds orbital speed, so every mote spirals in eventually
+            slam: 30,              // the press multiplies the pull by (1 + slam), fading over ~1.1 s
+            sink: 5,               // the radius at which a mote is swallowed and reborn at the rim, px
+            vmax: 600 };           // a speed ceiling, px/s — the guard rail for a coarse frame
   const { ctx, W, H, B, rand, face, label, TAU } = u;
+  // every mote has a velocity. the pull is an acceleration toward the centre
+  // that grows as 1/d² (capped), drag takes a fraction of the speed each
+  // second, and nothing else touches them. a mote born at the rim with a bit
+  // of sideways speed does not fall straight in: it swings past, loops, and
+  // drag winds the loop tighter until the sink takes it. the slam raises the
+  // pull, not the speed — the speed is what the pull has had time to build.
   let suck = 0, ringR = 0;
   const motes = [];
   function reset(m) {
-    const th = rand(0, TAU);
+    const th = rand(0, TAU), side = rand(-20, 20);
     m.x = B.cx + Math.cos(th) * W * 0.55; m.y = B.cy + Math.sin(th) * H * 0.55;
+    m.vx = -Math.sin(th) * side; m.vy = Math.cos(th) * side;     // a little tangential speed: the seed of an orbit
   }
   for (let i = 0; i < 30; i++) { const m = {}; reset(m); m.x = rand(0, W); m.y = rand(0, H); motes.push(m); }
   return {
@@ -2357,12 +2548,20 @@ def("Vacuum", "air", "dust drifts inward forever; press to slam the airlock", fu
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
       face("rgba(18,20,28,0.94)", "rgba(160,180,210,0.5)");
       label("INHALE", "#DCE6F2");
-      const pull = 12 + suck * 260;       // px/s toward the centre
+      const pull = D.G * (1 + suck * D.slam);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const m of motes) {
-        const dx = B.cx - m.x, dy = B.cy - m.y;
-        const d = Math.max(4, Math.hypot(dx, dy));
-        m.x += dx / d * pull * dt; m.y += dy / d * pull * dt;
-        if (d < 10) reset(m);
+        for (let s = 0; s < sub; s++) {
+          const dx = B.cx - m.x, dy = B.cy - m.y;
+          const d2 = Math.max(1, dx * dx + dy * dy), d = Math.sqrt(d2);
+          const a = Math.min(D.amax, pull / d2);
+          m.vx += (dx / d * a - D.drag * m.vx) * h;
+          m.vy += (dy / d * a - D.drag * m.vy) * h;
+          const sp = Math.hypot(m.vx, m.vy);
+          if (sp > D.vmax) { m.vx *= D.vmax / sp; m.vy *= D.vmax / sp; }
+          m.x += m.vx * h; m.y += m.vy * h;
+          if (d < D.sink || d > W * 0.8) { reset(m); break; }   // swallowed — or flung clear — and reborn at the rim
+        }
         ctx.fillStyle = "rgba(180,195,215," + (0.3 + suck * 0.5) + ")";
         ctx.fillRect(m.x, m.y, 1.5, 1.5);
       }
@@ -2603,12 +2802,22 @@ def("Lighthouse", "light", "the beam sweeps round and round; press to aim it at 
   };
 });
 
-def("Firefly jar", "light", "fireflies blink on their own clocks; press to sync them once", function (u) {
+def("Firefly jar", "light", "fireflies wander on their own headings — a steering push against drag, soft walls at the glass — and blink on their own clocks; press to sync the blinks once", function (u) {
+  var D = { thrust: 40,            // the wander push, px/s², along a heading that random-walks
+            drag: 2,               // drag, 1/s — cruising speed ≈ thrust/drag
+            turn: 6,               // how fast the heading wanders, rad/s of random walk
+            wallK: 20,             // the soft wall: push back per px past the margin, 1/s²
+            margin: 8 };           // the margin inside the glass where the wall begins, px
   const { ctx, W, H, B, rand, rr, face, label, TAU } = u;
+  // each fly is a body with a velocity. it pushes itself along a heading that
+  // drifts at random, drag caps its speed, and the glass is a soft wall — a
+  // force that grows with how far past the margin it has strayed — so it
+  // curves off the sides instead of sticking to them. the drift of the path
+  // is the drift of the heading, not a clock.
   const flies = [];
   for (let i = 0; i < 12; i++)
-    flies.push({ x: rand(B.x + 8, B.x + B.w - 8), y: rand(B.y + 6, B.y + B.h - 6),
-                 ph: rand(0, TAU), sp: rand(0.7, 1.4), wx: rand(0, 9), wy: rand(0, 9) });
+    flies.push({ x: rand(B.x + 8, B.x + B.w - 8), y: rand(B.y + 6, B.y + B.h - 6), vx: 0, vy: 0,
+                 th: rand(0, TAU), ph: rand(0, TAU), sp: rand(0.7, 1.4) });
   let sync = 0;
   return {
     press() { sync = 1; },
@@ -2618,9 +2827,19 @@ def("Firefly jar", "light", "fireflies blink on their own clocks; press to sync 
       ctx.save();
       rr(B.x, B.y, B.w, B.h, B.r); ctx.clip();
       ctx.globalCompositeOperation = "lighter";
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of flies) {
-        f.x += Math.sin(t * 0.7 + f.wx) * 6 * dt;      // aimless jar-wandering
-        f.y += Math.cos(t * 0.9 + f.wy) * 5 * dt;
+        for (let s = 0; s < sub; s++) {   // steer, push, drag, and the soft walls
+          f.th += rand(-1, 1) * D.turn * h;
+          let ax = Math.cos(f.th) * D.thrust, ay = Math.sin(f.th) * D.thrust;
+          if (f.x < B.x + D.margin) ax += D.wallK * (B.x + D.margin - f.x);
+          if (f.x > B.x + B.w - D.margin) ax -= D.wallK * (f.x - B.x - B.w + D.margin);
+          if (f.y < B.y + D.margin) ay += D.wallK * (B.y + D.margin - f.y);
+          if (f.y > B.y + B.h - D.margin) ay -= D.wallK * (f.y - B.y - B.h + D.margin);
+          f.vx += (ax - D.drag * f.vx) * h; f.vy += (ay - D.drag * f.vy) * h;
+          f.x = Math.max(B.x, Math.min(B.x + B.w, f.x + f.vx * h));
+          f.y = Math.max(B.y, Math.min(B.y + B.h, f.y + f.vy * h));
+        }
         // blink: own phase normally; sync forces everyone bright together
         let blink = Math.max(0, Math.sin(t * f.sp * 2 + f.ph));
         blink = Math.pow(blink, 3);
@@ -2796,13 +3015,25 @@ def("Supernova", "light", "it charges for six slow seconds, then releases; press
 
 /* ============================== SPARKS ============================== */
 
-def("Grindstone", "sparks", "the wheel throws sparks off one corner; press to lean in", function (u) {
+def("Grindstone", "sparks", "the wheel spins on its own inertia — motor torque against bearing friction; press to work the treadle and lean in, and the sparks leave at the rim's real speed", function (u) {
+  var D = { motor: 10.5,           // the motor's torque, rad/s² (per unit inertia)
+            fric: 1.5,             // bearing friction, 1/s — idle speed = motor/fric = 7 rad/s, reached in ~1/fric s
+            treadle: 25,           // the press's extra torque, rad/s², fading as the lean eases
+            bite: 0.6,             // the workpiece's friction while leaning, 1/s — it loads the wheel
+            rim: 7,                // the wheel's radius, px — sparks leave at ω·rim
+            shed: 0.035 };         // spark chance per frame per rad/s, before the lean multiplies it
   const { ctx, W, H, B, rand, face, label, TAU } = u;
-  let sparks = [], lean = 0;
+  // the wheel has an angular velocity and a torque budget: the motor pushes,
+  // the bearings drag in proportion to speed, so it idles where they balance.
+  // the press pumps the treadle (more torque) and leans the work in (more
+  // load), and the speed climbs toward the new balance with the lag of its
+  // inertia, then coasts back down. the sparks are shed at the rim's speed,
+  // whatever it happens to be.
+  let sparks = [], lean = 0, th = 0, om = D.motor / D.fric;
   function shed(n) {
     for (let i = 0; i < n; i++)
       sparks.push({ x: B.x + B.w - 6, y: B.y + B.h - 4,
-                    vx: rand(30, 120), vy: rand(-100, -20), life: rand(0.5, 1) });
+                    vx: om * D.rim * rand(0.6, 1.6), vy: -om * D.rim * rand(0.3, 1.4), life: rand(0.5, 1) });
   }
   return {
     press() { lean = 1; },
@@ -2810,16 +3041,19 @@ def("Grindstone", "sparks", "the wheel throws sparks off one corner; press to le
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
       face("rgba(26,24,28,0.94)", "rgba(200,190,180,0.5)");
       label("GRIND", "#EEE8E0");
-      // the wheel itself, spinning at the corner
+      om += ((D.motor + lean * D.treadle) - (D.fric + lean * D.bite) * om) * dt;   // torque in, friction out
+      om = Math.min(60, om);
+      th += om * dt; if (th > TAU) th -= TAU;
+      // the wheel itself, at the angle its speed has carried it to
       ctx.save();
       ctx.translate(B.x + B.w - 4, B.y + B.h - 2);
-      ctx.rotate(t * (7 + lean * 8));
+      ctx.rotate(th);
       ctx.fillStyle = "#4A4650";
       ctx.beginPath(); ctx.arc(0, 0, 7, 0, TAU); ctx.fill();
       ctx.strokeStyle = "rgba(220,215,225,0.6)"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(-7, 0); ctx.lineTo(7, 0); ctx.moveTo(0, -7); ctx.lineTo(0, 7); ctx.stroke();
       ctx.restore();
-      if (Math.random() < 0.25 + lean * 0.7) shed(lean > 0 ? 4 : 1);
+      if (Math.random() < D.shed * om * (1 + lean * 2.5)) shed(lean > 0.3 ? 3 : 1);
       ctx.globalCompositeOperation = "lighter";
       for (const s of sparks) {           // chapter 6's four lines, verbatim
         s.x += s.vx * dt; s.y += s.vy * dt;
@@ -3564,9 +3798,21 @@ def("Sea sparkle", "nature", "an unseen current wakes glowing algae; press to st
 
 /* ============================== ACID & GOO ============================== */
 
-def("Acid bath", "acid", "green liquid simmers in the lower third; press for a violent boil", function (u) {
+def("Acid bath", "acid", "green liquid simmers in the lower third — bubbles rise on buoyancy against drag, wobbling on a sideways spring kicked at release; press for a violent boil", function (u) {
+  var D = { buoy: 30,              // buoyancy per px of radius, px/s² — bigger bubbles pull harder
+            drag: 6,               // drag, 1/s — terminal rise = buoy·r/drag
+            boilBuoy: 2.5,         // how much a full boil multiplies the buoyancy (hotter liquid, lighter gas)
+            kx: 40,                // the sideways spring toward the line it rose from, 1/s²
+            zeta: 0.1,             // its damping as a fraction of critical — the wobble dies over a few swings
+            kick: 20 };            // the sideways kick as a bubble lets go of the floor, px/s
   const { ctx, W, H, B, rand, rr, face, label, TAU } = u;
+  // the same body as the bubble tank: buoyancy (∝ radius) against drag gives
+  // a terminal rise reached a fraction of a second after release; the wobble
+  // is a soft sideways spring around the rise line, kicked once at the floor.
+  // the boil multiplies the buoyancy and the spawn rate — the speed is what
+  // the extra buoyancy builds, not a number swapped in.
   let bubbles = [], boil = 0, drips = [];
+  const dx = D.zeta * 2 * Math.sqrt(D.kx);
   return {
     press() { boil = 1; },
     frame(dt, t) {
@@ -3583,10 +3829,18 @@ def("Acid bath", "acid", "green liquid simmers in the lower third; press for a v
         ctx.lineTo(x, level + Math.sin(x * 0.2 + t * (3 + boil * 6)) * (1 + boil * 3));
       ctx.lineTo(B.x + B.w, B.y + B.h);
       ctx.closePath(); ctx.fill();
-      if (Math.random() < 0.2 + boil * 0.7)
-        bubbles.push({ x: rand(B.x + 4, B.x + B.w - 4), y: B.y + B.h - 2, r: rand(1.5, 3.5) });
+      if (Math.random() < 0.2 + boil * 0.7) {
+        const x0 = rand(B.x + 4, B.x + B.w - 4);
+        bubbles.push({ x: x0, x0: x0, vx: rand(-D.kick, D.kick), vy: 0, y: B.y + B.h - 2, r: rand(1.5, 3.5) });
+      }
+      const buoy = D.buoy * (1 + boil * D.boilBuoy);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const b of bubbles) {
-        b.y -= (14 + boil * 30) * dt;
+        for (let s = 0; s < sub; s++) {
+          b.vy += (-buoy * b.r - D.drag * b.vy) * h;                 // up is −y
+          b.vx += (D.kx * (b.x0 - b.x) - dx * b.vx) * h;
+          b.y += b.vy * h; b.x += b.vx * h;
+        }
         if (b.y < level) { b.y = -99; continue; }      // pops at the surface
         ctx.strokeStyle = "rgba(190,255,130,0.7)";
         ctx.lineWidth = 1;
@@ -3748,36 +4002,67 @@ def("Radiant decay", "acid", "three glow sectors rotate like a warning; press fo
   };
 });
 
-def("Ectoplasm", "acid", "a ghost drifts through the button; press to startle it away", function (u) {
+def("Ectoplasm", "acid", "a ghost drifts on a push against drag, floating on a soft vertical spring, its wisps trailing on springs of their own; press to spook it — an impulse it bleeds off as it flees, wisps stretched behind", function (u) {
+  var D = { thrust: 19,            // the ghost's forward push, px/s² — cruising speed = thrust/drag ≈ 16 px/s
+            drag: 1.2,             // drag, 1/s — a spook's impulse decays over ~1/drag s
+            spook: 220,            // the press: forward speed injected, px/s
+            hop: 60,               // the press: upward speed injected, px/s
+            ky: 6,                 // the vertical float spring, 1/s² (a 2.6 s bob)
+            yzeta: 0.12,           // its damping — it keeps bobbing a while after every nudge
+            nudge: 20,             // an idle nudge's size, px/s — the float comes from these, on 2 % of frames
+            kw: 40,                // each wisp's spring toward its place behind the head, 1/s²
+            wzeta: 0.25 };         // wisp damping — they stretch when the head bolts and catch up late
   const { ctx, W, H, B, rand, face, label, TAU } = u;
-  let gx = -30, spooked = 0;
+  // the ghost is a body: a constant forward push against drag gives it a
+  // cruising speed; the spook is an impulse on top, which the same drag takes
+  // back over a second or two. its height is a soft spring around the
+  // button's midline, kicked by the spook and nudged now and then. the three
+  // wisps are bodies too, each on a spring toward a spot behind the head —
+  // when the head bolts they lag and stretch, and they overshoot on the way
+  // back. the fade while spooked is read off the actual speed.
+  let gx = -30, gvx = D.thrust / D.drag, gy = 0, gvy = 0;
+  const wisps = [];
+  for (let k = -1; k <= 1; k++) wisps.push({ k: k, x: gx + k * 7 - 12, y: B.cy + 12, vx: 0, vy: 0 });
+  const dy = D.yzeta * 2 * Math.sqrt(D.ky), dw = D.wzeta * 2 * Math.sqrt(D.kw);
   return {
-    press() { spooked = 1; },
+    press() { gvx += D.spook; gvy -= D.hop; },
     frame(dt, t) {
       ctx.fillStyle = "#14111F"; ctx.fillRect(0, 0, W, H);
+      const cruise = D.thrust / D.drag;
+      const spooked = Math.min(1, Math.max(0, (gvx - cruise) / D.spook * 2));   // how much of the fright is left, read off the speed
       face("rgba(20,22,26," + (0.94 - spooked * 0.2) + ")", "rgba(190,230,210,0.4)");
       label("BOO", "#E0F2E8");
-      gx += (16 + spooked * 220) * dt;    // spooked ghosts leave in a hurry
-      if (gx > W + 40) { gx = -40; spooked = Math.max(0, spooked - 0.99); }
-      const gy = B.cy + Math.sin(t * 1.3) * 10 - spooked * 12;
+      if (Math.random() < 0.02) gvy += rand(-D.nudge, D.nudge);                  // an idle nudge: the float
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        gvx += (D.thrust - D.drag * gvx) * h; gx += gvx * h;
+        gvy += (-D.ky * gy - dy * gvy) * h; gy += gvy * h;
+        for (const w of wisps) {
+          const tx = gx + w.k * 7 - 12, ty = B.cy + gy + 12;
+          w.vx += (D.kw * (tx - w.x) - dw * w.vx) * h; w.vy += (D.kw * (ty - w.y) - dw * w.vy) * h;
+          w.x += w.vx * h; w.y += w.vy * h;
+        }
+      }
+      gy = Math.max(-40, Math.min(40, gy));
+      if (gx > W + 40) { gx -= W + 80; for (const w of wisps) w.x -= W + 80; }   // round again, wisps and all
+      const hy = B.cy + gy;
       const inFace = gx > B.x && gx < B.x + B.w;
       const a = (inFace ? 0.18 : 0.34) + spooked * 0.2;   // fades while phasing through
       ctx.globalCompositeOperation = "lighter";
-      const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, 15);
+      const g = ctx.createRadialGradient(gx, hy, 0, gx, hy, 15);
       g.addColorStop(0, "rgba(190,255,225," + a + ")");
       g.addColorStop(1, "rgba(120,220,180,0)");
       ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(gx, gy, 15, 0, TAU); ctx.fill();
+      ctx.beginPath(); ctx.arc(gx, hy, 15, 0, TAU); ctx.fill();
       ctx.strokeStyle = "rgba(190,255,225," + a * 0.8 + ")";
       ctx.lineWidth = 1.4;
-      for (let k = -1; k <= 1; k++) {     // trailing wisps
+      for (const w of wisps) {            // trailing wisps: from the head's hem to wherever each has got to
         ctx.beginPath();
-        ctx.moveTo(gx + k * 4, gy + 8);
-        ctx.quadraticCurveTo(gx + k * 6 - 6, gy + 14, gx + k * 7 - 12, gy + 12 + Math.sin(t * 5 + k) * 3);
+        ctx.moveTo(gx + w.k * 4, hy + 8);
+        ctx.quadraticCurveTo((gx + w.k * 4 + w.x) / 2, hy + 14, w.x, w.y);
         ctx.stroke();
       }
       ctx.globalCompositeOperation = "source-over";
-      spooked = Math.max(0, spooked - dt * 0.25);
     }
   };
 });

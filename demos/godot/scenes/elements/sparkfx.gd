@@ -6,7 +6,7 @@ const ElemKit := preload("res://scenes/elements/kit.gd")
 const TITLE := "Sparks"
 const BLURB := "the grindstone, the sparkler, the flint, the weld"
 const DEFS := [
-	{ "id": "grindstone", "name": "Grindstone", "hint": "the wheel throws sparks off one corner; press to lean in" },
+	{ "id": "grindstone", "name": "Grindstone", "hint": "the wheel spins on its own inertia — motor torque against bearing friction; press to work the treadle and lean in, and the sparks leave at the rim's real speed" },
 	{ "id": "sparkler", "name": "Sparkler", "hint": "a fizzing point rides the border; press to light a second one" },
 	{ "id": "flint", "name": "Flint", "hint": "dead still until struck — press for the strike" },
 	{ "id": "welding", "name": "Welding seam", "hint": "an arc crawls the border leaving cooling metal; press for spatter" },
@@ -18,6 +18,22 @@ static func init(b: Dictionary) -> void:
 	b.press_v = 0.0
 	b.parts = []
 	match b.id:
+		"grindstone":
+			b.D = { "motor": 10.5,      # the motor's torque, rad/s² (per unit inertia)
+				"fric": 1.5,            # bearing friction, 1/s — idle speed = motor/fric = 7 rad/s, reached in ~1/fric s
+				"treadle": 25.0,        # the press's extra torque, rad/s², fading as the lean eases
+				"bite": 0.6,            # the workpiece's friction while leaning, 1/s — it loads the wheel
+				"rim": 7.0,             # the wheel's radius, px — sparks leave at ω·rim
+				"shed": 0.035,          # spark chance per frame per rad/s, before the lean multiplies it
+				"grav": 300.0 }         # gravity on the sparks, px/s²
+			# the wheel has an angular velocity and a torque budget: the motor pushes,
+			# the bearings drag in proportion to speed, so it idles where they balance.
+			# the press pumps the treadle (more torque) and leans the work in (more
+			# load), and the speed climbs toward the new balance with the lag of its
+			# inertia, then coasts back down. the sparks are shed at the rim's speed,
+			# whatever it happens to be.
+			b.th = 0.0                  # the wheel's angle
+			b.om = float(b.D.motor) / float(b.D.fric)   # its spin, rad/s — starts at idle
 		"sparkler":
 			b.second = 0.0
 		"welding":
@@ -55,11 +71,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
 		"grindstone":
-			if randf() < 0.25 + b.press_v * 0.7:
-				for i in (4 if b.press_v > 0.0 else 1):
-					b.parts.append({ "pos": Vector2(r.size.x - 6, r.size.y - 4),
-						"vel": Vector2(randf_range(30, 120), randf_range(-100, -20)), "life": randf_range(0.5, 1.0) })
-			_fly(b, dt, 300.0, 1.4)
+			_wheel(b, dt)
+			_fly(b, dt, float(b.D.grav), 1.4)
 		"sparkler":
 			b.second = maxf(0.0, b.second - dt)
 		"flint":
@@ -105,6 +118,24 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 0.5
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 
+## The grindstone's wheel, shared with its rhyme: torque in, friction out, the
+## angle carried by the speed — and the sparks shed at the rim's actual speed.
+static func _wheel(b: Dictionary, dt: float) -> void:
+	var D: Dictionary = b.D
+	var r: Rect2 = b.rect
+	var lean: float = b.press_v
+	var om: float = b.om
+	om += ((float(D.motor) + lean * float(D.treadle)) - (float(D.fric) + lean * float(D.bite)) * om) * dt
+	om = minf(om, 60.0)
+	b.om = om
+	b.th = fmod(float(b.th) + om * dt, TAU)
+	if randf() < float(D.shed) * om * (1.0 + lean * 2.5):
+		var rim: float = D.rim
+		for i in (3 if lean > 0.3 else 1):
+			b.parts.append({ "pos": Vector2(r.size.x - 6, r.size.y - 4),
+				"vel": Vector2(om * rim * randf_range(0.6, 1.6), -om * rim * randf_range(0.3, 1.4)),
+				"life": randf_range(0.5, 1.0) })
+
 static func _fly(b: Dictionary, dt: float, grav: float, decay: float) -> void:
 	for p in b.parts:
 		p.pos += p.vel * dt
@@ -127,7 +158,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"grindstone":
 			ElemKit.face(n, r, Color(0.1, 0.094, 0.11, 0.96), Color(0.78, 0.75, 0.71, 0.5))
 			ElemKit.label(n, r, "GRIND", Color(0.93, 0.91, 0.88))
-			n.draw_set_transform(o + Vector2(r.size.x - 4, r.size.y - 2), t * (7.0 + pv * 8.0), Vector2.ONE)
+			n.draw_set_transform(o + Vector2(r.size.x - 4, r.size.y - 2), float(b.th), Vector2.ONE)   # at the angle its speed carried it to
 			n.draw_circle(Vector2.ZERO, 7.0, Color(0.29, 0.275, 0.31))
 			n.draw_line(Vector2(-7, 0), Vector2(7, 0), Color(0.86, 0.84, 0.88, 0.6), 1.0)
 			n.draw_line(Vector2(0, -7), Vector2(0, 7), Color(0.86, 0.84, 0.88, 0.6), 1.0)

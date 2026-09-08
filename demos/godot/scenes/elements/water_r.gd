@@ -5,21 +5,33 @@ const Base := preload("res://scenes/elements/water.gd")
 ## WATER — the rhymes. Dials named per branch; everything else delegates.
 
 const RHYMES := {
-	"bubble_tank": { "name": "Lava lamp", "hint": "filled warm blobs that fade, rise ÷2" },
+	"bubble_tank": { "name": "Lava lamp", "hint": "filled warm blobs that fade — buoyancy ÷2, the wobble spring ÷5" },
 	"fizz": { "name": "Ember fizz", "hint": "champagne re-coloured to campfire" },
 	"ripple_pool": { "name": "Sand garden", "hint": "raked rings that persist 4× longer" },
-	"rain_glass": { "name": "Snow on glass", "hint": "flakes that stick, creep instead of run" },
+	"rain_glass": { "name": "Snow on glass", "hint": "flakes that stick, creep instead of run — the pull 60 → 12" },
 	"waterline": { "name": "Oil line", "hint": "dark iridescent liquid, spring ÷4" },
 	"whirlpool": { "name": "Galaxy pool", "hint": "motes turned to stars, drain ÷4" },
-	"spring_tide": { "name": "Ebb tide", "hint": "the lift dial reversed — a press DRAINS" },
+	"spring_tide": { "name": "Ebb tide", "hint": "the surge dial reversed — a press throws the row DOWN, and the sea drains" },
 	"deep_sea": { "name": "Void drift", "hint": "reset in space: stars, a slow comet" },
 	"waterfall": { "name": "Light veil", "hint": "golden, at a third of the speed" },
 	"squirt": { "name": "Ink squirt", "hint": "droplets darkened, gravity ×2" },
 }
 
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
+
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	match b.id:
+		"bubble_tank":
+			_turn(b, { "buoy": 12.0, "kx": 8.0 })   # dials: buoyancy ÷2 (a lazy rise) · wobble spring ÷5 (a slow sway)
+		"rain_glass":
+			_turn(b, { "g": 12.0 })                 # dial: the pull ÷5 — a flake creeps at a fifth of a drop's terminal speed
+		"spring_tide":
+			_turn(b, { "surge": -260.0 })           # dial: the surge reversed — the press throws the row down
 		"waterline":
 			pass                            # spring dial handled in tick below
 		"whirlpool":
@@ -32,22 +44,24 @@ static func init(b: Dictionary) -> void:
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	Base.press(b, pos)
+	if b.id == "spring_tide":
+		for p in b.parts:               # the foam falls with the ebb
+			p.vel.y = absf(p.vel.y) * 0.5
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	match b.id:
 		"bubble_tank":
-			# dials: rise ÷2 · pops → fades
+			# dials: buoyancy and wobble turned in init · pops → fades · blobs bigger
 			for p in b.parts:
 				if p.kind == "bub":
-					p.pos.y -= (4.0 + p.r) * dt
+					Base._rise(b, p, dt)
 					if p.pos.y < p.r + 4.0:
 						p.kind = "pop"
 						p.life = 0.5
 				else:
 					p.life -= dt * 1.5
 			if b.parts.size() < 8 and randf() < 0.1:
-				b.parts.append({ "kind": "bub", "pos": Vector2(randf_range(10, b.rect.size.x - 10), b.rect.size.y - 6.0),
-					"r": randf_range(4, 9), "ph": randf_range(0, 9) })
+				Base._spawn_bubble(b, randf_range(10, b.rect.size.x - 10), b.rect.size.y - 6.0, randf_range(4, 9))
 			b.parts = b.parts.filter(func(p): return p.kind == "bub" or p.life > 0.0)
 		"waterline":
 			# dial: spring 26 → 7 (syrup)
@@ -93,7 +107,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"bubble_tank":
 			ElemKit.face(n, r, Color(0.118, 0.055, 0.078, 0.96), Color(1, 0.59, 0.47, 0.5))
 			for p in b.parts:
-				var pos: Vector2 = o + p.pos + Vector2(sin(t * 0.8 + p.get("ph", 0.0)) * 3.0, 0)
+				var pos: Vector2 = o + p.pos    # the sway is the slow spring's, not a clock's
 				var alpha: float = 0.55 if p.kind == "bub" else p.life
 				ElemKit.glow(n, pos, p.r, Color(1, 0.55, 0.39, alpha), 3)
 			ElemKit.label(n, r, "GROOVY", Color(1, 0.85, 0.8))
@@ -145,21 +159,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				n.draw_rect(Rect2(cur, Vector2(1.4, 1.4)), Color(0.9, 0.89, 1.0, 0.8))
 			ElemKit.label(n, r, "ANDROMEDA", Color(0.89, 0.89, 1.0))
 		"spring_tide":
-			ElemKit.face(n, r, Color(0.078, 0.07, 0.133, 0.92), Color(0.55, 0.78, 0.92, 0.5))
-			ElemKit.label(n, r, "RETREAT", Color(0.85, 0.94, 0.99))
-			var base: float = r.size.y * 1.02 - sin(t * 0.5) * 4.0
-			var drop: float = pv * 14.0                    # the reversal: it sinks
-			for layer in 2:
-				var poly := PackedVector2Array()
-				poly.append(o + Vector2(-4, r.size.y + 8))
-				var x := -4.0
-				while x <= r.size.x + 4.0:
-					poly.append(o + Vector2(x, base + drop - layer * 5.0 + sin(x * 0.05 + t * (2.0 + layer)) * 4.0))
-					x += 5.0
-				poly.append(o + Vector2(r.size.x + 4, r.size.y + 8))
-				n.draw_colored_polygon(poly, Color(0.16, 0.47, 0.7, 0.45) if layer == 0 else Color(0.31, 0.7, 0.9, 0.5))
-			for p in b.parts:
-				n.draw_circle(o + p.pos, p.r, Color(0.92, 0.98, 1.0, 0.8 * p.life))
+			Base._sea(n, b, "RETREAT")         # the same row — the reversal lives in the surge dial
 		"deep_sea":
 			ElemKit.face(n, r, Color(0.043, 0.039, 0.094, 0.97), Color(0.78, 0.75, 1.0, 0.4 + pv * 0.6))
 			for s in b.snow:

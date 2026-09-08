@@ -5,16 +5,27 @@ const Base := preload("res://scenes/elements/acid.gd")
 ## ACID & GOO — the rhymes. Dials named per branch; the rest delegates.
 
 const RHYMES := {
-	"acid_bath": { "name": "Lava bath", "hint": "gone volcanic — hotter colour, lazier bubbles" },
+	"acid_bath": { "name": "Lava bath", "hint": "gone volcanic — hotter colour, lazier bubbles: buoyancy and rate ÷2, bigger" },
 	"miasma": { "name": "Incense", "hint": "warmed and welcomed — the press draws it INWARD" },
 	"slime": { "name": "Honey coat", "hint": "amber — stiffer springs, slower sway" },
 	"venom": { "name": "Dew fangs", "hint": "harmless water — softer arcs, no flash of harm" },
 	"radiant": { "name": "Beacon", "hint": "cleaned to white-blue, slowed to duty" },
-	"ecto": { "name": "Bold ghost", "hint": "brighter, braver — a press INVITES it closer" },
+	"ecto": { "name": "Bold ghost", "hint": "brighter, braver — the press's impulse reversed and the drag ÷4: it dawdles to be looked at" },
 }
+
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	match b.id:
+		"acid_bath":                    # dials: buoyancy ÷2 · bubble rate ÷2 · bubbles bigger (lava is lazy)
+			_turn(b, { "buoy": 15.0, "rate": 0.1, "rmin": 2.0, "rmax": 4.5 })
+		"ecto":                         # dials: the spook reversed (−14 px/s, no hop) and the drag ÷4 —
+			_turn(b, { "spook": -14.0, "hop": 0.0, "drag": 0.3, "thrust": 4.8 })   # same cruise, so it lingers for seconds
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -29,22 +40,6 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
-		"acid_bath":
-			# dials: bubble rate ÷2 · rise speed ÷2 (lava is lazy)
-			b.press_v = maxf(0.0, b.press_v - dt * 0.8)
-			if randf() < 0.1 + b.press_v * 0.35:
-				b.parts.append({ "kind": "bub", "pos": Vector2(randf_range(4, r.size.x - 4), r.size.y - 2.0),
-					"r": randf_range(2.0, 4.5) })
-			if randf() < 0.02 + b.press_v * 0.1:
-				b.parts.append({ "kind": "drip", "pos": Vector2(randf_range(6, r.size.x - 6), r.size.y), "vy": 10.0 })
-			for p in b.parts:
-				if p.kind == "bub":
-					p.pos.y -= (7.0 + b.press_v * 16.0) * dt
-				else:
-					p.pos.y += p.vy * dt
-					p.vy += 70.0 * dt
-			var level: float = r.size.y * 0.62
-			b.parts = b.parts.filter(func(p): return (p.kind == "bub" and p.pos.y > level) or (p.kind == "drip" and p.pos.y < r.size.y + 40.0))
 		"slime":
 			# dials: spring 40 → 90 (stiffer) · damping heavier
 			b.press_v = maxf(0.0, b.press_v - dt * 0.8)
@@ -63,13 +58,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.vel.y += (110.0 if p.kind == "spit" else 90.0) * dt
 				p.life -= dt * 0.8
 			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.pos.y < r.size.y + 30.0)
-		"ecto":
-			# dial: the press SLOWS the drift — invited to linger, not spooked away
-			b.press_v = maxf(0.0, b.press_v - dt * 0.8)
-			b.gx += 16.0 * (1.0 - b.spooked * 0.85) * dt
-			if b.gx > r.size.x + 40.0:
-				b.gx = -40.0
-			b.spooked = maxf(0.0, b.spooked - dt * 0.25)
 		_:
 			Base.tick(b, dt, t)
 
@@ -152,21 +140,20 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				n.draw_rect(Rect2(o + p.pos, Vector2(2.5, 2.5)), Color(0.86, 0.94, 1.0, 0.9))
 			ElemKit.label(n, r, "ON DUTY", Color(0.89, 0.95, 1.0))
 		"ecto":
-			# dials: shy → bold — brighter always, and the press slows it to LINGER
+			# dials: shy → bold — brighter always (the linger is the reversed spook dial, in init)
 			ElemKit.face(n, r, Color(0.078, 0.086, 0.1, 0.9), Color(0.8, 0.95, 0.88, 0.5))
 			ElemKit.label(n, r, "WELCOME", Color(0.9, 0.97, 0.93))
-			var speed_pull: float = maxf(0.15, 1.0 - b.spooked)   # spooked now means "invited to stay"
 			var gx: float = b.gx
-			var gy: float = r.size.y / 2.0 + sin(t * 1.3) * 8.0
-			var a: float = 0.42 + b.spooked * 0.3
+			var gy: float = r.size.y / 2.0 + float(b.gy)
+			var a: float = 0.42 + b.spooked * 0.3          # spooked now reads "invited to stay"
 			var gp := o + Vector2(gx, gy)
 			ElemKit.glow(n, gp, 15.0, Color(0.8, 1.0, 0.9, a), 3)
 			n.draw_circle(gp + Vector2(-4, -3), 1.4, Color(0.16, 0.27, 0.24, a))
 			n.draw_circle(gp + Vector2(4, -3), 1.4, Color(0.16, 0.27, 0.24, a))
-			for k in range(-1, 2):
-				ElemKit.qcurve(n, gp + Vector2(k * 4, 7),
-					gp + Vector2(k * 6 - 6, 12),
-					gp + Vector2(k * 7 - 11, 10 + sin(t * 5.0 + k) * 3.0),
+			for w in b.wisps:
+				var hem := gp + Vector2(float(w.k) * 4.0, 7.0)
+				var tip: Vector2 = o + w.pos
+				ElemKit.qcurve(n, hem, Vector2((hem.x + tip.x) / 2.0, gp.y + 12.0), tip,
 					Color(0.8, 1.0, 0.9, a * 0.8), 1.2)
 		_:
 			Base.draw(n, b, t)
