@@ -121,23 +121,43 @@ static func defs() -> Array:
 
 	# ---- G · Gem -----------------------------------------------------------
 	d.append({ "letter": "G", "name": "Gem",
-		"hint": "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it",
+		"hint": "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it; press to nudge it and it spins up, then coasts back down",
 		"dials": { "sky": [Color("0E0C1E"), Color("1E1A36")], "col": Color("5AC8E8"), "spin": 0.7,
 			"sides": 6, "crown": 0.45, "pav": 1.1,               # crown/pav = the point above / below the rim, in radii
-			"label": "shade = how squarely the face meets the light — turning changes nothing but that, and the stone reads solid" },
-		"rhyme": { "name": "Ruby cut", "hint": "the same stone in red, turning three times as fast — the facets flicker past the light instead of drifting",
+			"kick": 3.0, "drag": 1.2,                            # kick = angular velocity a full-width press adds, rad/s; drag = how fast that nudge coasts down, per second
+			"bob": 8.0, "bobdamp": 0.08,                         # bob = the float's spring stiffness; bobdamp = its damping as a fraction of critical (tiny: it keeps bobbing)
+			"label": "shade = how squarely the face meets the light — turning changes nothing but that; the turn is a rate a nudge adds to and drag wears down" },
+		"rhyme": { "name": "Ruby cut", "hint": "the same stone in red, turning three times as fast — the facets flicker past the light instead of drifting; a nudge still spins it up and coasts down",
 			"dials": { "sky": [Color("1A0810"), Color("2E1020")], "col": Color("E0305A"), "spin": 1.4,
-				"label": "a red palette and a faster turn — the same triangles; only the dot product with the light moves" } },
-		"init": func(b: Dictionary) -> void: b.spin = 0.0,
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.spin += (pos.x / b.W - 0.5) * 2.0,   # nudge the stone round by hand
+				"label": "a red palette and a faster turn — the same triangles; only the dot product with the light moves, and a nudge coasts down the same way" } },
+		"init": func(b: Dictionary) -> void:
+			# the stone turns at its idle rate (spin) plus whatever a nudge left it:
+			# a press adds angular VELOCITY, not an angle, and drag eats a share of
+			# it every step, so the stone spins up and coasts back down to its idle
+			# turn instead of jumping. the float is a spring around a rest height,
+			# damped far under critical, so it bobs for a long while and a press
+			# bumps it — nothing here is a sine of the clock.
+			b.ang = 0.0; b.angv = 0.0                                                # the turn, and the nudge's leftover rate
+			b.bob = 0.0; b.bobv = 0.5,                                               # the float (in radii) and its rate
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var spin: float = D.spin; var drag: float = D.drag
+			var bk: float = D.bob; var bd: float = float(D.bobdamp) * 2.0 * sqrt(bk)   # the float's damping, from its fraction of critical
+			var ang: float = b.ang; var angv: float = b.angv; var bob: float = b.bob; var bobv: float = b.bobv
+			for _s in sub:
+				angv -= angv * drag * h; ang += (spin + angv) * h                     # idle rate + the nudge, which drag wears away
+				bobv += (-bk * bob - bd * bobv) * h; bob = clampf(bob + bobv * h, -0.3, 0.3)
+			b.ang = fposmod(ang, TAU); b.angv = angv; b.bob = bob; b.bobv = bobv,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.angv += (pos.x / b.W - 0.5) * 2.0 * float(b.D.kick); b.bobv -= 0.6,   # a nudge: angular velocity, left or right of centre — and a bump to the float
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			K.sky(n, b, D.sky)
 			var LT := Vector3(-0.5, 0.75, 0.45).normalized()                        # the light: upper-left, a little toward us
 			var r: float = minf(b.W, b.H) * 0.26
-			var cx: float = b.W / 2.0; var cy: float = b.H * 0.46 + sin(t * 1.3) * r * 0.06
-			var ang: float = t * D.spin + b.spin
+			var cx: float = b.W / 2.0; var cy: float = b.H * 0.46 + float(b.bob) * r * 0.4
+			var ang: float = b.ang
 			var sides: int = D.sides
 			var rim: Array = []
 			for i in sides:
@@ -173,14 +193,21 @@ static func defs() -> Array:
 
 	# ---- H · Hexprism ------------------------------------------------------
 	d.append({ "letter": "H", "name": "Hexprism",
-		"hint": "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60° and the shades walk round",
+		"hint": "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60°: it swings past, rocks back, and the shades walk round",
 		"dials": { "sky": [Color("141226"), Color("26223E")], "floor": Color("1A1A2C"), "cols": [Color("B87A5A")],
 			"count": 1, "h": 0.5, "r": 0.16, "every": 2.0,       # count of prisms; h and r as fractions of H and W; every = seconds between idle turns
-			"label": "one rule for every side — shade by the way it faces — and the top stays lit whatever the turn" },
-		"rhyme": { "name": "Basalt columns", "hint": "five grey columns of different heights, side by side, all turning together — a rock shelf from one rule",
+			"k": 64.0, "zeta": 0.4,                              # k = the turn's spring stiffness for a column of height h (taller = heavier = softer); zeta = damping as a fraction of critical — under 1, so it turns past the detent and rocks back
+			"label": "one rule for every side — shade by the way it faces — and the top stays lit whatever the turn; the turn is a spring to a detent, so it overshoots" },
+		"rhyme": { "name": "Basalt columns", "hint": "five grey columns of different heights, side by side, all sent round together — the tall ones lag and rock longer, so they settle on their own phases: a rock shelf from one rule",
 			"dials": { "cols": [Color("4A4A52"), Color("5A5A62"), Color("3E3E46")], "count": 5, "h": 0.42,
-				"label": "five columns, different heights, one light — the grey rule is still a rule, so they stand on one shelf" } },
+				"label": "five columns, different heights, one light and one detent — the grey rule is still a rule, and each column swings to it at its own pace" } },
 		"init": func(b: Dictionary) -> void:
+			# a press moves the DETENT — the angle the column wants — on by 60°. the
+			# column itself has an angular velocity and a spring toward the detent,
+			# damped under critical, so it swings past, rocks back and settles rather
+			# than easing in. every column keeps its own angle and rate, and a taller
+			# column is a heavier one (a softer spring per height), so the rhyme's
+			# five columns share one detent and arrive on their own phases.
 			var D: Dictionary = b.D
 			var R := K.rng(7)
 			var cnt: int = D.count
@@ -188,19 +215,38 @@ static func defs() -> Array:
 			b.prisms = []
 			for i in cnt:
 				b.prisms.append({ "x": (i + 0.5) / cnt, "h": D.h * ((0.55 + R.randf() * 0.7) if cnt > 1 else 1.0), "c": cols[i % cols.size()] })
-			b.turn = 0.0; b.target = 0.0; b.next_at = D.every,
+			var turn := PackedFloat32Array()              # sized here: a packed array read back from b is a copy
+			var om := PackedFloat32Array()
+			turn.resize(cnt)
+			om.resize(cnt)
+			b.turn = turn; b.om = om                                                 # each column's angle and angular velocity
+			b.target = 0.0; b.next_at = D.every,                                     # the shared detent
 		"tick": func(b: Dictionary, dt: float) -> void:
-			if b.t > b.next_at: b.target += TAU / 6.0; b.next_at = b.t + b.D.every
-			b.turn += (b.target - b.turn) * minf(1.0, dt * 6.0),                    # ease toward the next 60°
-		"press": func(b: Dictionary, _pos: Vector2) -> void: b.target += TAU / 6.0; b.next_at += b.D.every,   # one more sixth of a turn
+			var D: Dictionary = b.D
+			if b.t > b.next_at: b.target += TAU / 6.0; b.next_at = b.t + D.every      # the idle turn: the detent moves on
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var turn: PackedFloat32Array = b.turn
+			var om: PackedFloat32Array = b.om
+			var k0: float = D.k; var zeta: float = D.zeta; var h0: float = D.h; var target: float = b.target
+			var prisms: Array = b.prisms
+			for p in prisms.size():
+				var kp := k0 * h0 / float(prisms[p].h)                                # a taller column: more inertia, so a softer spring...
+				var dp := zeta * 2.0 * sqrt(kp)                                        # ...and its own critical damping
+				for _s in sub:
+					om[p] += (kp * (target - turn[p]) - dp * om[p]) * h
+					turn[p] += om[p] * h,
+		"press": func(b: Dictionary, _pos: Vector2) -> void: b.target += TAU / 6.0; b.next_at += b.D.every,   # one more sixth of a turn: the detent moves, the spring does the rest
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			K.sky(n, b, D.sky)
 			var gy: float = b.H * 0.82
 			K.ground(n, b, gy - b.H * 0.22, D.floor)
 			var cnt: int = D.count
-			var turn: float = b.turn
+			var turns: PackedFloat32Array = b.turn
+			var pidx := 0
 			for P in b.prisms:
+				var turn: float = turns[pidx]; pidx += 1
 				var cx: float = b.W * P.x
 				var r: float = b.W * D.r / ((sqrt(cnt) * 0.8) if cnt > 1 else 1.0)
 				var h: float = b.H * P.h
@@ -222,24 +268,38 @@ static func defs() -> Array:
 
 	# ---- I · Isotile -------------------------------------------------------
 	d.append({ "letter": "I", "name": "Isotile", "drag": true,
-		"hint": "an isometric floor: diamonds in two alternating colours with a darker line on their right and bottom edges — and a ball whose shadow never leaves the floor",
+		"hint": "an isometric floor: diamonds in two alternating colours with a darker line on their right and bottom edges — and a ball whose shadow never leaves the floor; click and it rolls there, a little past, and settles",
 		"dials": { "sky": [Color("141226"), Color("221E3A")], "a": Color("6A8ACF"), "b": Color("8AA6DF"), "edge": -0.45, "ball": Color("F58A8A"),
 			"n": 8, "speed": 0.6, "glow": 0.0,                   # n tiles a side; glow = a warm torch tint over the floor (0 = none)
-			"label": "two colours and a dark right-and-bottom edge make a floor; the shadow glues the ball to it" },
-		"rhyme": { "name": "Dungeon floor", "hint": "the same floor in dark stone under a torch — a warm glow laid over the tiles, the edge lines cut deeper",
+			"k": 36.0, "zeta": 0.5,                              # k = the pull toward where the ball is going; zeta = damping as a fraction of critical — under 1, so it rolls a little past and settles back
+			"label": "two colours and a dark right-and-bottom edge make a floor; the shadow glues the ball to it — the ball is a spring toward its aim, so it overshoots" },
+		"rhyme": { "name": "Dungeon floor", "hint": "the same floor in dark stone under a torch — a warm glow laid over the tiles, the edge lines cut deeper; the ball still rolls past its mark and settles",
 			"dials": { "sky": [Color("0A0812"), Color("161222")], "a": Color("3A3640"), "b": Color("4A4650"), "edge": -0.6, "ball": Color("9BE28A"), "glow": 0.35,
-				"label": "dark stone under a torch: the warm tint sits on top of the tiles, and the edge lines still say 'floor'" } },
+				"label": "dark stone under a torch: the warm tint sits on top of the tiles, and the edge lines still say 'floor' — the ball's spring is the same" } },
 		"init": func(b: Dictionary) -> void:
-			b.ball = Vector2(4, 4); b.target = null,
+			# the ball has a velocity: a spring pulls it toward its aim (a click, or
+			# the idle circle) and damping under critical lets it roll a little past
+			# and come back — it arrives like a ball, not like a cursor. the shadow is
+			# drawn at the ball's grid position on the floor whatever the ball does,
+			# which is the lesson.
+			b.ball = Vector2(4, 4); b.vel = Vector2.ZERO; b.target = null,           # grid position, grid velocity (cells per second), the clicked aim
 		"tick": func(b: Dictionary, dt: float) -> void:
 			var D: Dictionary = b.D
 			var nn: float = D.n
 			var aim := Vector2(nn / 2.0 + 2.6 * cos(b.t * D.speed), nn / 2.0 + 2.6 * sin(b.t * D.speed))   # the idle path: a circle
+			var ball: Vector2 = b.ball; var vel: Vector2 = b.vel
 			if b.target != null:
 				aim = b.target
-				if absf(aim.x - b.ball.x) + absf(aim.y - b.ball.y) < 0.15: b.target = null
-			b.ball += (aim - b.ball) * minf(1.0, dt * 2.5),
-		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = roll the ball there (screen → iso grid)
+				if absf(aim.x - ball.x) + absf(aim.y - ball.y) < 0.05 and absf(vel.x) + absf(vel.y) < 0.3: b.target = null   # there, and at rest: back to the idle path
+			var k: float = D.k; var damp: float = float(D.zeta) * 2.0 * sqrt(k)     # damping from its fraction of critical
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var lo := Vector2(0.3, 0.3); var hi := Vector2(nn - 0.3, nn - 0.3)     # the floor has an edge
+			for _s in sub:
+				vel += (k * (aim - ball) - damp * vel) * h
+				ball = (ball + vel * h).clamp(lo, hi)
+			b.ball = ball; b.vel = vel,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = roll the ball there (screen → iso grid): the aim moves, the spring does the rolling
 			var s: float = minf(b.W * 0.065, b.H * 0.1)
 			var sx: float = pos.x - b.W / 2.0; var sy: float = pos.y - b.H * 0.12
 			var nn: float = b.D.n
@@ -268,21 +328,45 @@ static func defs() -> Array:
 
 	# ---- K · Keep ----------------------------------------------------------
 	d.append({ "letter": "K", "name": "Keep", "drag": true,
-		"hint": "a castle tower from stacked blocks: one tall block, small blocks for the battlements, a dark doorway — every face obeys the same light, so it is one building",
+		"hint": "a castle tower from stacked blocks: one tall block, small blocks for the battlements, a dark doorway — every face obeys the same light, so it is one building; press a side and the wind turns: the flag falls slack and whips round",
 		"dials": { "sky": [Color("2A3A6A"), Color("8AA0C8")], "floor": Color("3A5A3A"), "stone": Color("9A8E86"), "flag": Color("F58A8A"),
-			"h": 2.4, "wind": 1.0,                               # h = tower height in widths; wind = flag speed (sign = direction)
-			"label": "one sun for every block — tower, battlements, annex all agree on the dark side, so they are one building" },
-		"rhyme": { "name": "Sci-fi silo", "hint": "the same tower in steel blue, half again as tall, with a cyan beacon for a flag — a launch silo from castle parts",
+			"h": 2.4, "wind": 1.0,                               # h = tower height in widths; wind = the wind asked for: sign = direction, size = strength
+			"k": 50.0, "zeta": 0.35, "lag": 2.5, "droop": 0.25, "flap": 0.12,   # k = the flag tip's stiffness; zeta = damping as a fraction of critical (under 1: it whips past); lag = how fast the wind at the flag catches up with the dial, per second; droop = gravity's pull on the tip against a unit wind; flap = the flutter, radians per unit wind
+			"label": "one sun for every block — tower, battlements, annex all agree on the dark side, so they are one building; the flag is a spring on a lagging wind" },
+		"rhyme": { "name": "Sci-fi silo", "hint": "the same tower in steel blue, half again as tall, with a cyan beacon for a flag — a launch silo from castle parts; the beacon still drops slack and whips round when the wind turns",
 			"dials": { "sky": [Color("0A0F2A"), Color("2A3A6A")], "floor": Color("1A2030"), "stone": Color("7A9AB8"), "flag": Color("40F0F0"),
 				"h": 3.4, "wind": -1.0,
-				"label": "steel blue and taller, the flag a beacon — the light rule did not change, so it is still one building" } },
-		"init": func(b: Dictionary) -> void: b.sun_l = true,
-		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click a side = the sun (and the wind) come from there
+				"label": "steel blue and taller, the flag a beacon — the light rule did not change, so it is still one building; the same spring on the same lagging wind" } },
+		"init": func(b: Dictionary) -> void:
+			# the flag is one angle at its tip. the wind the flag feels chases the
+			# wind you asked for (a lag, not a switch), and the tip is a spring toward
+			# the angle wind and gravity agree on — straight downwind, drooping a
+			# little. flip the wind and that rest angle walks through 'hanging
+			# straight down' as the lagging wind passes zero, and the under-damped tip
+			# whips through the slack after it: a flag turning round, not a flag
+			# mirrored. the flutter is a small forcing on the same spring, quicker
+			# in more wind.
+			b.sun_l = true
+			b.w = float(b.D.wind)                                                    # the wind at the flag: it lags the dial
+			b.th = atan2(float(b.D.droop), float(b.D.wind)); b.om = 0.0,             # the tip's angle from the pole (0 = streaming right, π/2 = hanging, π = streaming left) and its rate
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var k: float = D.k; var damp: float = float(D.zeta) * 2.0 * sqrt(k)     # damping from its fraction of critical
+			var lag: float = D.lag; var droop: float = D.droop; var flap: float = D.flap; var want: float = D.wind
+			var w: float = b.w; var th: float = b.th; var om: float = b.om; var t: float = b.t
+			for _s in sub:
+				w += (want - w) * lag * h                                             # the wind at the flag catches up with the dial
+				var rest := atan2(droop, w) + sin(t * 9.0 * absf(w)) * flap * absf(w)   # downwind and a little down (π/2 when the wind is nil), plus the flutter
+				om += (k * (rest - th) - damp * om) * h
+				th = clampf(th + om * h, -0.8, PI + 0.8)
+			b.w = w; b.th = th; b.om = om,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click a side = the sun (and the wind) come from there; the flag finds out through the lag
 			b.sun_l = pos.x < b.W / 2.0
 			b.D.wind = (1.0 if pos.x < b.W / 2.0 else -1.0) * absf(b.D.wind),
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var sun_l: bool = b.sun_l
 			K.sky(n, b, D.sky)
 			var s: float = minf(b.W * 0.16, b.H * 0.11)
@@ -300,11 +384,9 @@ static func defs() -> Array:
 			var cells := [[0, 0], [0, 2], [2, 0], [0, 4], [4, 0], [2, 4], [4, 2], [4, 4]]   # rim cells of a 5×5 top, already sorted back → front
 			for c in cells: _blk(n, o + K.iso(c[0] + 1, c[1] + 1, 0.0, m), m, D.stone, m * 1.2, sun_l)
 			var px := x; var py := y - h - dy; var ph := s * 0.9                              # the flag pole, on the top's centre
-			var dir := 1.0 if D.wind > 0.0 else -1.0
 			K.line(n, Vector2(px, py), Vector2(px, py - ph), Color("3A3040"), 1.5)
-			var wind: float = absf(D.wind)
-			var wave := sin(t * 5.0 * wind) * s * 0.08 + sin(t * 8.3 * wind) * s * 0.04
-			K.poly(n, PackedVector2Array([Vector2(px, py - ph), Vector2(px + dir * s * 0.5, py - ph + s * 0.12 + wave), Vector2(px, py - ph + s * 0.32)]), D.flag)
+			var th: float = b.th
+			K.poly(n, PackedVector2Array([Vector2(px, py - ph), Vector2(px + cos(th) * s * 0.52, py - ph + sin(th) * s * 0.52), Vector2(px, py - ph + s * 0.32)]), D.flag)   # the flag: pole top, the tip at its angle, the pole a little down
 			K.label(n, b, D.label) })
 
 	# ---- P · Pyramid -------------------------------------------------------
@@ -391,20 +473,67 @@ static func defs() -> Array:
 
 	# ---- S · Stairs --------------------------------------------------------
 	d.append({ "letter": "S", "name": "Stairs",
-		"hint": "blocks of climbing height drawn left to right: lit tops, mid sides, dark ends — and a ball hopping down step by step, its shadow landing on each one",
+		"hint": "blocks of climbing height drawn left to right: lit tops, mid sides, dark ends — and a ball hopping down step by step under gravity: it lands, squashes, bounces once, and its shadow lands on each step with it",
 		"dials": { "sky": [Color("1A1E36"), Color("3A3F60")], "floor": Color("1A1A2C"), "cols": [Color("8A8FA8")], "ball": Color("F5C169"),
-			"n": 7, "rise": 0.55, "hop": 0.55, "tempo": 1.6,     # rise (keep ≥ 0.5 so each step hides the last one's end) and hop in step widths; tempo = hops per second
-			"label": "seven blocks that agree about the light, drawn back to front — the shadow says which step the ball is over" },
-		"rhyme": { "name": "Candy stairs", "hint": "the same staircase in four pastels with a ball that hops twice as high and faster — the shadow shrinks more, so the bounce reads taller",
+			"n": 7, "rise": 0.55, "hop": 0.55, "tempo": 1.6,     # rise (keep ≥ 0.5 so each step hides the last one's end) and hop in step widths; tempo = hops per second, near enough — it sets the gravity, and the bounces add a little
+			"bounce": 0.35, "squash": 0.3, "dwell": 0.12, "rest": 1.0,   # bounce = restitution: the share of the landing speed that comes back up; squash = how flat a full landing presses the ball, of its radius; dwell = seconds it sits before the next hop; rest = seconds at the bottom before it starts over
+			"label": "seven blocks that agree about the light, drawn back to front — the shadow says which step the ball is over; the ball: gravity, a floor, restitution" },
+		"rhyme": { "name": "Candy stairs", "hint": "the same staircase in four pastels with a ball that hops twice as high and faster — it lands harder, so it squashes and bounces more, and the shadow shrinks more, so the bounce reads taller",
 			"dials": { "sky": [Color("F5D0E0"), Color("F5E8F0")], "floor": Color("E8C8D8"), "cols": [Color("F5A0B8"), Color("A0D8F5"), Color("F5E0A0"), Color("B8F0B0")],
 				"ball": Color("C9A0F5"), "hop": 1.2, "tempo": 2.2,
-				"label": "pastel steps, a higher hop — the shadow shrinks more when the ball is higher, so the bounce reads taller" } },
-		"init": func(b: Dictionary) -> void: b.phase = 0.0,
-		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = back to the top; click right = a quicker descent
-			b.phase = -b.t; b.D.tempo = 0.8 + (pos.x / b.W) * 2.0,
+				"label": "pastel steps, a higher hop — the shadow shrinks more when the ball is higher, so the bounce reads taller; a harder landing, a deeper squash" } },
+		"init": func(b: Dictionary) -> void:
+			# the ball is a body: gravity pulls it down every step, and a step top is a
+			# floor — when it arrives moving down it bounces with restitution (a share
+			# of the speed comes back up, most is lost) until the bounce is too small
+			# to matter, then it sits a moment and launches the next hop: an upward
+			# speed for the hop height it wants, and just enough sideways to land on
+			# the next step's middle. gravity is chosen from the tempo so a hop takes
+			# about a beat. a landing also kicks a stiff, quick squash spring (a cycle
+			# of about 150 ms) that flattens the ball and lets it ring back round.
+			var D: Dictionary = b.D
+			b.ix = float(D.n) - 1.0 + 0.4; b.vx = 0.0                                # place along the stairs (cells) and its rate
+			b.z = float(D.n) * float(D.rise); b.vz = 0.0                              # height (cells) and its rate
+			b.air = false; b.wait = 0.0                                              # in flight?; the timer on the ground
+			b.sq = 0.0; b.sqv = 0.0,                                                 # the squash and its rate
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var nn: int = D.n; var rise: float = D.rise; var hop: float = D.hop
+			var bounce: float = D.bounce; var squash: float = D.squash
+			var g := pow((sqrt(2.0 * hop) + sqrt(2.0 * (hop + rise))) * float(D.tempo) * 1.3, 2.0)   # gravity from the tempo: a hop's flight is (√2h + √2(h+r)) / √g, and the 1.3 leaves room for the bounces
+			var SQW := 40.0; var SQD := 0.4 * 2.0 * SQW                              # the squash spring's rate (40 rad/s) and damping (0.4 of critical)
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var ix: float = b.ix; var vx: float = b.vx; var z: float = b.z; var vz: float = b.vz
+			var air: bool = b.air; var wait: float = b.wait; var sq: float = b.sq; var sqv: float = b.sqv
+			for _s in sub:
+				if air:
+					vz -= g * h; z += vz * h; ix += vx * h
+					var under := clampi(int(floorf(ix)), 0, nn - 1); var top := (under + 1) * rise   # the step beneath: its top is the floor here
+					if z <= top and vz < 0.0:
+						z = top; var vin := -vz
+						vz = vin * bounce; vx *= bounce                                    # restitution: a share comes back up, and the run mostly dies
+						sqv -= squash * 2.0 * SQW * minf(1.0, vin / sqrt(2.0 * g * (hop + rise)))   # the landing kicks the squash, by how hard it hit (1 = a full hop's landing)
+						if vz * vz < 2.0 * g * 0.03:                                     # a bounce under 0.03 cells: it has landed
+							vz = 0.0; vx = 0.0; air = false
+							wait = float(D.rest) if under == 0 else float(D.dwell)
+				else:
+					wait -= h
+					if wait <= 0.0:
+						var on := clampi(int(floorf(ix)), 0, nn - 1)
+						if on == 0:                                                       # the bottom: start over at the top
+							ix = float(nn) - 1.0 + 0.4; z = float(nn) * rise
+						else:
+							vz = sqrt(2.0 * g * hop)                                       # up: enough for the hop height
+							var T := (vz + sqrt(vz * vz + 2.0 * g * rise)) / g              # how long until it is one step lower
+							vx = (float(on) - 1.0 + 0.4 - ix) / T; air = true               # across: enough to land on the next step's middle
+				sqv += (-SQW * SQW * sq - SQD * sqv) * h; sq = clampf(sq + sqv * h, -0.45, 0.45)
+			b.ix = ix; b.vx = vx; b.z = z; b.vz = vz; b.air = air; b.wait = wait; b.sq = sq; b.sqv = sqv,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = hop now (or start over, from the bottom); click right = a quicker descent
+			b.D.tempo = 0.8 + (pos.x / b.W) * 2.0
+			if not b.air: b.wait = 0.0,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			K.sky(n, b, D.sky)
 			var nn: int = D.n
 			var s: float = minf(b.W * 0.11, b.H * 0.14)
@@ -413,58 +542,68 @@ static func defs() -> Array:
 			K.ground(n, b, o.y + s * 0.4, D.floor)
 			var cols: Array = D.cols
 			for i in nn: K.cube(n, o + K.iso(i + 1, 1.0, 0.0, s), s, cols[i % cols.size()], (i + 1) * rise)   # left to right = back to front
-			var k := fposmod((t + b.phase) * D.tempo, float(nn))
-			var j := int(floorf(k)); var p := k - j                                     # j hops done so far; p = progress of this hop
-			var from := nn - 1 - j; var to := maxi(0, from - 1)                          # hopping from step `from` down to step `to`
-			var ix := lerpf(from + 0.4, to + 0.4, p)
-			var hz: float = lerpf((from + 1) * rise, (to + 1) * rise, p) / s + 4.0 * p * (1.0 - p) * D.hop
-			var under := int(floorf(ix)); var top_z := (under + 1) * rise / s; var lift := hz - top_z   # the step beneath the ball, and how far above it we are
+			var ix: float = b.ix; var hz: float = b.z; var sq: float = b.sq
+			var under := clampi(int(floorf(ix)), 0, nn - 1); var top_z := (under + 1) * float(D.rise); var lift := hz - top_z   # the step beneath the ball, and how far above it we are
 			var g := o + K.iso(ix, 0.78, top_z, s)
 			var r := s * 0.27
 			K.shadow(n, g, r * 1.2 / (1.0 + lift), r * 0.55 / (1.0 + lift), 0.5 / (1.0 + lift))   # higher = a smaller, fainter shadow
 			var bp := o + K.iso(ix, 0.78, hz, s)
-			K.sphere(n, Vector2(bp.x, bp.y - r), r, D.ball, -0.5, -0.6, 0.5)
+			n.draw_set_transform(bp, 0.0, Vector2(1.0 - sq, 1.0 + sq))              # the squash, about the contact point: flatter one way, wider the other
+			K.sphere(n, Vector2(0.0, -r), r, D.ball, -0.5, -0.6, 0.5)
+			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			K.label(n, b, D.label) })
 
 	# ---- V · Voxels --------------------------------------------------------
 	d.append({ "letter": "V", "name": "Voxels",
-		"hint": "a little tree of cubes, sorted far to near before drawing — press turns it a quarter, and the same cubes are re-sorted and re-drawn",
+		"hint": "a little tree of cubes, sorted far to near before drawing — press turns it a quarter: it swings past and rings back, and the same cubes are re-sorted and re-drawn all the way",
 		"dials": { "sky": [Color("141226"), Color("26223E")], "floor": Color("1A1A2C"), "n": 5, "every": 3.0,   # n = grid size; every = seconds between idle quarter-turns
+			"k": 60.0, "zeta": 0.4,                              # k = the turn's spring stiffness; zeta = damping as a fraction of critical — under 1, so the turn overshoots and rings back
 			"vox": [[2, 2, 0, Color("8A5A3A")], [2, 2, 1, Color("8A5A3A")],                 # [ix, iy, iz, colour] — the trunk...
 				[1, 1, 2, Color("4A9A5A")], [2, 1, 2, Color("5AAA6A")], [3, 1, 2, Color("4A9A5A")], [1, 2, 2, Color("5AAA6A")], [2, 2, 2, Color("4A9A5A")],
 				[3, 2, 2, Color("5AAA6A")], [1, 3, 2, Color("4A9A5A")], [2, 3, 2, Color("5AAA6A")], [3, 3, 2, Color("4A9A5A")],   # ...the canopy...
 				[2, 1, 3, Color("6ABA7A")], [1, 2, 3, Color("5AAA6A")], [2, 2, 3, Color("6ABA7A")], [3, 2, 3, Color("5AAA6A")], [2, 3, 3, Color("6ABA7A")],
 				[2, 2, 4, Color("7ACA8A")]],                                               # ...and the crown
-			"label": "sort by ix+iy, then by height, then just draw — the order IS the depth; a turn only changes the order" },
-		"rhyme": { "name": "Voxel cactus", "hint": "a different list of cubes — a cactus with two arms and a flower — under a desert sky; the sort and the shades are untouched",
+			"label": "sort by ix+iy, then by height, then just draw — the order IS the depth; a turn is a spring to a detent, and the sort follows it through the overshoot" },
+		"rhyme": { "name": "Voxel cactus", "hint": "a different list of cubes — a cactus with two arms and a flower — under a desert sky; the sort, the shades and the swinging turn are untouched",
 			"dials": { "sky": [Color("F5C169"), Color("F5E0B0")], "floor": Color("C8945A"),
 				"vox": [[2, 2, 0, Color("4A9A5A")], [2, 2, 1, Color("4A9A5A")], [2, 2, 2, Color("5AAA6A")], [2, 2, 3, Color("5AAA6A")],
 					[1, 2, 1, Color("4A9A5A")], [0, 2, 1, Color("4A9A5A")], [0, 2, 2, Color("5AAA6A")],
 					[3, 2, 2, Color("5AAA6A")], [4, 2, 2, Color("5AAA6A")], [4, 2, 3, Color("6ABA7A")], [2, 2, 4, Color("F58AB8")]],
-				"label": "a different list of cubes, the same sort and the same three shades — the data is the dial" } },
-		"init": func(b: Dictionary) -> void: b.turns = 0; b.turn_at = -9.0,
-		"tick": func(b: Dictionary, _dt: float) -> void:
-			if b.t - b.turn_at > b.D.every: b.turn_at = b.t; b.turns += 1,           # an idle quarter-turn now and then
-		"press": func(b: Dictionary, _pos: Vector2) -> void: b.turn_at = b.t; b.turns += 1,   # one quarter-turn, now
+				"label": "a different list of cubes, the same sort and the same three shades — the data is the dial; the turn still overshoots and rings back" } },
+		"init": func(b: Dictionary) -> void:
+			# the turn is an angle with an angular velocity: a press (or the idle
+			# timer) moves the detent a quarter on, and a spring, damped under
+			# critical, swings the tree toward it — past it, and back. every cube's
+			# ix/iy is the grid turned by that angle about its centre (at exactly 90°
+			# that is the old quarter-turn: (ix, iy) → (n−1−iy, ix)), and the depth
+			# sort works off those interpolated ix/iy, so the order re-sorts itself
+			# all the way through the swing and the overshoot.
+			b.turns = 0; b.turn_at = -9.0                                            # quarter-turns asked for
+			b.phi = 0.0; b.omg = 0.0,                                                # the angle the tree is at, and its rate
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			if b.t - b.turn_at > D.every: b.turn_at = b.t; b.turns += 1              # an idle quarter-turn now and then
+			var k: float = D.k; var damp: float = float(D.zeta) * 2.0 * sqrt(k)     # damping from its fraction of critical
+			var tgt := float(b.turns) * TAU / 4.0                                    # the detent
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var phi: float = b.phi; var omg: float = b.omg
+			for _s in sub:
+				omg += (k * (tgt - phi) - damp * omg) * h; phi += omg * h
+			b.phi = phi; b.omg = omg,
+		"press": func(b: Dictionary, _pos: Vector2) -> void: b.turn_at = b.t; b.turns += 1,   # one quarter-turn, now: the detent moves, the spring swings to it
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var nn: int = D.n
-			var p := K.ease(clampf((t - b.turn_at) * 1.6, 0.0, 1.0))                   # the turn in progress, 0 → 1
 			K.sky(n, b, D.sky)
 			var m: float = minf(b.W * 0.075, b.H * 0.085)
 			var o := Vector2(b.W / 2.0, b.H * 0.54)
 			K.ground(n, b, o.y - m * 1.5, D.floor)
-			var rot := func(v: Array, k: int) -> Vector2:                               # the grid turned k quarters: (ix, iy) → (n−1−iy, ix)
-				var ix: int = v[0]; var iy: int = v[1]
-				for i in maxi(k, 0):
-					var nx := nn - 1 - iy; iy = ix; ix = nx
-				return Vector2(ix, iy)
-			var turns: int = b.turns
+			var c := (nn - 1) / 2.0; var phi: float = b.phi; var cs := cos(phi); var sn := sin(phi)
 			var list: Array = []
 			for v in D.vox:
-				var a: Vector2 = rot.call(v, (turns - 1) % 4); var bb: Vector2 = rot.call(v, turns % 4)   # where it was, where it is going
-				list.append({ "ix": lerpf(a.x, bb.x, p), "iy": lerpf(a.y, bb.y, p), "iz": float(v[2]), "c": v[3] })
+				var dx := float(v[0]) - c; var dy := float(v[1]) - c                 # the cell turned by phi about the grid's centre
+				list.append({ "ix": c + dx * cs - dy * sn, "iy": c + dx * sn + dy * cs, "iz": float(v[2]), "c": v[3] })
 			list.sort_custom(func(A, B): return (A.ix + A.iy + A.iz * 0.001) < (B.ix + B.iy + B.iz * 0.001))   # far first, then low first
 			K.shadow(n, o, m * 2.1, m * 1.05, 0.4)
 			for q in list:                                                              # base point = the cell's front corner, centred on the grid
@@ -473,20 +612,52 @@ static func defs() -> Array:
 
 	# ---- W · Wedge ---------------------------------------------------------
 	d.append({ "letter": "W", "name": "Wedge",
-		"hint": "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down and its shadow slides with it",
+		"hint": "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down, faster and faster, rolls out along the floor and stops; its shadow slides with it",
 		"dials": { "sky": [Color("1E1C34"), Color("3A3858")], "floor": Color("1A1A2C"), "col": Color("7AA0C8"), "block": Color("F58A8A"),
-			"len": 3.0, "h": 1.4, "speed": 0.8,                 # len = ramp length in cells; h = the high end in cells; speed = slides per second
-			"label": "one lit face, one dark face, and a shadow that keeps up — that is a ramp and a thing on it" },
-		"rhyme": { "name": "Skate ramp", "hint": "the same ramp in concrete grey, lower and faster, under a day sky — a skate ramp with a gold block for a board",
+			"len": 3.0, "h": 1.4, "speed": 0.8,                 # len = ramp length in cells; h = the high end in cells; speed = the clock: gravity and grip scale with speed², so a higher speed is the same slide, quicker
+			"g": 9.0, "grip": 12.0, "rest": 0.6,                # g = gravity, cells/s² (at speed 1); grip = the floor's braking at the bottom, cells/s²; rest = seconds it lies at the end before starting over
+			"label": "one lit face, one dark face, and a shadow that keeps up — that is a ramp and a thing on it; the thing: g·sin θ down the slope, grip on the floor" },
+		"rhyme": { "name": "Skate ramp", "hint": "the same ramp in concrete grey, lower and faster, under a day sky — a skate ramp with a gold block for a board that rolls out and stops on the flat",
 			"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "floor": Color("4A4A52"), "col": Color("8A8A92"), "block": Color("F5C169"),
 				"h": 1.0, "speed": 0.9,
-				"label": "concrete grey, lower, faster — the lit slope and the dark end are the same two faces" } },
-		"init": func(b: Dictionary) -> void: b.slide = 0.0,
-		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = back to the top; click right = a faster slide
-			b.D.speed = 0.3 + (pos.x / b.W) * 0.9; b.slide = -b.t * b.D.speed,
+				"label": "concrete grey, lower, faster — the lit slope and the dark end are the same two faces; a lower ramp, a shorter roll-out" } },
+		"init": func(b: Dictionary) -> void:
+			# the block has a speed along the slope: gravity's share along the incline
+			# (g·sin θ) grows it every step, so it starts slow and arrives fast. at the
+			# bottom the speed turns flat (its along-the-floor part survives, the rest
+			# is lost in the bump) and the floor's grip takes it off, so the block
+			# rolls out past the ramp and stops where its speed ran out. it rests a
+			# moment, then goes back to the top for another run.
+			b.iy = 0.0; b.v = 0.0                                                    # place along the ramp (cells); speed (cells/s, along the slope, then the floor)
+			b.flat = false; b.wait = 0.0,                                             # on the floor yet?; the rest timer
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var ln: float = D.len; var speed: float = D.speed
+			var th := atan2(float(D.h), ln)                                          # the slope's angle
+			var g := float(D.g) * speed * speed; var grip := float(D.grip) * speed * speed   # gravity and grip on this card's clock
+			var mu := 0.45
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			var iy: float = b.iy; var v: float = b.v; var flat: bool = b.flat; var wait: float = b.wait
+			for _s in sub:
+				if wait > 0.0:
+					wait -= h
+					if wait <= 0.0: iy = 0.0; v = 0.0; flat = false                    # rested: start over at the top
+				elif not flat:
+					v += g * sin(th) * h; iy += v * cos(th) * h                            # down the incline: only gravity's share along it
+					if iy + mu * 0.5 >= ln: flat = true; v *= cos(th)                     # the block's middle passes the bottom edge: onto the floor
+				else:
+					v = maxf(0.0, v - grip * h); iy = minf(iy + v * h, ln + 3.0)          # the roll-out: grip takes the speed off
+					if v == 0.0: wait = D.rest
+			b.iy = iy; b.v = v; b.flat = flat; b.wait = wait,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click right = a faster clock; click = a shove down the slope, or a fresh run if it is resting
+			b.D.speed = 0.3 + (pos.x / b.W) * 0.9
+			if b.wait > 0.0:
+				b.iy = 0.0; b.v = 0.0; b.flat = false; b.wait = 0.0
+			else:
+				b.v += float(b.D.g) * 0.2,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			K.sky(n, b, D.sky)
 			var ln: float = D.len; var hh: float = D.h
 			var s: float = minf(b.W * 0.13, b.H * 0.16)
@@ -499,8 +670,7 @@ static func defs() -> Array:
 			var sc := PackedColorArray()
 			for pt in slope: sc.append(c0.lerp(c1, _along(pt, ga, gb)))
 			K.lin_poly(n, slope, sc)                                                    # the slope: lit, lighter as it nears you
-			var r := fposmod(t * D.speed + b.slide, 1.25); var q := clampf(r * r, 0.0, 1.0)   # r² = it accelerates; then rests at the bottom a moment
-			var mu := 0.45; var iy := q * (ln - mu); var z := hh * (1.0 - (iy + mu * 0.5) / ln)   # the block's place on the slope and the slope's height there
+			var mu := 0.45; var iy: float = b.iy; var z := hh * maxf(0.0, 1.0 - (iy + mu * 0.5) / ln)   # the block's place, and the slope's height under its middle — nil once it is on the floor
 			var sh := o + K.iso(0.5 + mu * 0.75, iy + mu * 0.5 + 0.15, z - 0.05, s)
 			K.shadow(n, sh, s * mu * 1.1, s * mu * 0.55, 0.45)                          # the shadow rides the slope with it
 			K.cube(n, o + K.iso(0.5 + mu / 2.0, iy + mu, z, s), s * mu, D.block)
@@ -508,28 +678,53 @@ static func defs() -> Array:
 
 	# ---- X · Xylophone -----------------------------------------------------
 	d.append({ "letter": "X", "name": "Xylophone", "drag": true,
-		"hint": "eight flat blocks receding toward the back, each drawn a little smaller than the one before — size shrinking with distance is the cue; press a bar and its top flashes",
+		"hint": "eight flat blocks receding toward the back, each drawn a little smaller than the one before — size shrinking with distance is the cue; press a bar and it rings: it dips, springs back and fades, the long front bars slower than the short ones at the back",
 		"dials": { "sky": [Color("1A1430"), Color("2C2448")], "floor": Color("1A1A2C"), "hues": [0.0, 30.0, 55.0, 110.0, 180.0, 210.0, 260.0, 300.0],
 			"n": 8, "shrink": 0.07, "thick": 0.28, "jitter": 0.0, "beat": 0.45,   # shrink per bar toward the back; thick = bar height; jitter = height wobble; beat = seconds per note
-			"label": "no perspective maths — each bar is drawn a little smaller than the one in front, and the eye reads distance" },
-		"rhyme": { "name": "Glitch keys", "hint": "the same bars in two neon hues, heights jittering, the tune at three times the beat — the sizes still shrink to the back, so the depth survives",
+			"ring": 8.0, "decay": 0.06, "kick": 3.0,              # ring = the front bar's rate, radians per second (a shorter bar rings quicker, by 1/length²); decay = damping as a fraction of critical — tiny, so a bar rings for seconds; kick = the mallet: the speed a strike gives a bar, bar sizes per second
+			"label": "no perspective maths — each bar is drawn a little smaller than the one in front, and the eye reads distance; each bar is a spring that rings at its own rate" },
+		"rhyme": { "name": "Glitch keys", "hint": "the same bars in two neon hues, heights jittering, the tune at three times the beat — struck bars ring over each other; the sizes still shrink to the back, so the depth survives",
 			"dials": { "sky": [Color("050510"), Color("101028")], "floor": Color("0A0A18"), "hues": [180.0, 300.0, 180.0, 300.0, 180.0, 300.0, 180.0, 300.0],
 				"jitter": 0.35, "beat": 0.18,
-				"label": "jittered heights and a frantic beat — the sizes still shrink to the back, so the depth survives the glitch" } },
+				"label": "jittered heights and a frantic beat — the sizes still shrink to the back, so the depth survives the glitch; the bars ring over one another" } },
 		"init": func(b: Dictionary) -> void:
+			# each bar is a spring: a strike gives it a velocity downward, and a
+			# spring with almost no damping brings it back and past, over and over,
+			# fading — a bar rings. the rate is the bar's own: a short bar is a stiff
+			# bar (k ∝ 1/length²), so the back bars ring quick and die soon, and the
+			# long front bar rings low and slow. the top's flash is the ring's
+			# energy, so it fades with the sound rather than on a timer.
 			b.tune = [0, 2, 4, 7, 4, 2, 1, 3, 5, 3]
-			b.hit = []
-			for i in int(b.D.n): b.hit.append(-9.0)
+			var nn: int = b.D.n
+			var yo := PackedFloat32Array()                # sized here: a packed array read back from b is a copy
+			var yv := PackedFloat32Array()
+			yo.resize(nn)
+			yv.resize(nn)
+			b.yo = yo; b.yv = yv                                                     # each bar's offset (in bar sizes, down = positive) and its rate
 			b.seq = 0; b.next_at = 0.0; b.rows = [],
-		"tick": func(b: Dictionary, _dt: float) -> void:
-			if b.t > b.next_at:                                                         # the tune plays itself
-				b.hit[b.tune[b.seq % b.tune.size()]] = b.t; b.seq += 1; b.next_at = b.t + b.D.beat,
-		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = strike the bar nearest that height
+		"tick": func(b: Dictionary, dt: float) -> void:
+			var D: Dictionary = b.D
+			var yo: PackedFloat32Array = b.yo
+			var yv: PackedFloat32Array = b.yv
+			var kick: float = D.kick
+			if b.t > b.next_at:                                                         # the tune plays itself: each note is a strike
+				yv[b.tune[b.seq % b.tune.size()]] += kick; b.seq += 1; b.next_at = b.t + D.beat
+			var ring: float = D.ring; var decay: float = D.decay
+			var sub := maxi(1, ceili(dt * 50.0))                                     # a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+			var h := dt / float(sub)
+			for i in yo.size():
+				var L := 4.2 - i * 0.3
+				var om := ring * (4.2 / L) * (4.2 / L); var k := om * om; var dp := decay * 2.0 * om   # this bar's rate: stiffer the shorter it is; its damping from the fraction of critical
+				for _s in sub:
+					yv[i] += (-k * yo[i] - dp * yv[i]) * h
+					yo[i] = clampf(yo[i] + yv[i] * h, -1.0, 1.0),
+		"press": func(b: Dictionary, pos: Vector2) -> void:                          # click = strike the bar nearest that height: a velocity, and the spring rings it
 			var best := 0; var bd := 1e9
 			for row in b.rows:
 				var dd: float = absf(row[1] - pos.y)
 				if dd < bd: bd = dd; best = row[0]
-			b.hit[best] = b.t,
+			var yv: PackedFloat32Array = b.yv
+			yv[best] += float(b.D.kick),
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -538,15 +733,19 @@ static func defs() -> Array:
 			var s: float = minf(b.W * 0.08, b.H * 0.13); var base_y: float = b.H * 0.86
 			K.ground(n, b, base_y - s * 4.5, D.floor)
 			var hues: Array = D.hues
+			var yo: PackedFloat32Array = b.yo
+			var yv: PackedFloat32Array = b.yv
+			var ring: float = D.ring; var kick: float = D.kick
 			b.rows = []
 			for i in range(nn - 1, -1, -1):                                             # back bar first
 				var sc: float = 1.0 - i * D.shrink; var si := s * sc; var L := 4.2 - i * 0.3; var wd := 0.8
 				var off := K.iso(0.0, -i * 1.2, 0.0, s)
-				var x: float = b.W / 2.0 - s * 1.5 + (L - wd) * 0.433 * si + off.x; var y := base_y + off.y
+				var x: float = b.W / 2.0 - s * 1.5 + (L - wd) * 0.433 * si + off.x; var y := base_y + off.y + yo[i] * si
 				var hz: float = si * D.thick * (1.0 + D.jitter * sin(t * 13.0 + i * 5.0))
-				var flash := clampf(1.0 - (t - b.hit[i]) * 3.0, 0.0, 1.0)
+				var om := ring * (4.2 / L) * (4.2 / L)
+				var flash := clampf(sqrt(yo[i] * yo[i] + (yv[i] / om) * (yv[i] / om)) * om / kick, 0.0, 1.0)   # the ring's energy, 1 at a fresh strike
 				var c := K.hsl(hues[i % hues.size()], 0.6, 0.55)
-				if flash > 0.0: K.soft(n, Vector2(x - L * 0.433 * si, y - L * 0.25 * si - hz), si * 1.4, c, flash * 0.6)
+				if flash > 0.02: K.soft(n, Vector2(x - L * 0.433 * si, y - L * 0.25 * si - hz), si * 1.4, c, flash * 0.6)
 				_bar(n, x, y, L, wd, hz, si, c, 0.32 + 0.45 * flash)
 				b.rows.append([i, y - L * 0.25 * si - hz])                                # remember where each bar sits, for clicking
 			K.label(n, b, D.label) })
