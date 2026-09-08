@@ -252,25 +252,56 @@ static func defs() -> Array:
 
 	# ---- E · Egg -----------------------------------------------------------
 	d.append({ "letter": "E", "name": "Egg", "drag": true,
-		"hint": "an egg is a ball under ctx.scale(0.76, 1): the same offset gradient, squeezed — a warm shadow side, a soft ground shadow, and a slow rock",
+		"hint": "an egg is a ball under ctx.scale(0.76, 1): the same offset gradient, squeezed — a warm shadow side, a soft ground shadow, and a rock that rings down like a real egg on its base; a press flicks it",
 		"dials": { "bg": [Color("EAD8C0"), Color("C8A888")], "shell": Color("F2E4CC"), "dark": Color("8A5A3A"), "spec": 0.4,   # dark: warm, because the ground bounces light into it
-			"squeeze": 0.76, "rock": 1.3, "lx": -0.5, "ly": -0.6,                                                          # squeeze: width ÷ height; rock: how fast it sways
-			"label": "the shadow side is warm, not black — bounced light fills it; the highlight stays with the lamp, not the egg" },
+			"squeeze": 0.76, "lx": -0.5, "ly": -0.6,                                                                       # squeeze: width ÷ height
+			"rock": 5.2,                # the rocking rate, rad/s: √k — an egg on its curved base has a definite period (2π/rock)
+			"damp": 0.15,               # as a fraction of critical: well under 1, so each rock is a little smaller than the last
+			"kick": 1.5,                # the angular velocity a press flicks in, rad/s
+			"idle": 4.0,                # seconds between the small random nudges that keep it rocking between presses
+			"label": "the shadow side is warm, not black — bounced light fills it; the highlight stays with the lamp, not the egg (θ'' = −rock²·θ − damp·θ')" },
 		"rhyme": { "name": "Dragon egg", "hint": "the same egg in dark red lacquer with a hotter highlight, narrower and slower — a fantasy prop",
 			"dials": { "bg": [Color("2A0A10"), Color("0C0406")], "shell": Color("7A1424"), "dark": Color("200408"), "spec": 0.9,
-				"squeeze": 0.72, "rock": 0.6,
-				"label": "a darker shell with a hotter highlight reads as lacquer — spec is the material dial" } },
+				"squeeze": 0.72, "rock": 3.0,                                                                              # a heavier egg rocks slower
+				"label": "a darker shell with a hotter highlight reads as lacquer — spec is the material dial; a slower rock reads as heavier" } },
 		"init": func(b: Dictionary) -> void:
-			b.cx = b.W * 0.5; b.cy = b.H * 0.47; b.r = minf(b.W, b.H) * 0.3; b.GY = b.cy + b.r * 1.02,
-		"press": func(b: Dictionary, pos: Vector2) -> void:
-			b.D.lx = clampf((pos.x - b.cx) / (b.r * 1.6), -1.0, 1.0); b.D.ly = clampf((pos.y - b.cy) / (b.r * 1.6), -1.0, 1.0),
+			b.cx = b.W * 0.5; b.cy = b.H * 0.47; b.r = minf(b.W, b.H) * 0.3; b.GY = b.cy + b.r * 1.02
+			b.ang = 0.12; b.av = 0.0; b.cool = 0.0; b.nudge = float(b.D.idle) * 0.5,          # the rock: angle, angular velocity, the press cooldown, seconds to the next nudge
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# an egg on its curved base is a pendulum: tip it and gravity rights
+			# it, but it overshoots and rocks back, each swing a little smaller — a
+			# damped spring on the angle, k = rock², damping a fraction of critical.
+			# a press is a flick: it adds angular velocity, never sets the angle; a
+			# small random nudge every few seconds keeps it alive between presses.
+			var D: Dictionary = b.D
+			var R: RandomNumberGenerator = b.rng
+			var rock: float = D.rock
+			var k := rock * rock
+			var dmp: float = D.damp * 2.0 * rock
+			var kick: float = D.kick
+			var sub := maxi(1, ceili(dt * 50.0))                                               # substeps of ≤ 0.02 s
+			var h := dt / float(sub)
+			var ang: float = b.ang
+			var av: float = b.av
+			b.cool -= dt
+			b.nudge -= dt
+			if b.nudge <= 0.0:
+				b.nudge = float(D.idle) * R.randf_range(0.6, 1.4)
+				av += R.randf_range(-0.5, 0.5) * kick
+			for _s in sub:
+				av += (-k * ang - dmp * av) * h
+				ang = clampf(ang + av * h, -0.55, 0.55)
+			b.ang = ang; b.av = av,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                                   # click = move the lamp, and flick the egg away from the pointer
+			b.D.lx = clampf((pos.x - b.cx) / (b.r * 1.6), -1.0, 1.0); b.D.ly = clampf((pos.y - b.cy) / (b.r * 1.6), -1.0, 1.0)
+			if b.cool <= 0.0:                                                                  # one flick per press, not one per dragged frame
+				b.av += (1.0 if pos.x < b.cx else -1.0) * float(b.D.kick); b.cool = 0.4,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var cx: float = b.cx; var cy: float = b.cy; var r: float = b.r
 			K.sky(n, b, D.bg)
 			K.ground(n, b, b.GY, Color("8A6A50"))
-			var a: float = sin(t * D.rock) * 0.12                                            # the sway, in radians
+			var a: float = b.ang                                                               # the rock, in radians
 			var llx: float = D.lx * cos(a) + D.ly * sin(a)                                    # the light, seen from the egg's own tilted frame
 			var lly: float = -D.lx * sin(a) + D.ly * cos(a)
 			K.shadow(n, Vector2(cx - D.lx * r * 0.5 + a * r * 2.0, b.GY), r * 0.9, r * 0.2, 0.4)
@@ -281,19 +312,35 @@ static func defs() -> Array:
 
 	# ---- E · Eyeball -------------------------------------------------------
 	d.append({ "letter": "E", "name": "Eyeball", "drag": true,
-		"hint": "a white ball with an iris disc that slides to look at you — the pupil moves, the highlight stays put on the light's side, and that difference sells the roundness",
+		"hint": "a white ball with an iris disc that saccades to look at you — the pupil overshoots a touch and settles, the highlight stays put on the light's side, and that difference sells the roundness",
 		"dials": { "bg": [Color("2A1E3A"), Color("120C1E")], "white": Color("F2EEF0"), "hue": 200.0, "asp": 1.0,   # asp: pupil width ÷ height — 1 is round, 0.25 a cat's slit
-			"lx": -0.5, "ly": -0.55, "follow": 6.0,                                                            # follow: how quickly the eye catches up
+			"lx": -0.5, "ly": -0.55,
+			"follow": 6.0,              # how quickly the eye turns: √k, rad/s — the pupil's spring toward where it wants to look
+			"damp": 0.6,                # as a fraction of critical: under 1, so a saccade overshoots by a few percent and settles
 			"label": "the iris slides, the highlight doesn't — a highlight is the lamp's reflection, so it stays on the lamp's side" },
 		"rhyme": { "name": "Cat eye", "hint": "the same eye in yellow-green with a slit pupil (an ellipse squeezed to a quarter width) that snaps to the pointer",
-			"dials": { "bg": [Color("1A1A0E"), Color("0A0A06")], "white": Color("E8E0C8"), "hue": 85.0, "asp": 0.25, "follow": 12.0,
+			"dials": { "bg": [Color("1A1A0E"), Color("0A0A06")], "white": Color("E8E0C8"), "hue": 85.0, "asp": 0.25, "follow": 12.0,   # a stiffer spring: snap and settle
 				"label": "the pupil is an ellipse dial: asp 0.25 makes a slit, and the slit slides under a highlight that never moves" } },
 		"init": func(b: Dictionary) -> void:
 			b.cx = b.W * 0.5; b.cy = b.H * 0.47; b.r = minf(b.W, b.H) * 0.3
-			b.tx = 0.25; b.ty = 0.1; b.px = 0.25; b.py = 0.1,                                  # where it wants to look, and where the pupil actually is (it lags)
+			b.tx = 0.25; b.ty = 0.1; b.px = 0.25; b.py = 0.1; b.vx = 0.0; b.vy = 0.0,          # where it wants to look, where the pupil actually is, and how fast it is moving
 		"tick": func(b: Dictionary, dt: float) -> void:
-			var k: float = minf(1.0, dt * b.D.follow)
-			b.px += (b.tx - b.px) * k; b.py += (b.ty - b.py) * k,
+			# the pupil is a damped spring on its position (Yolk's spring, in two
+			# axes): a press moves the TARGET, the pupil accelerates toward it,
+			# overshoots by a few percent because the damping is under critical,
+			# and settles — a saccade. Cat eye's higher follow is a stiffer spring:
+			# the same overshoot, over in half the time — snap and settle.
+			var follow: float = b.D.follow
+			var k := follow * follow
+			var dmp: float = b.D.damp * 2.0 * follow
+			var sub := maxi(1, ceili(dt * 50.0))                                               # substeps of ≤ 0.02 s
+			var h := dt / float(sub)
+			var px: float = b.px; var py: float = b.py; var vx: float = b.vx; var vy: float = b.vy
+			var tx: float = b.tx; var ty: float = b.ty
+			for _s in sub:
+				vx += (k * (tx - px) - dmp * vx) * h; vy += (k * (ty - py) - dmp * vy) * h
+				px = clampf(px + vx * h, -1.1, 1.1); py = clampf(py + vy * h, -1.1, 1.1)
+			b.px = px; b.py = py; b.vx = vx; b.vy = vy,
 		"press": func(b: Dictionary, pos: Vector2) -> void:                                   # click = look there
 			b.tx = clampf((pos.x - b.cx) / b.r, -1.0, 1.0); b.ty = clampf((pos.y - b.cy) / b.r, -1.0, 1.0),
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
@@ -597,10 +644,14 @@ static func defs() -> Array:
 
 	# ---- Z · Zeppelin ------------------------------------------------------
 	d.append({ "letter": "Z", "name": "Zeppelin", "drag": true,
-		"hint": "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — and a faint shadow on the cloud floor far below",
+		"hint": "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — riding the air on a spring, nose tipping up as it climbs, and a faint shadow on the cloud floor far below",
 		"dials": { "sky": [Color("6FA8E8"), Color("CFE6F5")], "hull": Color("D8D0C0"), "hullDark": Color("4A5060"), "gondola": Color("3A3038"),   # hullDark: cool, because the sky lights it
 			"stretch": 2.4, "speed": 0.6, "lx": -0.5, "ly": -0.6,                                                                       # stretch: length ÷ height; speed: the drift
-			"label": "one light for everything: hull, fins and gondola agree, and the shadow is faint because the floor is far" },
+			"buoy": 4.0,                # the hull's spring toward the air it floats in: k — how stiffly it holds its height
+			"damp": 0.35,               # as a fraction of critical: under 1, so the hull overshoots each gust and settles back
+			"pitch": 0.25,              # radians of nose-up per hull-height-per-second of climb — a second spring chases the vertical velocity
+			"gust": 0.7,                # the slow air's rate, rad/s — the rest the bob chases (a sine of the clock is the INPUT, not the answer)
+			"label": "one light for everything: hull, fins and gondola agree, and the shadow is faint because the floor is far — y'' = buoy·(gust − y) − damp·y'" },
 		"rhyme": { "name": "Steampunk zeppelin", "hint": "the same airship in brass under a sepia sky, longer and drifting at half speed — Victorian sci-fi",
 			"dials": { "sky": [Color("A88A5A"), Color("E8D8B8")], "hull": Color("B8863A"), "hullDark": Color("3A2810"), "gondola": Color("4A3018"),
 				"stretch": 2.8, "speed": 0.25,
@@ -609,9 +660,38 @@ static func defs() -> Array:
 			b.r = minf(b.W, b.H) * 0.11; b.cy = b.H * 0.4; b.GY = b.H * 0.78
 			var R := K.rng(6)
 			b.puffs = []
-			for j in 12: b.puffs.append(Vector3(R.randf() * b.W, b.GY + R.randf() * (b.H - b.GY) * 0.6, b.W * (0.06 + R.randf() * 0.08))),
-		"press": func(b: Dictionary, pos: Vector2) -> void:
-			b.D.lx = clampf((pos.x - b.W / 2.0) / (b.W * 0.5), -1.0, 1.0); b.D.ly = clampf((pos.y - b.cy) / (b.r * 3.0), -1.0, 1.0),
+			for j in 12: b.puffs.append(Vector3(R.randf() * b.W, b.GY + R.randf() * (b.H - b.GY) * 0.6, b.W * (0.06 + R.randf() * 0.08)))
+			b.bob = 0.0; b.bv = 0.0; b.pt = 0.0; b.pv = 0.0; b.cool = 0.0,                       # the bob (px off cy) + velocity, the pitch (radians) + velocity, the press cooldown
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the airship floats on a spring: the slow gust is the REST (the air
+			# it wants to sit in), and the hull chases it with mass — under-damped,
+			# so it overshoots each rise and settles back. the pitch is a second,
+			# quicker spring whose rest is the climb rate, so the nose tips up while
+			# it rises and drops after the top: follow-through, not decoration.
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var r: float = b.r
+			var gust: float = D.gust
+			var rest := (sin(t * gust) + 0.4 * sin(t * gust * 2.3 + 1.0)) * r * 0.25             # the gust: two slow sines, the air's own motion
+			var k: float = D.buoy
+			var dmp: float = D.damp * 2.0 * sqrt(k)
+			var pitch: float = D.pitch
+			var kp := 9.0                                                                      # the pitch spring: k 9, half critical — it lags the climb
+			var dp := 0.5 * 2.0 * 3.0
+			var sub := maxi(1, ceili(dt * 50.0))                                               # substeps of ≤ 0.02 s
+			var h := dt / float(sub)
+			var bob: float = b.bob; var bv: float = b.bv; var pt: float = b.pt; var pv: float = b.pv
+			b.cool -= dt
+			for _s in sub:
+				bv += (k * (rest - bob) - dmp * bv) * h
+				bob = clampf(bob + bv * h, -r, r)
+				pv += (kp * (bv / r * pitch - pt) - dp * pv) * h                                   # climbing is bv < 0 on screen, so the nose (at +x) lifts
+				pt = clampf(pt + pv * h, -0.35, 0.35)
+			b.bob = bob; b.bv = bv; b.pt = pt; b.pv = pv,
+		"press": func(b: Dictionary, pos: Vector2) -> void:                                   # click = move the lamp, and an updraft under the hull
+			b.D.lx = clampf((pos.x - b.W / 2.0) / (b.W * 0.5), -1.0, 1.0); b.D.ly = clampf((pos.y - b.cy) / (b.r * 3.0), -1.0, 1.0)
+			if b.cool <= 0.0:                                                                  # one lift per press, not one per dragged frame
+				b.bv -= float(b.r) * 1.5; b.cool = 1.2,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -622,15 +702,20 @@ static func defs() -> Array:
 			for pf in b.puffs: K.soft(n, Vector2(pf.x, pf.y), pf.z, Color.WHITE, 0.7)
 			var span: float = b.W + r * D.stretch * 2.6
 			var bx: float = fmod(t * D.speed * 40.0, span) - r * D.stretch * 1.3                 # drifts across, then wraps
-			var by := cy + sin(t * 0.7) * r * 0.25
+			var by: float = cy + b.bob
+			var pt: float = b.pt
+			var llx: float = D.lx * cos(pt) + D.ly * sin(pt)                                     # the light, seen from the tilted hull
+			var lly: float = -D.lx * sin(pt) + D.ly * cos(pt)
 			K.shadow(n, Vector2(bx - D.lx * r * 0.5, GY + 6.0), r * D.stretch * 0.9, r * 0.28, 0.18)   # far below: faint and soft, like the clouds it lands on
-			var tail: float = bx - r * D.stretch * 0.75
-			K.poly(n, PackedVector2Array([Vector2(tail, by - r * 0.4), Vector2(tail - r * 0.9, by - r * 1.3), Vector2(tail - r * 0.55, by)]), K.shade(D.hull, 0.1))    # the top fin faces the light…
-			K.poly(n, PackedVector2Array([Vector2(tail, by + r * 0.4), Vector2(tail - r * 0.9, by + r * 1.3), Vector2(tail - r * 0.55, by)]), K.shade(D.hull, -0.5))   # …the bottom fin doesn't
-			n.draw_set_transform(Vector2(bx, by), 0.0, Vector2(D.stretch, 1.0))
-			K.sphere(n, Vector2.ZERO, r, D.hull, D.lx, D.ly, 0.3, D.hullDark)                  # the hull: one ball, stretched — the gradient stretches with it
+			var tail: float = -r * D.stretch * 0.75
+			n.draw_set_transform(Vector2(bx, by), pt, Vector2.ONE)                               # the whole ship pitches together
+			K.poly(n, PackedVector2Array([Vector2(tail, -r * 0.4), Vector2(tail - r * 0.9, -r * 1.3), Vector2(tail - r * 0.55, 0.0)]), K.shade(D.hull, 0.1))    # the top fin faces the light…
+			K.poly(n, PackedVector2Array([Vector2(tail, r * 0.4), Vector2(tail - r * 0.9, r * 1.3), Vector2(tail - r * 0.55, 0.0)]), K.shade(D.hull, -0.5))     # …the bottom fin doesn't
+			n.draw_set_transform(Vector2(bx, by), pt, Vector2(D.stretch, 1.0))
+			K.sphere(n, Vector2.ZERO, r, D.hull, llx, lly, 0.3, D.hullDark)                    # the hull: one ball, stretched — the gradient stretches with it
+			n.draw_set_transform(Vector2(bx, by), pt, Vector2.ONE)
+			n.draw_rect(Rect2(-r * 0.5, r * 0.85, r, r * 0.35), D.gondola)                     # the gondola hangs under the belly
 			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			n.draw_rect(Rect2(bx - r * 0.5, by + r * 0.85, r, r * 0.35), D.gondola)             # the gondola hangs under the belly
 			K.label(n, b, D.label, Color(20 / 255.0, 24 / 255.0, 40 / 255.0, 0.75)) })         # dark ink: the floor is pale
 
 	return d

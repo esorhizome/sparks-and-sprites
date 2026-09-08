@@ -1063,9 +1063,12 @@ def("F", "Fjord", "far", "fogged mountain layers over still water, each mirrored
   };
 });
 
-def("I", "Icebergs", "far", "three rows of bergs over a mist band: the far row is smaller, paler, and bobs slower — one number z sets size, colour, and speed; press pans", function make(u) {
+def("I", "Icebergs", "far", "three rows of bergs over a mist band: the far row is smaller, paler, and heaves slower — one number z sets size, colour, and how quickly a berg answers the swell, overshooting the crest and tipping after it; press pans", function make(u) {
   var D = { sky: ["#4A6A9A", "#C8D8E8"], ice: "#DCEAF5", sea: "#2A4A6A", air: "#B8C8D8", mist: "#FFFFFF",
-            perRow: 5, rows: 3, seed: 21 };
+            perRow: 5, rows: 3, seed: 21,
+            swell: 2.0,              // a berg's heave rate, rad/s (√k) at z = 0.5 — the near row is quicker, the far row slower
+            damp: 0.3,               // heave damping as a fraction of critical: well under 1, so a berg overshoots the water line and settles
+            roll: 0.03 };            // radians of tilt per px/s of heave — a second spring chases the heave velocity, so a berg tips after it rises
   var R = u.rng(D.seed), bergs = [], HY = u.H * 0.55;
   for (var r = 0; r < D.rows; r++)                                       // r = 0 far … rows-1 near
     for (var i = 0; i < D.perRow; i++) {
@@ -1073,41 +1076,71 @@ def("I", "Icebergs", "far", "three rows of bergs over a mist band: the far row i
       for (var k = 0; k < n; k++) pts.push([(k / (n - 1)) * 2 - 1, -(0.2 + R() * 0.8) * Math.sin(k / (n - 1) * Math.PI)]);   // a jagged lump, unit sized
       bergs.push({ z: z, x: (i + R() * 0.8) / D.perRow, pts: pts, ph: R() * 9, s: 0.5 + R() * 0.7 });
     }
+  var nb = bergs.length, hy = new Float32Array(nb), hv = new Float32Array(nb), rl = new Float32Array(nb), rv = new Float32Array(nb);   // heave (px off the still line) + velocity, roll (radians) + velocity
+  for (var q = 0; q < nb; q++) hy[q] = Math.sin(bergs[q].ph) * (0.5 + bergs[q].z * 2.5);   // start ON the water, so nothing lurches at t = 0
   var cam = 0, aim = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
+      // the sine field is the SWELL — the water line each berg wants — and a
+      // berg is a damped spring toward it: it has mass, so it lags the crest,
+      // overshoots it, and settles back (damping well under critical). k grows
+      // with z (√k = swell · (0.5 + z)): the near row answers the water at
+      // once, the far row is slow to follow — the same z that sets size and
+      // colour sets how quickly a thing moves. the roll is a second spring
+      // whose rest is the heave VELOCITY, so a berg tips after it rises.
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, j, s;     // substeps of ≤ 0.02 s: symplectic euler wants √k·h < 2
+      var kr = 16, dr = 0.4 * 2 * Math.sqrt(kr);                          // the roll spring: k 16, damping 0.4 of critical — lags the heave
+      for (j = 0; j < nb; j++) {
+        var bg = bergs[j], zz = bg.z, w0 = D.swell * (0.5 + zz), kk = w0 * w0, dd = D.damp * 2 * w0;
+        var rest = Math.sin(t * (0.4 + zz * 0.9) + bg.ph) * (0.5 + zz * 2.5);   // the swell: near water moves faster and farther
+        for (s = 0; s < sub; s++) {
+          hv[j] += (kk * (rest - hy[j]) - dd * hv[j]) * h; hy[j] = u.clamp(hy[j] + hv[j] * h, -u.H * 0.1, u.H * 0.1);
+          rv[j] += (kr * (hv[j] * D.roll - rl[j]) - dr * rv[j]) * h; rl[j] = u.clamp(rl[j] + rv[j] * h, -0.4, 0.4);
+        }
+      }
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.sea, D.air, 0.6), D.sea]);   // the sea is paler at the horizon too
       u.ctx.fillRect(0, HY, u.W, u.H - HY);
-      for (var j = 0; j < bergs.length; j++) {
+      for (j = 0; j < nb; j++) {
         var b = bergs[j], z = b.z;
         if (j === D.perRow) {                                            // after the far row: the mist band lies over it
           u.ctx.fillStyle = u.lin(0, HY - u.H * 0.06, 0, HY + u.H * 0.1, [[0, u.rgba(D.mist, 0)], [0.5, u.rgba(D.mist, 0.7)], [1, u.rgba(D.mist, 0)]]);
           u.ctx.fillRect(0, HY - u.H * 0.06, u.W, u.H * 0.16);
         }
         var size = u.W * (0.03 + z * 0.09) * b.s;
-        var y = HY + z * z * u.H * 0.32 + Math.sin(t * (0.4 + z * 0.9) + b.ph) * (0.5 + z * 2.5);   // near bergs bob faster and farther
+        var y = HY + z * z * u.H * 0.32 + hy[j];                         // the still line plus the spring's heave
         var x = b.x * u.W + cam * (0.1 + z * 0.5) * u.W * 0.5, pts = [], k;
-        for (k = 0; k < b.pts.length; k++) pts.push([x + b.pts[k][0] * size, y - b.pts[k][1] * size * 0.3]);   // a squashed, flipped reflection first
+        var cs = Math.cos(rl[j]), sn = Math.sin(rl[j]);                  // the roll: the lump turns about its waterline
+        for (k = 0; k < b.pts.length; k++) {
+          var px = b.pts[k][0] * size, py = b.pts[k][1] * size;
+          pts.push([x + px * cs - py * sn, y - (px * sn + py * cs) * 0.3]);   // a squashed, flipped reflection first
+        }
         u.poly(pts, u.rgba(u.shade(D.ice, -0.5), 0.35));
-        for (k = 0; k < b.pts.length; k++) pts[k] = [x + b.pts[k][0] * size, y + b.pts[k][1] * size];
+        for (k = 0; k < b.pts.length; k++) {
+          var qx = b.pts[k][0] * size, qy = b.pts[k][1] * size;
+          pts[k] = [x + qx * cs - qy * sn, y + qx * sn + qy * cs];
+        }
         u.poly(pts, u.fog(D.ice, (1 - z) * 0.8, D.air));
       }
-      u.label("z does three jobs at once — size, colour toward the air, and how fast it bobs — far things are slow", u.W / 2, u.H - 8, null, "center");
+      u.label("z does three jobs at once — size, colour toward the air, and k: y'' = k·(swell − y) − damp·y', stiffer near — far things are slow", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { aim = (x / u.W - 0.5) * 2; }               // click = pan; near rows slide most
   };
 });
 
-def("K", "Knoll", "far", "rolling hills, each a gradient-filled sine, warm green near and blue-grey far — the sheep shrink with their hills; press pans the camera", function make(u) {
+def("K", "Knoll", "far", "rolling hills, each a gradient-filled sine, warm green near and blue-grey far — the sheep shrink with their hills, and amble: each picks a spot, walks there, and stands; press pans the camera", function make(u) {
   var D = { sky: ["#7AAAE0", "#DDE8F0"], grass: "#4A8A3A", air: "#B8C8DC", sheep: "#F5F2E8",
-            hills: 6, flock: 5, step: 3, seed: 33 };                      // step: how often the curve is sampled, in px
+            hills: 6, flock: 5, step: 3, seed: 33,                        // step: how often the curve is sampled, in px
+            roam: 8,                 // how far from home a sheep will pick its next spot, px on the nearest hill — the far hills shrink it
+            pace: 2.0,               // a sheep's spring toward its spot: √k, rad/s — a slow amble
+            damp: 0.6,               // as a fraction of critical: under 1, so a sheep overshoots its spot by a step and shuffles back
+            pick: 3 };               // seconds between one sheep changing its mind, give or take half
   var R = u.rng(D.seed), hills = [];
   for (var j = 0; j < D.hills; j++) {                                    // j = 0 is the farthest hill
     var h = { base: 0.38 + j * 0.1, amp: 0.03 + j * 0.012, f: 0.8 + R() * 1.2, ph: R() * 9,
               depth: D.hills > 1 ? 1 - j / (D.hills - 1) : 0, sheep: [] };
-    for (var s = 0; s < D.flock; s++) h.sheep.push([R(), R() * 9]);      // where along the hill, and a wander phase
+    for (var s = 0; s < D.flock; s++) h.sheep.push([R(), 0, 0, 0, R() * D.pick]);   // home (along the hill), offset px, velocity, the spot it picked, seconds until it picks again
     hills.push(h);
   }
   var cam = 0, aim = 0;
@@ -1115,6 +1148,13 @@ def("K", "Knoll", "far", "rolling hills, each a gradient-filled sine, warm green
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
+      // a sheep has a spot it has decided to stand on — a random step from
+      // home, re-picked every few seconds — and walks there on a damped
+      // spring: it ambles, overshoots by a step (damping under critical),
+      // shuffles back, and stands until it changes its mind. the step shrinks
+      // with the hill's depth, so the far flock barely stirs: wander is a
+      // depth cue too, and now it is a walk, not a sine.
+      var kk = D.pace * D.pace, dd = D.damp * 2 * D.pace, sub = Math.max(1, Math.ceil(dt * 50)), hh = dt / sub;   // substeps of ≤ 0.02 s
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
       for (var j = 0; j < hills.length; j++) {
         var h = hills[j], near = 1 - h.depth, shift = cam * near * u.W * 0.3;   // parallax by depth
@@ -1124,11 +1164,15 @@ def("K", "Knoll", "far", "rolling hills, each a gradient-filled sine, warm green
         for (var x = 0; x <= u.W; x += D.step) { var y = top(h, x + shift); u.ctx.lineTo(x, y); u.ctx.lineTo(x + D.step, y); }
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
         for (var s = 0; s < h.sheep.length; s++) {                       // sheep stand on the curve, so they inherit its depth
-          var sx = h.sheep[s][0] * u.W * 1.2 - u.W * 0.1 + Math.sin(t * 0.2 + h.sheep[s][1]) * 6 * near - shift, r = 0.8 + near * 2.4;
+          var sh = h.sheep[s];
+          sh[4] -= dt;
+          if (sh[4] <= 0) { sh[4] = D.pick * (0.5 + R()); sh[3] = (R() - 0.5) * 2 * D.roam * near; }   // a new spot: a step from home, shorter on far hills
+          for (var q = 0; q < sub; q++) { sh[2] += (kk * (sh[3] - sh[1]) - dd * sh[2]) * hh; sh[1] = u.clamp(sh[1] + sh[2] * hh, -D.roam * 2, D.roam * 2); }
+          var sx = sh[0] * u.W * 1.2 - u.W * 0.1 + sh[1] - shift, r = 0.8 + near * 2.4;
           u.dot(sx, top(h, sx + shift) - r * 0.5, r, u.fog(D.sheep, h.depth * 0.7, D.air));
         }
       }
-      u.label("a sheep is a dot with a depth: radius, colour, and wander all shrink with the hill it stands on", u.W / 2, u.H - 8, null, "center");
+      u.label("a sheep is a dot with a depth: radius, colour, and how far it roams all shrink with the hill — x'' = k·(spot − x) − damp·x'", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { aim = (x / u.W - 0.5) * 2; }               // click = pan the camera
   };
@@ -1485,7 +1529,8 @@ rhymeOf("Fjord", "Rose fjord", "the same fjord at a pink evening — rose air, p
 rhymeOf("Icebergs", "Lava islands", "the same three rows, values flipped — black rock on a bright lava sea, smoke for mist, seven to a row", function make(u) {
   // rhyme of Icebergs: dials moved — ice/sea/air/mist palette inverted, perRow 5 → 7
   var D = { sky: ["#1A0808", "#5A1A10"], ice: "#241816", sea: "#F5601A", air: "#8A3020", mist: "#FFB060",
-            perRow: 7, rows: 3, seed: 21 };
+            perRow: 7, rows: 3, seed: 21,
+            swell: 2.0, damp: 0.3, roll: 0.03 };                          // the same springs: heave rate, damping of critical, tilt per px/s
   var R = u.rng(D.seed), bergs = [], HY = u.H * 0.55;
   for (var r = 0; r < D.rows; r++)
     for (var i = 0; i < D.perRow; i++) {
@@ -1493,25 +1538,44 @@ rhymeOf("Icebergs", "Lava islands", "the same three rows, values flipped — bla
       for (var k = 0; k < n; k++) pts.push([(k / (n - 1)) * 2 - 1, -(0.2 + R() * 0.8) * Math.sin(k / (n - 1) * Math.PI)]);
       bergs.push({ z: z, x: (i + R() * 0.8) / D.perRow, pts: pts, ph: R() * 9, s: 0.5 + R() * 0.7 });
     }
+  var nb = bergs.length, hy = new Float32Array(nb), hv = new Float32Array(nb), rl = new Float32Array(nb), rv = new Float32Array(nb);
+  for (var q = 0; q < nb; q++) hy[q] = Math.sin(bergs[q].ph) * (0.5 + bergs[q].z * 2.5);
   var cam = 0, aim = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, j, s;
+      var kr = 16, dr = 0.4 * 2 * Math.sqrt(kr);
+      for (j = 0; j < nb; j++) {
+        var bg = bergs[j], zz = bg.z, w0 = D.swell * (0.5 + zz), kk = w0 * w0, dd = D.damp * 2 * w0;
+        var rest = Math.sin(t * (0.4 + zz * 0.9) + bg.ph) * (0.5 + zz * 2.5);
+        for (s = 0; s < sub; s++) {
+          hv[j] += (kk * (rest - hy[j]) - dd * hv[j]) * h; hy[j] = u.clamp(hy[j] + hv[j] * h, -u.H * 0.1, u.H * 0.1);
+          rv[j] += (kr * (hv[j] * D.roll - rl[j]) - dr * rv[j]) * h; rl[j] = u.clamp(rl[j] + rv[j] * h, -0.4, 0.4);
+        }
+      }
       u.sky([[0, D.sky[0]], [0.55, D.sky[1]]]);
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.sea, D.air, 0.6), D.sea]);
       u.ctx.fillRect(0, HY, u.W, u.H - HY);
-      for (var j = 0; j < bergs.length; j++) {
+      for (j = 0; j < nb; j++) {
         var b = bergs[j], z = b.z;
         if (j === D.perRow) {
           u.ctx.fillStyle = u.lin(0, HY - u.H * 0.06, 0, HY + u.H * 0.1, [[0, u.rgba(D.mist, 0)], [0.5, u.rgba(D.mist, 0.7)], [1, u.rgba(D.mist, 0)]]);
           u.ctx.fillRect(0, HY - u.H * 0.06, u.W, u.H * 0.16);
         }
         var size = u.W * (0.03 + z * 0.09) * b.s;
-        var y = HY + z * z * u.H * 0.32 + Math.sin(t * (0.4 + z * 0.9) + b.ph) * (0.5 + z * 2.5);
+        var y = HY + z * z * u.H * 0.32 + hy[j];
         var x = b.x * u.W + cam * (0.1 + z * 0.5) * u.W * 0.5, pts = [], k;
-        for (k = 0; k < b.pts.length; k++) pts.push([x + b.pts[k][0] * size, y - b.pts[k][1] * size * 0.3]);
+        var cs = Math.cos(rl[j]), sn = Math.sin(rl[j]);
+        for (k = 0; k < b.pts.length; k++) {
+          var px = b.pts[k][0] * size, py = b.pts[k][1] * size;
+          pts.push([x + px * cs - py * sn, y - (px * sn + py * cs) * 0.3]);
+        }
         u.poly(pts, u.rgba(u.shade(D.ice, -0.5), 0.35));
-        for (k = 0; k < b.pts.length; k++) pts[k] = [x + b.pts[k][0] * size, y + b.pts[k][1] * size];
+        for (k = 0; k < b.pts.length; k++) {
+          var qx = b.pts[k][0] * size, qy = b.pts[k][1] * size;
+          pts[k] = [x + qx * cs - qy * sn, y + qx * sn + qy * cs];
+        }
         u.poly(pts, u.fog(D.ice, (1 - z) * 0.8, D.air));
       }
       u.label("dark on bright instead of bright on dark — z still runs the show: size, smoke, and speed", u.W / 2, u.H - 8, null, "center");
@@ -1523,12 +1587,13 @@ rhymeOf("Icebergs", "Lava islands", "the same three rows, values flipped — bla
 rhymeOf("Knoll", "Pixel knoll", "the same hills sampled every 22 px — three chunky staircases in arcade green, two sheep each", function make(u) {
   // rhyme of Knoll: dials moved — step 3 → 22, hills 6 → 3, flock 5 → 2, palette to arcade
   var D = { sky: ["#3A78F0", "#9AE0FF"], grass: "#3AC83A", air: "#7AB8F0", sheep: "#FFFFFF",
-            hills: 3, flock: 2, step: 22, seed: 33 };
+            hills: 3, flock: 2, step: 22, seed: 33,
+            roam: 8, pace: 2.0, damp: 0.6, pick: 3 };                    // the same amble: roam px, spring rate, damping of critical, seconds between spots
   var R = u.rng(D.seed), hills = [];
   for (var j = 0; j < D.hills; j++) {
     var h = { base: 0.38 + j * 0.1, amp: 0.03 + j * 0.012, f: 0.8 + R() * 1.2, ph: R() * 9,
               depth: D.hills > 1 ? 1 - j / (D.hills - 1) : 0, sheep: [] };
-    for (var s = 0; s < D.flock; s++) h.sheep.push([R(), R() * 9]);
+    for (var s = 0; s < D.flock; s++) h.sheep.push([R(), 0, 0, 0, R() * D.pick]);
     hills.push(h);
   }
   var cam = 0, aim = 0;
@@ -1536,6 +1601,7 @@ rhymeOf("Knoll", "Pixel knoll", "the same hills sampled every 22 px — three ch
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       cam += (aim - cam) * Math.min(1, dt * 3);
+      var kk = D.pace * D.pace, dd = D.damp * 2 * D.pace, sub = Math.max(1, Math.ceil(dt * 50)), hh = dt / sub;
       u.sky([[0, D.sky[0]], [0.6, D.sky[1]]]);
       for (var j = 0; j < hills.length; j++) {
         var h = hills[j], near = 1 - h.depth, shift = cam * near * u.W * 0.3;
@@ -1545,7 +1611,11 @@ rhymeOf("Knoll", "Pixel knoll", "the same hills sampled every 22 px — three ch
         for (var x = 0; x <= u.W; x += D.step) { var y = top(h, x + shift); u.ctx.lineTo(x, y); u.ctx.lineTo(x + D.step, y); }
         u.ctx.lineTo(u.W, u.H); u.ctx.closePath(); u.ctx.fill();
         for (var s = 0; s < h.sheep.length; s++) {
-          var sx = h.sheep[s][0] * u.W * 1.2 - u.W * 0.1 + Math.sin(t * 0.2 + h.sheep[s][1]) * 6 * near - shift, r = 0.8 + near * 2.4;
+          var sh = h.sheep[s];
+          sh[4] -= dt;
+          if (sh[4] <= 0) { sh[4] = D.pick * (0.5 + R()); sh[3] = (R() - 0.5) * 2 * D.roam * near; }
+          for (var q = 0; q < sub; q++) { sh[2] += (kk * (sh[3] - sh[1]) - dd * sh[2]) * hh; sh[1] = u.clamp(sh[1] + sh[2] * hh, -D.roam * 2, D.roam * 2); }
+          var sx = sh[0] * u.W * 1.2 - u.W * 0.1 + sh[1] - shift, r = 0.8 + near * 2.4;
           u.dot(sx, top(h, sx + shift) - r * 0.5, r, u.fog(D.sheep, h.depth * 0.7, D.air));
         }
       }
@@ -1853,39 +1923,67 @@ def("D", "Dome", "round", "a hemisphere on a plinth: half a shaded ball above a 
   };
 });
 
-def("E", "Egg", "round", "an egg is a ball under ctx.scale(0.76, 1): the same offset gradient, squeezed — a warm shadow side, a soft ground shadow, and a slow rock", function make(u) {
+def("E", "Egg", "round", "an egg is a ball under ctx.scale(0.76, 1): the same offset gradient, squeezed — a warm shadow side, a soft ground shadow, and a rock that rings down like a real egg on its base; a press flicks it", function make(u) {
   var D = { bg: ["#EAD8C0", "#C8A888"], shell: "#F2E4CC", dark: "#8A5A3A", spec: 0.4,   // dark: the shadow side — warm, because the ground bounces light into it
-            squeeze: 0.76, rock: 1.3, lx: -0.5, ly: -0.6 };                           // squeeze: width ÷ height; rock: how fast it sways
+            squeeze: 0.76, lx: -0.5, ly: -0.6,                                        // squeeze: width ÷ height
+            rock: 5.2,               // the rocking rate, rad/s: √k — an egg on its curved base has a definite period (2π/rock)
+            damp: 0.15,              // as a fraction of critical: well under 1, so each rock is a little smaller than the last
+            kick: 1.5,               // the angular velocity a press flicks in, rad/s
+            idle: 4 };               // seconds between the small random nudges that keep it rocking between presses
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3, GY = cy + r * 1.02;
+  var ang = 0.12, av = 0, cool = 0, nudge = D.idle * 0.5;                              // the rock: angle, angular velocity, the press cooldown, seconds to the next nudge
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#8A6A50");
-      var a = Math.sin(t * D.rock) * 0.12;                                             // the sway, in radians
+      // an egg on its curved base is a pendulum: tip it and gravity rights
+      // it, but it overshoots and rocks back, each swing a little smaller — a
+      // damped spring on the angle, k = rock², damping a fraction of critical.
+      // a press is a flick: it adds angular velocity, never sets the angle; a
+      // small random nudge every few seconds keeps it alive between presses.
+      var k = D.rock * D.rock, d = D.damp * 2 * D.rock, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of ≤ 0.02 s
+      cool -= dt; nudge -= dt;
+      if (nudge <= 0) { nudge = D.idle * u.rand(0.6, 1.4); av += u.rand(-0.5, 0.5) * D.kick; }
+      for (var s = 0; s < sub; s++) { av += (-k * ang - d * av) * h; ang = u.clamp(ang + av * h, -0.55, 0.55); }
+      var a = ang;                                                                     // the rock, in radians
       var llx = D.lx * Math.cos(a) + D.ly * Math.sin(a), lly = -D.lx * Math.sin(a) + D.ly * Math.cos(a);   // the light, seen from the egg's own tilted frame
       u.shadow(cx - D.lx * r * 0.5 + a * r * 2, GY, r * 0.9, r * 0.2, 0.4);
       u.ctx.save(); u.ctx.translate(cx, cy); u.ctx.rotate(a); u.ctx.scale(D.squeeze, 1);
       u.sphere(0, 0, r, D.shell, llx, lly, { dark: D.dark, spec: D.spec });           // one ball, squeezed: the gradient squeezes with it
       u.ctx.restore();
-      u.label("the shadow side is warm, not black — bounced light fills it; the highlight stays with the lamp, not the egg", u.W / 2, u.H - 8, null, "center");
+      u.label("the shadow side is warm, not black — bounced light fills it; the highlight stays with the lamp, not the egg (θ'' = −rock²·θ − damp·θ')", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.lx = u.clamp((x - cx) / (r * 1.6), -1, 1); D.ly = u.clamp((y - cy) / (r * 1.6), -1, 1); }
+    press: function (x, y) {                                                           // click = move the lamp, and flick the egg away from the pointer
+      D.lx = u.clamp((x - cx) / (r * 1.6), -1, 1); D.ly = u.clamp((y - cy) / (r * 1.6), -1, 1);
+      if (cool <= 0) { av += (x < cx ? 1 : -1) * D.kick; cool = 0.4; }               // one flick per press, not one per dragged frame
+    }
   };
 });
 
-def("E", "Eyeball", "round", "a white ball with an iris disc that slides to look at you — the pupil moves, the highlight stays put on the light's side, and that difference sells the roundness", function make(u) {
+def("E", "Eyeball", "round", "a white ball with an iris disc that saccades to look at you — the pupil overshoots a touch and settles, the highlight stays put on the light's side, and that difference sells the roundness", function make(u) {
   var D = { bg: ["#2A1E3A", "#120C1E"], white: "#F2EEF0", hue: 200, asp: 1.0,   // hue: the iris; asp: pupil width ÷ height — 1 is round, 0.25 is a cat's slit
-            lx: -0.5, ly: -0.55, follow: 6 };                                  // follow: how quickly the eye catches up with where it wants to look
+            lx: -0.5, ly: -0.55,
+            follow: 6,               // how quickly the eye turns: √k, rad/s — the pupil's spring toward where it wants to look
+            damp: 0.6 };             // as a fraction of critical: under 1, so a saccade overshoots by a few percent and settles
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3;
-  var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1;                                 // where it wants to look, and where the pupil actually is (it lags)
+  var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1, vx = 0, vy = 0;                 // where it wants to look, where the pupil actually is, and how fast it is moving
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(cy + r * 1.1, "#0C0A16");
       u.shadow(cx - D.lx * r * 0.6, cy + r * 1.1, r * 1.05, r * 0.25, 0.5);
       u.sphere(cx, cy, r, D.white, D.lx, D.ly, { spec: 0.15, dark: "#8A7A8A" });
-      var k = Math.min(1, dt * D.follow); px += (tx - px) * k; py += (ty - py) * k;
-      var d = Math.sqrt(px * px + py * py), sq = 1 - 0.35 * d, ang = Math.atan2(py, px);   // the iris foreshortens as it turns toward the edge
+      // the pupil is a damped spring on its position (Yolk's spring, in two
+      // axes): a press moves the TARGET, the pupil accelerates toward it,
+      // overshoots by a few percent because the damping is under critical,
+      // and settles — a saccade. Cat eye's higher follow is a stiffer spring:
+      // the same overshoot, over in half the time — snap and settle.
+      var k = D.follow * D.follow, d = D.damp * 2 * D.follow, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of ≤ 0.02 s
+      for (var s = 0; s < sub; s++) {
+        vx += (k * (tx - px) - d * vx) * h; vy += (k * (ty - py) - d * vy) * h;
+        px = u.clamp(px + vx * h, -1.1, 1.1); py = u.clamp(py + vy * h, -1.1, 1.1);
+      }
+      var dd = Math.sqrt(px * px + py * py), sq = 1 - 0.35 * dd, ang = Math.atan2(py, px);   // the iris foreshortens as it turns toward the edge
       var ix = cx + px * r * 0.5, iy = cy + py * r * 0.5, ir = r * 0.42;
       u.ctx.save(); u.ctx.translate(ix, iy);
       u.ctx.rotate(ang); u.ctx.scale(sq, 1); u.ctx.rotate(-ang);                            // squeeze along the look direction only
@@ -2100,30 +2198,54 @@ def("Y", "Yolk", "round", "a fried egg: the white is a radial gradient that fade
   };
 });
 
-def("Z", "Zeppelin", "round", "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — and a faint shadow on the cloud floor far below", function make(u) {
+def("Z", "Zeppelin", "round", "an airship is a ball under ctx.scale(2.4, 1): one stretched radial gradient, a gondola, two fins — all lit from one side — riding the air on a spring, nose tipping up as it climbs, and a faint shadow on the cloud floor far below", function make(u) {
   var D = { sky: ["#6FA8E8", "#CFE6F5"], hull: "#D8D0C0", hullDark: "#4A5060", gondola: "#3A3038",   // hullDark: the shadow side, cool because the sky lights it
-            stretch: 2.4, speed: 1.0, lx: -0.5, ly: -0.6 };                                          // stretch: length ÷ height; speed: the drift
+            stretch: 2.4, speed: 1.0, lx: -0.5, ly: -0.6,                                            // stretch: length ÷ height; speed: the drift
+            buoy: 4,                 // the hull's spring toward the air it floats in: k — how stiffly it holds its height
+            damp: 0.35,              // as a fraction of critical: under 1, so the hull overshoots each gust and settles back
+            pitch: 0.25,             // radians of nose-up per hull-height-per-second of climb — a second spring chases the vertical velocity
+            gust: 0.7 };             // the slow air's rate, rad/s — the rest the bob chases (a sine of the clock is the INPUT, not the answer)
   var r = Math.min(u.W, u.H) * 0.11, cy = u.H * 0.4, GY = u.H * 0.78;
   var R = u.rng(6), puffs = [];
   for (var j = 0; j < 12; j++) puffs.push([R() * u.W, GY + R() * (u.H - GY) * 0.6, u.W * (0.06 + R() * 0.08)]);
+  var bob = 0, bv = 0, pt = 0, pv = 0, cool = 0;                                                    // the bob (px off cy) + velocity, the pitch (radians) + velocity, the press cooldown
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ctx.fillStyle = u.lin(0, GY - 10, 0, u.H, ["#F5F7FA", "#B8C8DC"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);   // the cloud floor
       for (var j = 0; j < puffs.length; j++) u.soft(puffs[j][0], puffs[j][1], puffs[j][2], "#FFFFFF", 0.7);
+      // the airship floats on a spring: the slow gust is the REST (the air
+      // it wants to sit in), and the hull chases it with mass — under-damped,
+      // so it overshoots each rise and settles back. the pitch is a second,
+      // quicker spring whose rest is the climb rate, so the nose tips up while
+      // it rises and drops after the top: follow-through, not decoration.
+      var rest = (Math.sin(t * D.gust) + 0.4 * Math.sin(t * D.gust * 2.3 + 1)) * r * 0.25;      // the gust: two slow sines, the air's own motion
+      var k = D.buoy, d = D.damp * 2 * Math.sqrt(k), kp = 9, dp = 0.5 * 2 * 3;                   // the pitch spring: k 9, half critical — it lags the climb
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;                                  // substeps of ≤ 0.02 s
+      cool -= dt;
+      for (var s = 0; s < sub; s++) {
+        bv += (k * (rest - bob) - d * bv) * h; bob = u.clamp(bob + bv * h, -r, r);
+        pv += (kp * (bv / r * D.pitch - pt) - dp * pv) * h; pt = u.clamp(pt + pv * h, -0.35, 0.35);   // climbing is bv < 0 on screen, so the nose (at +x) lifts
+      }
       var span = u.W + r * D.stretch * 2.6, bx = ((t * D.speed * 40) % span) - r * D.stretch * 1.3;               // drifts across, then wraps
-      var by = cy + Math.sin(t * 0.7) * r * 0.25;
+      var by = cy + bob;
+      var llx = D.lx * Math.cos(pt) + D.ly * Math.sin(pt), lly = -D.lx * Math.sin(pt) + D.ly * Math.cos(pt);       // the light, seen from the tilted hull
       u.shadow(bx - D.lx * r * 0.5, GY + 6, r * D.stretch * 0.9, r * 0.28, 0.18);                                  // far below: faint and soft, like the clouds it lands on
-      var tail = bx - r * D.stretch * 0.75;
-      u.poly([[tail, by - r * 0.4], [tail - r * 0.9, by - r * 1.3], [tail - r * 0.55, by]], u.shade(D.hull, 0.1));    // the top fin faces the light…
-      u.poly([[tail, by + r * 0.4], [tail - r * 0.9, by + r * 1.3], [tail - r * 0.55, by]], u.shade(D.hull, -0.5));   // …the bottom fin doesn't
-      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.scale(D.stretch, 1);
-      u.sphere(0, 0, r, D.hull, D.lx, D.ly, { dark: D.hullDark, spec: 0.3 });                                       // the hull: one ball, stretched — the gradient stretches with it
+      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.rotate(pt);                                                       // the whole ship pitches together
+      var tail = -r * D.stretch * 0.75;
+      u.poly([[tail, -r * 0.4], [tail - r * 0.9, -r * 1.3], [tail - r * 0.55, 0]], u.shade(D.hull, 0.1));            // the top fin faces the light…
+      u.poly([[tail, r * 0.4], [tail - r * 0.9, r * 1.3], [tail - r * 0.55, 0]], u.shade(D.hull, -0.5));             // …the bottom fin doesn't
+      u.ctx.save(); u.ctx.scale(D.stretch, 1);
+      u.sphere(0, 0, r, D.hull, llx, lly, { dark: D.hullDark, spec: 0.3 });                                         // the hull: one ball, stretched — the gradient stretches with it
       u.ctx.restore();
-      u.ctx.fillStyle = D.gondola; u.ctx.fillRect(bx - r * 0.5, by + r * 0.85, r, r * 0.35);                        // the gondola hangs under the belly
-      u.label("one light for everything: hull, fins and gondola agree, and the shadow is faint because the floor is far", u.W / 2, u.H - 8, "rgba(20,24,40,0.75)", "center");   // dark ink: the floor is pale
+      u.ctx.fillStyle = D.gondola; u.ctx.fillRect(-r * 0.5, r * 0.85, r, r * 0.35);                                // the gondola hangs under the belly
+      u.ctx.restore();
+      u.label("one light for everything: hull, fins and gondola agree, and the shadow is faint because the floor is far — y'' = buoy·(gust − y) − damp·y'", u.W / 2, u.H - 8, "rgba(20,24,40,0.75)", "center");   // dark ink: the floor is pale
     },
-    press: function (x, y) { D.lx = u.clamp((x - u.W / 2) / (u.W * 0.5), -1, 1); D.ly = u.clamp((y - cy) / (r * 3), -1, 1); }
+    press: function (x, y) {                                                                                         // click = move the lamp, and an updraft under the hull
+      D.lx = u.clamp((x - u.W / 2) / (u.W * 0.5), -1, 1); D.ly = u.clamp((y - cy) / (r * 3), -1, 1);
+      if (cool <= 0) { bv -= r * 1.5; cool = 1.2; }                                                                 // one lift per press, not one per dragged frame
+    }
   };
 });
 
@@ -2199,40 +2321,53 @@ rhymeOf("Dome", "Observatory", "the same dome at night, steel-blue, with one dar
 });
 
 rhymeOf("Egg", "Dragon egg", "the same egg in dark red lacquer with a hotter highlight, narrower and slower — a fantasy prop", function make(u) {
-  // rhyme of Egg: dials moved — shell/dark/bg palette to dark red, spec 0.4 → 0.9, squeeze 0.76 → 0.72, rock 1.3 → 0.6
+  // rhyme of Egg: dials moved — shell/dark/bg palette to dark red, spec 0.4 → 0.9, squeeze 0.76 → 0.72, rock 5.2 → 3.0 (a heavier egg rocks slower)
   var D = { bg: ["#2A0A10", "#0C0406"], shell: "#7A1424", dark: "#200408", spec: 0.9,
-            squeeze: 0.72, rock: 0.6, lx: -0.5, ly: -0.6 };
+            squeeze: 0.72, lx: -0.5, ly: -0.6,
+            rock: 3.0, damp: 0.15, kick: 1.5, idle: 4 };                              // the same spring, slower: rate rad/s, damping of critical, flick rad/s, nudge seconds
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3, GY = cy + r * 1.02;
+  var ang = 0.12, av = 0, cool = 0, nudge = D.idle * 0.5;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(GY, "#8A6A50");
-      var a = Math.sin(t * D.rock) * 0.12;                                             // the sway, in radians
+      var k = D.rock * D.rock, d = D.damp * 2 * D.rock, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      cool -= dt; nudge -= dt;
+      if (nudge <= 0) { nudge = D.idle * u.rand(0.6, 1.4); av += u.rand(-0.5, 0.5) * D.kick; }
+      for (var s = 0; s < sub; s++) { av += (-k * ang - d * av) * h; ang = u.clamp(ang + av * h, -0.55, 0.55); }
+      var a = ang;                                                                     // the rock, in radians
       var llx = D.lx * Math.cos(a) + D.ly * Math.sin(a), lly = -D.lx * Math.sin(a) + D.ly * Math.cos(a);   // the light, seen from the egg's own tilted frame
       u.shadow(cx - D.lx * r * 0.5 + a * r * 2, GY, r * 0.9, r * 0.2, 0.4);
       u.ctx.save(); u.ctx.translate(cx, cy); u.ctx.rotate(a); u.ctx.scale(D.squeeze, 1);
       u.sphere(0, 0, r, D.shell, llx, lly, { dark: D.dark, spec: D.spec });           // one ball, squeezed: the gradient squeezes with it
       u.ctx.restore();
-      u.label("a darker shell with a hotter highlight reads as lacquer — spec is the material dial", u.W / 2, u.H - 8, null, "center");
+      u.label("a darker shell with a hotter highlight reads as lacquer — spec is the material dial; a slower rock reads as heavier", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.lx = u.clamp((x - cx) / (r * 1.6), -1, 1); D.ly = u.clamp((y - cy) / (r * 1.6), -1, 1); }
+    press: function (x, y) {
+      D.lx = u.clamp((x - cx) / (r * 1.6), -1, 1); D.ly = u.clamp((y - cy) / (r * 1.6), -1, 1);
+      if (cool <= 0) { av += (x < cx ? 1 : -1) * D.kick; cool = 0.4; }
+    }
   };
 });
 
 rhymeOf("Eyeball", "Cat eye", "the same eye in yellow-green with a slit pupil (an ellipse squeezed to a quarter width) that snaps to the pointer", function make(u) {
-  // rhyme of Eyeball: dials moved — hue 200 → 85, asp 1.0 → 0.25, white → cream, follow 6 → 12
+  // rhyme of Eyeball: dials moved — hue 200 → 85, asp 1.0 → 0.25, white → cream, follow 6 → 12 (a stiffer spring: snap and settle)
   var D = { bg: ["#1A1A0E", "#0A0A06"], white: "#E8E0C8", hue: 85, asp: 0.25,
-            lx: -0.5, ly: -0.55, follow: 12 };
+            lx: -0.5, ly: -0.55, follow: 12, damp: 0.6 };
   var cx = u.W * 0.5, cy = u.H * 0.47, r = Math.min(u.W, u.H) * 0.3;
-  var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1;                                 // where it wants to look, and where the pupil actually is (it lags)
+  var tx = 0.25, ty = 0.1, px = 0.25, py = 0.1, vx = 0, vy = 0;                 // where it wants to look, where the pupil actually is, and how fast it is moving
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.bg);
       u.ground(cy + r * 1.1, "#0C0A16");
       u.shadow(cx - D.lx * r * 0.6, cy + r * 1.1, r * 1.05, r * 0.25, 0.5);
       u.sphere(cx, cy, r, D.white, D.lx, D.ly, { spec: 0.15, dark: "#8A7A8A" });
-      var k = Math.min(1, dt * D.follow); px += (tx - px) * k; py += (ty - py) * k;
-      var d = Math.sqrt(px * px + py * py), sq = 1 - 0.35 * d, ang = Math.atan2(py, px);   // the iris foreshortens as it turns toward the edge
+      var k = D.follow * D.follow, d = D.damp * 2 * D.follow, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        vx += (k * (tx - px) - d * vx) * h; vy += (k * (ty - py) - d * vy) * h;
+        px = u.clamp(px + vx * h, -1.1, 1.1); py = u.clamp(py + vy * h, -1.1, 1.1);
+      }
+      var dd = Math.sqrt(px * px + py * py), sq = 1 - 0.35 * dd, ang = Math.atan2(py, px);   // the iris foreshortens as it turns toward the edge
       var ix = cx + px * r * 0.5, iy = cy + py * r * 0.5, ir = r * 0.42;
       u.ctx.save(); u.ctx.translate(ix, iy);
       u.ctx.rotate(ang); u.ctx.scale(sq, 1); u.ctx.rotate(-ang);                            // squeeze along the look direction only
@@ -2457,28 +2592,44 @@ rhymeOf("Yolk", "Quail yolk", "the same fried egg at two-thirds size with 30 spe
 rhymeOf("Zeppelin", "Steampunk zeppelin", "the same airship in brass under a sepia sky, longer and drifting at half speed — Victorian sci-fi", function make(u) {
   // rhyme of Zeppelin: dials moved — sky/hull/hullDark/gondola palette to brass + sepia, stretch 2.4 → 2.8, speed 0.6 → 0.25
   var D = { sky: ["#A88A5A", "#E8D8B8"], hull: "#B8863A", hullDark: "#3A2810", gondola: "#4A3018",
-            stretch: 2.8, speed: 0.25, lx: -0.5, ly: -0.6 };
+            stretch: 2.8, speed: 0.25, lx: -0.5, ly: -0.6,
+            buoy: 4, damp: 0.35, pitch: 0.25, gust: 0.7 };                                       // the same springs: bob stiffness, damping of critical, nose-up per climb, the air's rate
   var r = Math.min(u.W, u.H) * 0.11, cy = u.H * 0.4, GY = u.H * 0.78;
   var R = u.rng(6), puffs = [];
   for (var j = 0; j < 12; j++) puffs.push([R() * u.W, GY + R() * (u.H - GY) * 0.6, u.W * (0.06 + R() * 0.08)]);
+  var bob = 0, bv = 0, pt = 0, pv = 0, cool = 0;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ctx.fillStyle = u.lin(0, GY - 10, 0, u.H, ["#F5F7FA", "#B8C8DC"]); u.ctx.fillRect(0, GY, u.W, u.H - GY);   // the cloud floor
       for (var j = 0; j < puffs.length; j++) u.soft(puffs[j][0], puffs[j][1], puffs[j][2], "#FFFFFF", 0.7);
+      var rest = (Math.sin(t * D.gust) + 0.4 * Math.sin(t * D.gust * 2.3 + 1)) * r * 0.25;
+      var k = D.buoy, d = D.damp * 2 * Math.sqrt(k), kp = 9, dp = 0.5 * 2 * 3;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      cool -= dt;
+      for (var s = 0; s < sub; s++) {
+        bv += (k * (rest - bob) - d * bv) * h; bob = u.clamp(bob + bv * h, -r, r);
+        pv += (kp * (bv / r * D.pitch - pt) - dp * pv) * h; pt = u.clamp(pt + pv * h, -0.35, 0.35);
+      }
       var span = u.W + r * D.stretch * 2.6, bx = ((t * D.speed * 40) % span) - r * D.stretch * 1.3;               // drifts across, then wraps
-      var by = cy + Math.sin(t * 0.7) * r * 0.25;
+      var by = cy + bob;
+      var llx = D.lx * Math.cos(pt) + D.ly * Math.sin(pt), lly = -D.lx * Math.sin(pt) + D.ly * Math.cos(pt);
       u.shadow(bx - D.lx * r * 0.5, GY + 6, r * D.stretch * 0.9, r * 0.28, 0.18);                                  // far below: faint and soft, like the clouds it lands on
-      var tail = bx - r * D.stretch * 0.75;
-      u.poly([[tail, by - r * 0.4], [tail - r * 0.9, by - r * 1.3], [tail - r * 0.55, by]], u.shade(D.hull, 0.1));    // the top fin faces the light…
-      u.poly([[tail, by + r * 0.4], [tail - r * 0.9, by + r * 1.3], [tail - r * 0.55, by]], u.shade(D.hull, -0.5));   // …the bottom fin doesn't
-      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.scale(D.stretch, 1);
-      u.sphere(0, 0, r, D.hull, D.lx, D.ly, { dark: D.hullDark, spec: 0.3 });                                       // the hull: one ball, stretched — the gradient stretches with it
+      u.ctx.save(); u.ctx.translate(bx, by); u.ctx.rotate(pt);
+      var tail = -r * D.stretch * 0.75;
+      u.poly([[tail, -r * 0.4], [tail - r * 0.9, -r * 1.3], [tail - r * 0.55, 0]], u.shade(D.hull, 0.1));            // the top fin faces the light…
+      u.poly([[tail, r * 0.4], [tail - r * 0.9, r * 1.3], [tail - r * 0.55, 0]], u.shade(D.hull, -0.5));             // …the bottom fin doesn't
+      u.ctx.save(); u.ctx.scale(D.stretch, 1);
+      u.sphere(0, 0, r, D.hull, llx, lly, { dark: D.hullDark, spec: 0.3 });                                         // the hull: one ball, stretched — the gradient stretches with it
       u.ctx.restore();
-      u.ctx.fillStyle = D.gondola; u.ctx.fillRect(bx - r * 0.5, by + r * 0.85, r, r * 0.35);                        // the gondola hangs under the belly
+      u.ctx.fillStyle = D.gondola; u.ctx.fillRect(-r * 0.5, r * 0.85, r, r * 0.35);                                // the gondola hangs under the belly
+      u.ctx.restore();
       u.label("brass and sepia, a longer hull, half the drift — the stretched gradient stretches as far as you like", u.W / 2, u.H - 8, "rgba(20,24,40,0.75)", "center");   // dark ink: the floor is pale
     },
-    press: function (x, y) { D.lx = u.clamp((x - u.W / 2) / (u.W * 0.5), -1, 1); D.ly = u.clamp((y - cy) / (r * 3), -1, 1); }
+    press: function (x, y) {
+      D.lx = u.clamp((x - u.W / 2) / (u.W * 0.5), -1, 1); D.ly = u.clamp((y - cy) / (r * 3), -1, 1);
+      if (cool <= 0) { bv -= r * 1.5; cool = 1.2; }
+    }
   };
 });
 /* ============================== FACETS & BLOCKS ==============================
@@ -3770,23 +3921,48 @@ def("K", "Kiln", "light", "a chamber glowing from within: a hot radial inside a 
   };
 });
 
-def("L", "Lantern", "light", "a paper lantern: a warm gradient shell with dark ribs, lit by a core inside, swaying on a string — the pool of light on the ground moves with it", function make(u) {
+def("L", "Lantern", "light", "a paper lantern: a warm gradient shell with dark ribs, lit by a core inside, hanging from a hook as a real pendulum — press to move the hook and the lantern trails behind, swings through and rings down; the pool of light on the ground moves with it", function make(u) {
   var D = { sky: ["#0A0818", "#1A1030"], paper: "#FF8A3A", core: "#FFF0C0", ribs: 7,
-            sway: 1.0, count: 1, rise: 0 };                                  // rise > 0: the lanterns float upward and wrap
+            sway: 1.0, count: 1, rise: 0,                                    // sway: how hard the breeze pushes; rise > 0: the lanterns float upward and wrap
+            swing: 2.2,              // the pendulum's natural rate, rad/s: √(g/L) — set by the string, not by the clock
+            damp: 0.18,              // as a fraction of critical: well under 1, so a lantern rings down over several swings
+            hook: 3,                 // the hook's own spring toward where a press asked for: k (critically damped, so it eases and never overshoots)
+            wind: 0.5 };             // the breeze's push on a lantern, rad/s², times sway — the only thing that stirs it between presses
   var px = u.W * 0.5, py = u.H * 0.12, GY = u.H * 0.82;
+  var ht = px, hv = 0;                                                       // where the hook is asked to be, and how fast it is moving
+  var nl = Math.max(1, D.count), th = new Float32Array(nl), om = new Float32Array(nl);   // each lantern's angle from the vertical + angular velocity
+  for (var q = 0; q < nl; q++) th[q] = 0.12 * (q % 2 ? -1 : 1);
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, "#0C0A14");
+      // each lantern is a real pendulum: θ'' = −(g/L)·sin θ − c·θ' − (a_hook/L)·cos θ.
+      // gravity rights it (g/L = swing²), a little damping bleeds each swing,
+      // and the hook's own ACCELERATION drives it: a press does not move the
+      // hook — it moves the hook's target, the hook springs there (critically
+      // damped, so it eases), and the lantern, left behind, swings out and
+      // rings down. a soft breeze (two slow sines: an input, not the answer)
+      // keeps the lanterns stirring between presses.
+      var L = u.H * 0.32, g = D.swing * D.swing, cc = D.damp * 2 * D.swing, kh = D.hook, dh = 2 * Math.sqrt(kh);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, s, i;        // substeps of ≤ 0.02 s: symplectic euler wants √k·h < 2
+      for (s = 0; s < sub; s++) {
+        var ah = kh * (ht - px) - dh * hv;                                  // the hook's acceleration this step — what the string passes down
+        hv += ah * h; px += hv * h;
+        for (i = 0; i < nl; i++) {
+          var breeze = D.wind * D.sway * (0.6 * Math.sin(t * 0.9 + i * 2) + 0.4 * Math.sin(t * 1.7 + i));
+          om[i] += (-g * Math.sin(th[i]) - cc * om[i] - ah / L * Math.cos(th[i]) + breeze) * h;
+          th[i] = u.clamp(th[i] + om[i] * h, -1.2, 1.2);
+        }
+      }
       var c = u.ctx, rw = u.W * 0.085, rh = u.H * 0.12;
-      for (var i = 0; i < D.count; i++) {
-        var ang = Math.sin(t * 1.4 * D.sway + i * 2) * 0.18 * D.sway, L = u.H * 0.32;   // a pendulum: angle is a sine
-        var lx = px + (i - (D.count - 1) / 2) * u.W * 0.17 + Math.sin(ang) * L;
+      for (i = 0; i < nl; i++) {
+        var ang = th[i];
+        var hook = px + (i - (nl - 1) / 2) * u.W * 0.17, lx = hook + Math.sin(ang) * L;
         var ly = py + Math.cos(ang) * L - D.rise * ((t * 0.06 + i * 0.37) % 1) * u.H * 0.5;
         var hk = u.clamp((GY - ly - rh) / (u.H * 0.6), 0, 1);              // how high above the ground: 0 low, 1 high
         c.save(); c.translate(lx, GY); c.scale(1, 0.3);                     // the pool: wider and fainter the higher the lamp
         u.soft(0, 0, u.W * (0.15 + hk * 0.3), D.paper, 0.55 * (1 - hk)); c.restore();
-        if (!D.rise) u.line(px + (i - (D.count - 1) / 2) * u.W * 0.17, py, lx, ly - rh, "rgba(232,229,244,0.35)", 1);   // the string
+        if (!D.rise) u.line(hook, py, lx, ly - rh, "rgba(232,229,244,0.35)", 1);   // the string
         c.globalCompositeOperation = "lighter";
         u.soft(lx, ly, rw * 3, D.paper, 0.35);                              // the halo round the shell
         c.globalCompositeOperation = "source-over";
@@ -3800,9 +3976,9 @@ def("L", "Lantern", "light", "a paper lantern: a warm gradient shell with dark r
         c.restore();
         c.fillStyle = "#2A1A14"; c.fillRect(lx - rw * 0.3, ly - rh - 3, rw * 0.6, 4); c.fillRect(lx - rw * 0.3, ly + rh - 1, rw * 0.6, 4);   // cap and base
       }
-      u.label("a shell is a radial with the core inside it; the pool below is the same light, arriving late", u.W / 2, u.H - 8, null, "center");
+      u.label("a shell is a radial with the core inside it; the pool below is the same light, arriving late — θ'' = −swing²·sin θ − damp·θ' − a_hook/L·cos θ", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { px = x; }                                     // click = move the hook; the pool follows
+    press: function (x, y) { ht = x; }                                     // click = ask the hook to go there; it eases, the lantern trails, the pool follows
   };
 });
 
@@ -4163,23 +4339,38 @@ rhymeOf("Kiln", "Iron forge", "the same chamber running hotter — blue-white he
 });
 
 rhymeOf("Lantern", "Sky lanterns", "the same shell five times, cut loose and rising — no strings, gentler sway, and the pools on the ground widening and fading as they climb", function make(u) {
-  // rhyme of Lantern: dials moved — count 1 → 5, rise 0 → 1, sway 1.0 → 0.5, paper colour
+  // rhyme of Lantern: dials moved — count 1 → 5, rise 0 → 1, sway 1.0 → 0.5 (half the breeze), paper colour
   var D = { sky: ["#0A0818", "#1A1030"], paper: "#FFB050", core: "#FFF0C0", ribs: 7,
-            sway: 0.5, count: 5, rise: 1 };
+            sway: 0.5, count: 5, rise: 1,
+            swing: 2.2, damp: 0.18, hook: 3, wind: 0.5 };                    // the same pendulum: rate rad/s, damping of critical, the hook's k, the breeze rad/s²
   var px = u.W * 0.5, py = u.H * 0.12, GY = u.H * 0.82;
+  var ht = px, hv = 0;
+  var nl = Math.max(1, D.count), th = new Float32Array(nl), om = new Float32Array(nl);
+  for (var q = 0; q < nl; q++) th[q] = 0.12 * (q % 2 ? -1 : 1);
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       u.ground(GY, "#0C0A14");
+      var L = u.H * 0.32, g = D.swing * D.swing, cc = D.damp * 2 * D.swing, kh = D.hook, dh = 2 * Math.sqrt(kh);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, s, i;
+      for (s = 0; s < sub; s++) {
+        var ah = kh * (ht - px) - dh * hv;
+        hv += ah * h; px += hv * h;
+        for (i = 0; i < nl; i++) {
+          var breeze = D.wind * D.sway * (0.6 * Math.sin(t * 0.9 + i * 2) + 0.4 * Math.sin(t * 1.7 + i));
+          om[i] += (-g * Math.sin(th[i]) - cc * om[i] - ah / L * Math.cos(th[i]) + breeze) * h;
+          th[i] = u.clamp(th[i] + om[i] * h, -1.2, 1.2);
+        }
+      }
       var c = u.ctx, rw = u.W * 0.085, rh = u.H * 0.12;
-      for (var i = 0; i < D.count; i++) {
-        var ang = Math.sin(t * 1.4 * D.sway + i * 2) * 0.18 * D.sway, L = u.H * 0.32;
-        var lx = px + (i - (D.count - 1) / 2) * u.W * 0.17 + Math.sin(ang) * L;
+      for (i = 0; i < nl; i++) {
+        var ang = th[i];
+        var hook = px + (i - (nl - 1) / 2) * u.W * 0.17, lx = hook + Math.sin(ang) * L;
         var ly = py + Math.cos(ang) * L - D.rise * ((t * 0.06 + i * 0.37) % 1) * u.H * 0.5;
         var hk = u.clamp((GY - ly - rh) / (u.H * 0.6), 0, 1);
         c.save(); c.translate(lx, GY); c.scale(1, 0.3);
         u.soft(0, 0, u.W * (0.15 + hk * 0.3), D.paper, 0.55 * (1 - hk)); c.restore();
-        if (!D.rise) u.line(px + (i - (D.count - 1) / 2) * u.W * 0.17, py, lx, ly - rh, "rgba(232,229,244,0.35)", 1);
+        if (!D.rise) u.line(hook, py, lx, ly - rh, "rgba(232,229,244,0.35)", 1);
         c.globalCompositeOperation = "lighter";
         u.soft(lx, ly, rw * 3, D.paper, 0.35);
         c.globalCompositeOperation = "source-over";
@@ -4195,7 +4386,7 @@ rhymeOf("Lantern", "Sky lanterns", "the same shell five times, cut loose and ris
       }
       u.label("the higher the source, the wider and fainter its pool — height is written on the ground", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { px = x; }
+    press: function (x, y) { ht = x; }                                     // click = ask the (invisible) hook to go there; the lanterns trail
   };
 });
 

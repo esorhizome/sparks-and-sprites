@@ -341,15 +341,61 @@ static func defs() -> Array:
 
 	# ---- L · Lantern -------------------------------------------------------
 	d.append({ "letter": "L", "name": "Lantern", "drag": true,
-		"hint": "a paper lantern: a warm gradient shell with dark ribs, lit by a core inside, swaying on a string — the pool of light on the ground moves with it",
+		"hint": "a paper lantern: a warm gradient shell with dark ribs, lit by a core inside, hanging from a hook as a real pendulum — press to move the hook and the lantern trails behind, swings through and rings down; the pool of light on the ground moves with it",
 		"dials": { "sky": [Color("0A0818"), Color("1A1030")], "paper": Color("FF8A3A"), "core": Color("FFF0C0"), "ribs": 7,
-			"sway": 1.0, "count": 1, "rise": 0.0,                        # rise > 0: the lanterns float upward and wrap
-			"label": "a shell is a radial with the core inside it; the pool below is the same light, arriving late" },
+			"sway": 1.0, "count": 1, "rise": 0.0,                        # sway: how hard the breeze pushes; rise > 0: the lanterns float upward and wrap
+			"swing": 2.2,               # the pendulum's natural rate, rad/s: √(g/L) — set by the string, not by the clock
+			"damp": 0.18,               # as a fraction of critical: well under 1, so a lantern rings down over several swings
+			"hook": 3.0,                # the hook's own spring toward where a press asked for: k (critically damped, so it eases and never overshoots)
+			"wind": 0.5,                # the breeze's push on a lantern, rad/s², times sway — the only thing that stirs it between presses
+			"label": "a shell is a radial with the core inside it; the pool below is the same light, arriving late — θ'' = −swing²·sin θ − damp·θ' − a_hook/L·cos θ" },
 		"rhyme": { "name": "Sky lanterns", "hint": "the same shell five times, cut loose and rising — no strings, gentler sway, and the pools on the ground widening and fading as they climb",
 			"dials": { "paper": Color("FFB050"), "sway": 0.5, "count": 5, "rise": 1.0,
 				"label": "the higher the source, the wider and fainter its pool — height is written on the ground" } },
-		"init": func(b: Dictionary) -> void: b.px = b.W * 0.5,
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.px = pos.x,   # click = move the hook; the pool follows
+		"init": func(b: Dictionary) -> void:
+			b.px = b.W * 0.5; b.ht = b.px; b.hv = 0.0                     # the hook: where it is, where a press asked it to be, how fast it is moving
+			var nl: int = maxi(1, int(b.D.count))
+			var th := PackedFloat32Array()                               # each lantern's angle from the vertical + angular velocity — sized here, written in place from tick
+			var om := PackedFloat32Array()
+			th.resize(nl); om.resize(nl)
+			for q in nl:
+				th[q] = 0.12 * (-1.0 if q % 2 == 1 else 1.0)
+			b.nl = nl; b.th = th; b.om = om,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# each lantern is a real pendulum: θ'' = −(g/L)·sin θ − c·θ' − (a_hook/L)·cos θ.
+			# gravity rights it (g/L = swing²), a little damping bleeds each swing,
+			# and the hook's own ACCELERATION drives it: a press does not move the
+			# hook — it moves the hook's target, the hook springs there (critically
+			# damped, so it eases), and the lantern, left behind, swings out and
+			# rings down. a soft breeze (two slow sines: an input, not the answer)
+			# keeps the lanterns stirring between presses.
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var L: float = b.H * 0.32
+			var swing: float = D.swing
+			var g := swing * swing
+			var cc: float = D.damp * 2.0 * swing
+			var kh: float = D.hook
+			var dh := 2.0 * sqrt(kh)
+			var wind: float = D.wind * D.sway
+			var nl: int = b.nl
+			var th: PackedFloat32Array = b.th
+			var om: PackedFloat32Array = b.om
+			var px: float = b.px
+			var hv: float = b.hv
+			var ht: float = b.ht
+			var sub := maxi(1, ceili(dt * 50.0))                          # substeps of ≤ 0.02 s: symplectic euler wants √k·h < 2
+			var h := dt / float(sub)
+			for _s in sub:
+				var ah := kh * (ht - px) - dh * hv                        # the hook's acceleration this step — what the string passes down
+				hv += ah * h
+				px += hv * h
+				for i in nl:
+					var breeze := wind * (0.6 * sin(t * 0.9 + i * 2.0) + 0.4 * sin(t * 1.7 + i))
+					om[i] += (-g * sin(th[i]) - cc * om[i] - ah / L * cos(th[i]) + breeze) * h
+					th[i] = clampf(th[i] + om[i] * h, -1.2, 1.2)
+			b.px = px; b.hv = hv,
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.ht = pos.x,   # click = ask the hook to go there; it eases, the lantern trails, the pool follows
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -360,12 +406,12 @@ static func defs() -> Array:
 			K.sky(n, b, D.sky)
 			K.ground(n, b, GY, Color("0C0A14"))
 			var rw := W * 0.085; var rh := H * 0.12
-			var count: int = D.count
-			var sway: float = D.sway
+			var count: int = b.nl
+			var th: PackedFloat32Array = b.th
 			var rise: float = D.rise
 			var ribs: int = D.ribs
 			for i in count:
-				var ang := sin(t * 1.4 * sway + i * 2.0) * 0.18 * sway   # a pendulum: angle is a sine
+				var ang: float = th[i]                                   # the pendulum's angle, integrated in tick
 				var L := H * 0.32
 				var hook := px + (i - (count - 1) / 2.0) * W * 0.17
 				var lx := hook + sin(ang) * L

@@ -276,10 +276,13 @@ static func defs() -> Array:
 
 	# ---- I · Icebergs ------------------------------------------------------
 	d.append({ "letter": "I", "name": "Icebergs", "drag": true,
-		"hint": "three rows of bergs over a mist band: the far row is smaller, paler, and bobs slower — one number z sets size, colour, and speed; press pans",
+		"hint": "three rows of bergs over a mist band: the far row is smaller, paler, and heaves slower — one number z sets size, colour, and how quickly a berg answers the swell, overshooting the crest and tipping after it; press pans",
 		"dials": { "sky": [Color("4A6A9A"), Color("C8D8E8")], "ice": Color("DCEAF5"), "sea": Color("2A4A6A"), "air": Color("B8C8D8"), "mist": Color.WHITE,
 			"per_row": 5, "rows": 3, "seed": 21,
-			"label": "z does three jobs at once — size, colour toward the air, and how fast it bobs — far things are slow" },
+			"swell": 2.0,               # a berg's heave rate, rad/s (√k) at z = 0.5 — the near row is quicker, the far row slower
+			"damp": 0.3,                # heave damping as a fraction of critical: well under 1, so a berg overshoots the water line and settles
+			"roll": 0.03,               # radians of tilt per px/s of heave — a second spring chases the heave velocity, so a berg tips after it rises
+			"label": "z does three jobs at once — size, colour toward the air, and k: y'' = k·(swell − y) − damp·y', stiffer near — far things are slow" },
 		"rhyme": { "name": "Lava islands", "hint": "the same three rows, values flipped — black rock on a bright lava sea, smoke for mist, seven to a row",
 			"dials": { "sky": [Color("1A0808"), Color("5A1A10")], "ice": Color("241816"), "sea": Color("F5601A"), "air": Color("8A3020"), "mist": Color("FFB060"),
 				"per_row": 7,
@@ -298,15 +301,61 @@ static func defs() -> Array:
 						var u := float(k) / (cnt - 1)
 						pts.append(Vector2(u * 2.0 - 1.0, -(0.2 + R.randf() * 0.8) * sin(u * PI)))
 					b.bergs.append({ "z": z, "x": (i + R.randf() * 0.8) / per, "pts": pts, "ph": R.randf() * 9.0, "s": 0.5 + R.randf() * 0.7 })
+			var nb: int = b.bergs.size()
+			var hy := PackedFloat32Array()                # heave (px off the still line) + velocity — sized here, then written in place from tick
+			var hv := PackedFloat32Array()
+			var rl := PackedFloat32Array()                # roll (radians) + velocity
+			var rv := PackedFloat32Array()
+			hy.resize(nb); hv.resize(nb); rl.resize(nb); rv.resize(nb)
+			for q in nb:                                  # start ON the water, so nothing lurches at t = 0
+				var bg: Dictionary = b.bergs[q]
+				hy[q] = sin(bg.ph) * (0.5 + bg.z * 2.5)
+			b.hy = hy; b.hv = hv; b.rl = rl; b.rv = rv
 			b.cam = 0.0; b.aim = 0.0,
-		"tick": func(b: Dictionary, dt: float) -> void: _glide(b, dt),
+		"tick": func(b: Dictionary, dt: float) -> void:
+			_glide(b, dt)
+			# the sine field is the SWELL — the water line each berg wants — and a
+			# berg is a damped spring toward it: it has mass, so it lags the crest,
+			# overshoots it, and settles back (damping well under critical). k grows
+			# with z (√k = swell · (0.5 + z)): the near row answers the water at
+			# once, the far row is slow to follow — the same z that sets size and
+			# colour sets how quickly a thing moves. the roll is a second spring
+			# whose rest is the heave VELOCITY, so a berg tips after it rises.
+			var D: Dictionary = b.D
+			var t: float = b.t
+			var H: float = b.H
+			var hy: PackedFloat32Array = b.hy
+			var hv: PackedFloat32Array = b.hv
+			var rl: PackedFloat32Array = b.rl
+			var rv: PackedFloat32Array = b.rv
+			var swell: float = D.swell
+			var damp: float = D.damp
+			var roll: float = D.roll
+			var kr := 16.0                                # the roll spring: k 16, damping 0.4 of critical — lags the heave
+			var dr := 0.4 * 2.0 * sqrt(kr)
+			var sub := maxi(1, ceili(dt * 50.0))          # substeps of ≤ 0.02 s: symplectic euler wants √k·h < 2
+			var h := dt / float(sub)
+			var j := 0
+			for bg in b.bergs:
+				var z: float = bg.z
+				var w0 := swell * (0.5 + z)
+				var kk := w0 * w0
+				var dd := damp * 2.0 * w0
+				var rest: float = sin(t * (0.4 + z * 0.9) + bg.ph) * (0.5 + z * 2.5)   # the swell: near water moves faster and farther
+				for _s in sub:
+					hv[j] += (kk * (rest - hy[j]) - dd * hv[j]) * h
+					hy[j] = clampf(hy[j] + hv[j] * h, -H * 0.1, H * 0.1)
+					rv[j] += (kr * (hv[j] * roll - rl[j]) - dr * rv[j]) * h
+					rl[j] = clampf(rl[j] + rv[j] * h, -0.4, 0.4)
+				j += 1,
 		"press": func(b: Dictionary, pos: Vector2) -> void: b.aim = (pos.x / b.W - 0.5) * 2.0,   # click = pan; near rows slide most
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var W: float = b.W; var H: float = b.H
 			var HY := H * 0.55
 			var per: int = D.per_row
+			var hy: PackedFloat32Array = b.hy
+			var rl: PackedFloat32Array = b.rl
 			K.sky(n, b, [[0.0, D.sky[0]], [0.55, D.sky[1]], [1.0, D.sky[1]]])
 			K.lin_rect(n, Rect2(0, HY, W, H - HY), [K.mix(D.sea, D.air, 0.6), D.sea])   # the sea is paler at the horizon too
 			var j := 0
@@ -316,12 +365,14 @@ static func defs() -> Array:
 						[[0.0, K.alpha(D.mist, 0.0)], [0.5, K.alpha(D.mist, 0.7)], [1.0, K.alpha(D.mist, 0.0)]])
 				var z: float = bg.z
 				var size: float = W * (0.03 + z * 0.09) * bg.s
-				var y: float = HY + z * z * H * 0.32 + sin(t * (0.4 + z * 0.9) + bg.ph) * (0.5 + z * 2.5)   # near bergs bob faster and farther
+				var y: float = HY + z * z * H * 0.32 + hy[j]               # the still line plus the spring's heave
 				var x: float = bg.x * W + b.cam * (0.1 + z * 0.5) * W * 0.5
+				var cs := cos(rl[j]); var sn := sin(rl[j])                # the roll: the lump turns about its waterline
 				var refl := PackedVector2Array(); var berg := PackedVector2Array()
 				for p in bg.pts:
-					refl.append(Vector2(x + p.x * size, y - p.y * size * 0.3))   # a squashed, flipped reflection first
-					berg.append(Vector2(x + p.x * size, y + p.y * size))
+					var px: float = p.x * size; var py: float = p.y * size
+					refl.append(Vector2(x + px * cs - py * sn, y - (px * sn + py * cs) * 0.3))   # a squashed, flipped reflection first
+					berg.append(Vector2(x + px * cs - py * sn, y + px * sn + py * cs))
 				K.poly(n, refl, K.alpha(K.shade(D.ice, -0.5), 0.35))
 				K.poly(n, berg, K.fog(D.ice, (1.0 - z) * 0.8, D.air))
 				j += 1
@@ -329,10 +380,14 @@ static func defs() -> Array:
 
 	# ---- K · Knoll ---------------------------------------------------------
 	d.append({ "letter": "K", "name": "Knoll", "drag": true,
-		"hint": "rolling hills, each a gradient-filled sine, warm green near and blue-grey far — the sheep shrink with their hills; press pans the camera",
+		"hint": "rolling hills, each a gradient-filled sine, warm green near and blue-grey far — the sheep shrink with their hills, and amble: each picks a spot, walks there, and stands; press pans the camera",
 		"dials": { "sky": [Color("7AAAE0"), Color("DDE8F0")], "grass": Color("4A8A3A"), "air": Color("B8C8DC"), "sheep": Color("F5F2E8"),
 			"hills": 6, "flock": 5, "step": 3.0, "seed": 33,               # step: how often the curve is sampled, in px
-			"label": "a sheep is a dot with a depth: radius, colour, and wander all shrink with the hill it stands on" },
+			"roam": 8.0,                # how far from home a sheep will pick its next spot, px on the nearest hill — the far hills shrink it
+			"pace": 2.0,                # a sheep's spring toward its spot: √k, rad/s — a slow amble
+			"damp": 0.6,                # as a fraction of critical: under 1, so a sheep overshoots its spot by a step and shuffles back
+			"pick": 3.0,                # seconds between one sheep changing its mind, give or take half
+			"label": "a sheep is a dot with a depth: radius, colour, and how far it roams all shrink with the hill — x'' = k·(spot − x) − damp·x'" },
 		"rhyme": { "name": "Pixel knoll", "hint": "the same hills sampled every 22 px — three chunky staircases in arcade green, two sheep each",
 			"dials": { "sky": [Color("3A78F0"), Color("9AE0FF")], "grass": Color("3AC83A"), "air": Color("7AB8F0"), "sheep": Color.WHITE,
 				"hills": 3, "flock": 2, "step": 22.0,
@@ -341,18 +396,58 @@ static func defs() -> Array:
 			var D: Dictionary = b.D
 			var R := K.rng(int(D.seed))
 			var hills: int = D.hills
+			var flock: int = D.flock
 			b.hills = []
 			for j in hills:                                               # j = 0 is the farthest hill
 				var h := { "base": 0.38 + j * 0.1, "amp": 0.03 + j * 0.012, "f": 0.8 + R.randf() * 1.2, "ph": R.randf() * 9.0,
-					"depth": (1.0 - float(j) / (hills - 1)) if hills > 1 else 0.0, "sheep": [] }
-				for s in int(D.flock): h.sheep.append([R.randf(), R.randf() * 9.0])   # where along the hill, and a wander phase
+					"depth": (1.0 - float(j) / (hills - 1)) if hills > 1 else 0.0 }
+				var home := PackedFloat32Array()          # where along the hill each sheep lives
+				var ox := PackedFloat32Array()            # its offset from home, px, and the velocity of that
+				var ov := PackedFloat32Array()
+				var ot := PackedFloat32Array()            # the spot it has picked, px from home
+				var tm := PackedFloat32Array()            # seconds until it picks again
+				home.resize(flock); ox.resize(flock); ov.resize(flock); ot.resize(flock); tm.resize(flock)
+				for s in flock:
+					home[s] = R.randf()
+					tm[s] = R.randf() * float(D.pick)
+				h.home = home; h.ox = ox; h.ov = ov; h.ot = ot; h.tm = tm
 				b.hills.append(h)
+			b.R = R                                       # kept: the sheep keep drawing from the same seeded stream
 			b.cam = 0.0; b.aim = 0.0,
-		"tick": func(b: Dictionary, dt: float) -> void: _glide(b, dt),
+		"tick": func(b: Dictionary, dt: float) -> void:
+			_glide(b, dt)
+			# a sheep has a spot it has decided to stand on — a random step from
+			# home, re-picked every few seconds — and walks there on a damped
+			# spring: it ambles, overshoots by a step (damping under critical),
+			# shuffles back, and stands until it changes its mind. the step shrinks
+			# with the hill's depth, so the far flock barely stirs: wander is a
+			# depth cue too, and now it is a walk, not a sine.
+			var D: Dictionary = b.D
+			var R: RandomNumberGenerator = b.R
+			var roam: float = D.roam
+			var pace: float = D.pace
+			var pick: float = D.pick
+			var kk := pace * pace
+			var dd: float = D.damp * 2.0 * pace
+			var sub := maxi(1, ceili(dt * 50.0))          # substeps of ≤ 0.02 s
+			var h := dt / float(sub)
+			for hl in b.hills:
+				var near: float = 1.0 - hl.depth
+				var ox: PackedFloat32Array = hl.ox
+				var ov: PackedFloat32Array = hl.ov
+				var ot: PackedFloat32Array = hl.ot
+				var tm: PackedFloat32Array = hl.tm
+				for s in ox.size():
+					tm[s] -= dt
+					if tm[s] <= 0.0:                          # a new spot: a step from home, shorter on far hills
+						tm[s] = pick * (0.5 + R.randf())
+						ot[s] = (R.randf() - 0.5) * 2.0 * roam * near
+					for _q in sub:
+						ov[s] += (kk * (ot[s] - ox[s]) - dd * ov[s]) * h
+						ox[s] = clampf(ox[s] + ov[s] * h, -roam * 2.0, roam * 2.0),
 		"press": func(b: Dictionary, pos: Vector2) -> void: b.aim = (pos.x / b.W - 0.5) * 2.0,   # click = pan the camera
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var W: float = b.W; var H: float = b.H
 			var step: float = D.step
 			K.sky(n, b, [[0.0, D.sky[0]], [0.6, D.sky[1]], [1.0, D.sky[1]]])
@@ -372,8 +467,10 @@ static func defs() -> Array:
 					if bot_y < H:
 						n.draw_rect(Rect2(x, bot_y, step, H - bot_y), lo)
 					x += step
-				for sh in h.sheep:                                        # sheep stand on the curve, so they inherit its depth
-					var sx: float = sh[0] * W * 1.2 - W * 0.1 + sin(t * 0.2 + sh[1]) * 6.0 * near - shift
+				var home: PackedFloat32Array = h.home
+				var ox: PackedFloat32Array = h.ox
+				for s in home.size():                                     # sheep stand on the curve, so they inherit its depth
+					var sx: float = home[s] * W * 1.2 - W * 0.1 + ox[s] - shift
 					var r := 0.8 + near * 2.4
 					K.dot(n, Vector2(sx, _knoll_top(b, h, sx + shift) - r * 0.5), r, K.fog(D.sheep, h.depth * 0.7, D.air))
 			_label(n, b, D) })
