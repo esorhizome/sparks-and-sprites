@@ -153,16 +153,19 @@ const DEFS := [
 		"rhyme": { "name": "Ultraslow", "hint": "a pump at a quarter of the rate, planes that answer in seconds and half the way — a deep-sea crawl where every correction is late",
 			"dials": { "pumpRate": 0.08, "planeRate": 0.25, "speed": 0.06 } } },
 	{ "id": "yak", "letter": "Y", "name": "Yak",
-		"hint": "the rider is the mount's child (Nest): mount + R(θ)·offset carries Gait's bob into the saddle; dismount keeps its velocity — press to hop off / on",
+		"hint": "the rider is the mount's child (Nest): mount + R(θ)·offset carries Gait's bob into the saddle, and the rider sits on a spring that lags and bounces after it; dismount keeps its velocity — press to hop off / on",
 		"dials": { "speed": 0.22,          # the mount's walk, ×W/s
 			"size": 0.1,                   # the mount's body height, ×H
 			"bob": 0.035,                  # the gait bob, ×H
 			"tilt": 0.08,                  # radians of body rock with the stride
 			"offset": [0.05, -0.95],       # the saddle, in body sizes (x forward, y up)
+			"omega": 12.0,                 # the seat spring's ω, rad/s: how fast the rider settles into the saddle
+			"zeta": 0.35,                  # its damping ratio — under 1, so the rider bounces past the saddle after every step
+			"lean": 0.08,                  # radians of rider lean per H/s² of seat acceleration: pushed forward, they tip back
 			"hop": 0.22,                   # the dismount hop, ×H
 			"g": 2.2,                      # gravity ×H/s²
 			"rideFor": 4.5,                # seconds ridden before the autopilot hops off
-			"label": "rider = mount + R(θ)·offset   ·   dismount: v = v_mount + hop" },
+			"label": "saddle = mount + R(θ)·offset · rider: a = ω²(saddle − p) − 2ζω·v · dismount: v = v_rider + hop" },
 		"rhyme": { "name": "Yearling", "hint": "a small quick mount with a big bob — the rider bounces, and a hop off it lands far ahead",
 			"dials": { "size": 0.065, "speed": 0.36, "bob": 0.06 } } },
 	{ "id": "locomotive", "letter": "L", "name": "Locomotive",
@@ -351,8 +354,7 @@ static func _spawn(b: Dictionary, i: int, z: float) -> void:
 static func _dismount(b: Dictionary) -> void:
 	var D: Dictionary = b.D
 	b.mode = "air"
-	b.rvx = b.dir * b.w * D.speed
-	b.rvy = -sqrt(2.0 * b.h * D.g * b.h * D.hop)
+	b.rvy -= sqrt(2.0 * b.h * D.g * b.h * D.hop)      # the hop is added to the velocity the spring gave them
 	b.rideT = 0.0
 
 ## Locomotive's rail: a loop with lobes bulges.
@@ -666,20 +668,29 @@ static func init(b: Dictionary) -> void:
 			b.BR = BR
 		"yak":
 			# a MOUNT is a parent frame (Nest): the rider stores one local OFFSET —
-			# the saddle — and every frame is placed at mount + rotate(offset, θ),
+			# the saddle — and every frame the SADDLE is placed at mount + rotate(offset, θ),
 			# so the mount's gait BOB and stride rock (Gait, Hover's derivative
-			# lean) reach the rider without a line of rider code. DISMOUNT is the
+			# lean) reach the saddle without a line of rider code. the rider is not
+			# welded to it: they sit on a spring toward the saddle point (Grab's
+			# holding spring, ω and ζ from Damp), so every step's bob reaches them
+			# late, they overshoot it, and they are still settling when the next
+			# step comes — that lag is what "riding" looks like. DISMOUNT is the
 			# un-parenting: the rider becomes a body of its own, and the honest part
-			# is that it keeps the mount's velocity plus a hop — nobody stops dead in
-			# mid-air. mounting is the reverse: close enough to the saddle, re-parent.
+			# is that it keeps whatever velocity it had plus a hop — nobody stops
+			# dead in mid-air. mounting is the reverse: close enough to the saddle,
+			# re-parent, and the spring reels them in from wherever they landed.
+			var S: float = H * D.size
+			var offs: Array = D.offset
 			b.mx = W * 0.3
 			b.dir = 1.0
 			b.phase = 0.0
 			b.mode = "ride"
-			b.rx = 0.0
-			b.ry = 0.0
+			b.rx = W * 0.3 + float(offs[0]) * S             # the rider starts in the saddle
+			b.ry = GY - S * 0.8 - S * 0.5 + float(offs[1]) * S
 			b.rvx = 0.0
 			b.rvy = 0.0
+			b.lth = 0.0                                  # the rider's lean, and its rate
+			b.lom = 0.0
 			b.rideT = 0.0
 			b.sx = 0.0
 			b.sy = 0.0
@@ -1241,8 +1252,35 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.sx = sx
 			b.sy = sy
 			if b.mode == "ride":
-				b.rx = sx
-				b.ry = sy
+				# the seat spring: a = ω²·(saddle − rider) − 2ζω·v, symplectic, in
+				# substeps of at most 0.02 s when the frame is coarse (Substep). the
+				# lean is the same spring on an angle, driven by the seat's push
+				var w: float = D.omega
+				var zeta: float = D.zeta
+				var lean: float = D.lean
+				var rx: float = b.rx
+				var ry: float = b.ry
+				var rvx: float = b.rvx
+				var rvy: float = b.rvy
+				var lth: float = b.lth
+				var lom: float = b.lom
+				var sub := maxi(1, ceili(dt * 50.0))
+				var h := dt / float(sub)
+				for _s in sub:
+					var ax: float = w * w * (sx - rx) - 2.0 * zeta * w * rvx
+					var ay: float = w * w * (sy - ry) - 2.0 * zeta * w * rvy
+					rvx += ax * h
+					rvy += ay * h
+					rx += rvx * h
+					ry += rvy * h
+					lom += (w * w * (-dir * lean * ax / H - lth) - 2.0 * zeta * w * lom) * h   # pushed forward, the rider tips back
+					lth = clampf(lth + lom * h, -0.8, 0.8)
+				b.rx = rx
+				b.ry = ry
+				b.rvx = rvx
+				b.rvy = rvy
+				b.lth = lth
+				b.lom = lom
 				b.rideT += dt
 				if b.rideT > D.rideFor:
 					_dismount(b)
@@ -1813,9 +1851,13 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_dashed_line(Vector2(mx, by), Vector2(sx, sy), Kit.TARGET if mode == "ride" else Kit.DIM, 1.0, 2.5)   # the offset, drawn
 			Kit.dot(n, Vector2(mx, by), 2.0, Kit.TARGET)
 			Kit.ring(n, Vector2(sx, sy), 3.0, Kit.TARGET, 1.0)
-			var face: float = atan2(b.rvy, b.rvx) if mode == "air" else (0.0 if dir > 0.0 else PI)
+			if mode == "ride":                           # the spring: saddle to rider
+				Kit.line(n, Vector2(sx, sy), Vector2(rx, ry), Color(0.961, 0.757, 0.412, 0.5), 1.0)
+			var lth: float = b.lth if mode == "ride" else 0.0
+			var face: float = atan2(b.rvy, b.rvx) if mode == "air" else (lth if dir > 0.0 else PI - lth)
 			Kit.mote(n, b, Vector2(rx, ry), face, Kit.MOVER, 6.0)
-			var txt: String = ("riding: θ = %d°" % roundi(rad_to_deg(th))) if mode == "ride" else ("v = v_mount + hop" if mode == "air" else "on foot")
+			var lag: int = roundi(Vector2(rx - sx, ry - sy).length())
+			var txt: String = ("riding: lag %d px · θ = %d°" % [lag, roundi(rad_to_deg(th))]) if mode == "ride" else ("v = v_rider + hop" if mode == "air" else "on foot")
 			Kit.label(n, b, txt, Vector2(rx, ry - 14.0), Kit.HOT if mode == "air" else Kit.DIM, true)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"locomotive":

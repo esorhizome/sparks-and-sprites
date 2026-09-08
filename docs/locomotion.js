@@ -944,7 +944,7 @@ def("I", "Idle", "clocks", "idle stack: breath (a sine on scale), a jittered bli
 });
 rhymeOf("Idle", "Insomniac", "the same four clocks wound tight: panting breath, blinks every second, a restless weight shift — alive, and not okay", { breathP: 1.3, blinkEvery: 0.8, shiftEvery: 1.4 });
 
-def("Y", "Yacht", "clocks", "a boat on y = wave(x, t), tilted by its slope, the derivative (Undulate + Normals) — press for more wind", function (u) {
+def("Y", "Yacht", "clocks", "a boat on y = wave(x, t), tilted by its slope, the derivative (Undulate + Normals); the sail is a spring toward the apparent wind, so it luffs and fills late — press for more wind", function (u) {
   var D = { lam1: 0.6,          // the two wavelengths, of W
             lam2: 0.22,
             amp1: 0.05,         // their heights, of H
@@ -954,15 +954,24 @@ def("Y", "Yacht", "clocks", "a boat on y = wave(x, t), tilted by its slope, the 
             winds: [1, 1.7, 0.55],   // wind levels a press cycles through: they scale speed and height
             mid: 0.62,          // the sea's rest level, of H
             boatX: 0.42,        // where the boat sits, of W
-            label: "y = wave(x, t)    tilt = atan(dy/dx)" };
-  const { ctx, W, H, TAU, stage, dot, line, poly, label, BONE, MOVER, INK } = u;
+            breeze: 0.5,        // the wind's speed at level 1, ×W per second — what the boat's heave is measured against
+            sailK: 30,          // the sail's stiffness toward the apparent wind at level 1 (it scales with wind², like the force on a sail)
+            sailDamp: 0.3,      // its damping as a fraction of critical — under 1, so it swings past the wind and luffs before it fills
+            label: "y = wave(x, t) · tilt = atan(dy/dx) · sail: φ'' = k·(φ_wind − φ) − c·φ'" };
+  const { ctx, W, H, TAU, stage, dot, line, poly, label, clamp, BONE, MOVER, INK } = u;
   // Undulate's trick, but the SPACE is the sea: y = Σ amp·sin(k·x − ω·t) is
   // a wave travelling at ω ÷ k pixels a second. the boat doesn't move — the
   // wave moves under it, and it sits at wave(boatX, t). its tilt is the
   // wave's SLOPE there, the derivative dy/dx — for a sine, a cos with the
   // same argument (Normals' lesson: the surface tells you which way is up).
   // foam rides each crest, which is wherever sin(k·x − ω·t) = 1.
+  // the SAIL is the one thing here with a memory: its boom angle φ is
+  // Upright's spring toward the APPARENT wind — the wind minus the boat's
+  // own heave, turned into the hull's frame, so the hull rolling under it
+  // and the deck rising into the wind both move the target. the spring is
+  // under-damped, so the sail swings past the wind (a luff) and fills late.
   let wi = 0, ph = 0;                                  // ph: the wave's own clock, so a wind change never jumps
+  let sail = 0, sailOm = 0, sailT = 0, byPrev = null;  // the boom's angle off the hull, its rate, where the wind asks it to be, and last frame's height (for the heave)
   function wave(x, wind) {
     const k1 = TAU / (D.lam1 * W), k2 = TAU / (D.lam2 * W);
     return H * D.mid - H * D.amp1 * wind * Math.sin(k1 * x - D.w1 * ph) - H * D.amp2 * wind * Math.sin(k2 * x - D.w2 * ph + 1);
@@ -990,15 +999,29 @@ def("Y", "Yacht", "clocks", "a boat on y = wave(x, t), tilted by its slope, the 
       for (fx -= L1; fx < W + L1; fx += L1)            // ...and every crest after it
         for (let j = -1; j <= 1; j++) dot(fx + j * 5, wave(fx + j * 5, wind) - 2.5, 1.5, "rgba(232,229,244,0.6)");
       const bx = W * D.boatX, by = wave(bx, wind), tilt = Math.atan(slope(bx, wind));
-      const sail = Math.sin(t * 0.7) * 0.5 * wind;     // the wind sine leans the sail
+      // the apparent wind: the wind (blowing to −x at breeze·wind) minus the
+      // boat's heave, dy/dt read as a difference — then turned into the hull's
+      // frame, where the boom angle lives. the spring toward it is stiffer in
+      // more wind (k ∝ wind²), cut into substeps of at most 0.02 s
+      const vy = byPrev === null || dt <= 0 ? 0 : (by - byPrev) / dt;
+      byPrev = by;
+      const U = W * D.breeze * wind, ct = Math.cos(tilt), st = Math.sin(tilt);
+      sailT = Math.atan2(U * st - vy * ct, U * ct + vy * st);   // φ_wind: where the boom would point if the sail were a flag
+      const k = D.sailK * wind * wind, c = 2 * D.sailDamp * Math.sqrt(k);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        sailOm += (k * (sailT - sail) - c * sailOm) * h;
+        sail = clamp(sail + sailOm * h, -1.4, 1.4);
+      }
+      const fill = Math.cos(sail - sailT);             // 1 when the sail is square to the wind, less while it luffs
       ctx.save();
       ctx.translate(bx, by);
       ctx.rotate(tilt);
       poly([[-16, -2], [16, -2], [10, 6], [-10, 6]], BONE);
       line(0, -2, 0, -26, INK, 1.5);
-      poly([[0, -25], [0, -6], [-(12 + sail * 8), -10]], MOVER);
+      poly([[0, -25], [0, -8], [-14 * Math.cos(sail), -8 + 14 * Math.sin(sail)]], "rgba(138,217,245," + (0.45 + 0.5 * Math.max(0, fill)).toFixed(2) + ")");   // the boom swings on φ
       ctx.restore();
-      label("wind " + wind + " · tilt " + Math.round(tilt * 180 / Math.PI) + "°", W / 2, 14, null, "center");
+      label("wind " + wind + " · tilt " + Math.round(tilt * 180 / Math.PI) + "° · sail off the wind " + Math.round((sail - sailT) * 180 / Math.PI) + "°", W / 2, 14, null, "center");
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
@@ -1642,11 +1665,16 @@ def("S", "Slime", "springs", "squash & stretch from velocity — sy = 1 + |vy|·
 });
 rhymeOf("Slime", "Sludge", "a heavy blob: tiny hops, long sits — the same squash rules on a much lazier body", { apex: 0.05, hop: 0.1, sit: 0.9 });
 
-def("C", "Cat", "springs", "a pounce: a butt-wiggle crouch (anticipation), then one parabola aimed at the toy — press to move the toy", function (u) {
+def("C", "Cat", "springs", "a pounce: a butt-wiggle crouch (anticipation), then one parabola aimed at the toy; the tail is a chain of springs the body's jolts swing — press to move the toy", function (u) {
   var D = { g: 2.6, apex: 0.2,                           // gravity and apex as fractions of H
             sit: 1.1, crouch: 0.6, land: 0.16,           // seconds sitting, crouching, landing
-            wiggle: 18, tail: 3,                         // the butt-wiggle's rate; the tail's sway rate (rad/s)
-            label: "v₀ = √(2gh)      vx = distance ÷ airtime" };
+            wiggle: 18,                                  // the butt-wiggle's rate (rad/s)
+            tailSegs: 6,                                 // segments in the tail chain
+            tailK: 220,                                  // the tail root's stiffness (per inertia): how fast it springs back to its curl
+            tailTip: 1.25,                               // each segment's k as a multiple of the one below — lighter, so quicker
+            tailDamp: 0.35,                              // a segment's damping as a fraction of its own critical — under 1, so the tip whips through
+            swing: 6,                                    // rad/s² of tail swing per H/s² of body jolt: the take-off and the landing are the drive
+            label: "v₀ = √(2gh)      vx = distance ÷ airtime   ·   tail: θⱼ'' = kⱼ(θⱼ₋₁ − θⱼ) − dⱼθⱼ' + swing·(g − a_body)·ê⊥" };
   const { ctx, W, H, GY, stage, ground, dot, ring, poly, label, rand, clamp, MOVER, TARGET } = u;
   // ANTICIPATION: a motion reads better if the body first moves a little
   // the other way — the crouch loads the spring, and the butt-wiggle (a
@@ -1654,16 +1682,28 @@ def("C", "Cat", "springs", "a pounce: a butt-wiggle crouch (anticipation), then 
   // pick the apex h, v₀ = √(2gh) fixes the airtime T = 2v₀/g, and
   // vx = distance/T lands it on the toy exactly. once airborne nothing can
   // be corrected — a pounce is BALLISTIC, which is why cats miss.
+  // the TAIL is not animated: it is a chain of angle springs (Grass), each
+  // segment chasing the one below on its own under-damped spring, rooted
+  // in the body. what drives it is the body's own jolt: in the body's
+  // frame the tail feels g − a_body, so a take-off flings it down and back,
+  // the arc leaves it weightless to ring on its springs, and the landing
+  // flings it down again — then it settles, later than the body does.
   let x = W * 0.25, y = GY, vx = 0, vy = 0, dir = 1, tx = W * 0.7;
   let phase = "sit", timer = 0;
+  const J = Math.max(1, Math.floor(D.tailSegs)), SEG = 4.3;
+  const th = new Float32Array(J), om = new Float32Array(J);   // each segment's angle off its rest curl, and its rate
+  let pbx = x - 8, pby = y - 7, pvx = 0, pvy = 0;      // the tail root's last position and velocity, for the jolt
+  function restOf(j) { return 0.45 + j * 0.12; }      // the resting curl: each segment a little more upright, radians above backward
   function drawCat(ox, oy, sx, sy, wig, tilt, t) {
     ctx.save();
     ctx.translate(ox, oy); ctx.rotate(tilt); ctx.scale(sx, sy);   // scale about the paws
     const bx = -dir * 8 + wig, by = -7;                // the body, behind the head
     dot(bx, by, 7, "rgba(138,217,245,0.85)");
-    for (let i = 0; i < 6; i++) {                      // the tail sways on a sine
-      const s = Math.sin(t * D.tail + i * 0.7) * i * 1.4;
-      dot(bx - dir * (6 + i * 3.6), by - i * 2.4 - s, 2.4 - i * 0.2, "rgba(138,217,245,0.6)");
+    let px = bx, py = by;
+    for (let j = 0; j < J; j++) {                      // the tail: walk the chain of angles from the body
+      const a = restOf(j) + th[j];
+      px -= dir * Math.cos(a) * SEG; py -= Math.sin(a) * SEG;
+      dot(px, py, 2.4 - j * 0.2, "rgba(138,217,245,0.6)");
     }
     const hx = dir * 6, hy = -11;
     dot(hx, hy, 6, MOVER);
@@ -1705,6 +1745,32 @@ def("C", "Cat", "springs", "a pounce: a butt-wiggle crouch (anticipation), then 
       }
       if (phase === "land") { sx = 1.15; sy = 0.78; if (timer > D.land) { phase = "sit"; timer = 0; } }
       x = clamp(x, 14, W - 14);
+      // the tail's drive: the jolt of the point it hangs from — the body, plus
+      // the wiggle — as a second difference, in H/s². in the body's frame the
+      // tail feels g − a_body: on the ground that is gravity's droop, in the
+      // arc it is nothing at all (free fall: the tail floats and just rings),
+      // and the take-off and the landing are one-frame spikes that fling it.
+      // the spring chain is stiff up the tail (k · tailTip per segment), so a
+      // coarse frame is cut into substeps of at most 0.02 s (Substep)
+      if (dt > 0) {
+        const rbx = x - dir * 8 + wig, rby = y - 7;
+        const rvx = (rbx - pbx) / dt, rvy = (rby - pby) / dt;
+        const jx = -(rvx - pvx) / dt / H, jy = (g - (rvy - pvy) / dt) / H;   // g − a_body, per H
+        pbx = rbx; pby = rby; pvx = rvx; pvy = rvy;
+        const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+        for (let s = 0; s < sub; s++) {
+          let below = 0, kj = D.tailK;                   // the root chases the curl itself; each segment above chases the one below
+          for (let j = 0; j < J; j++) {
+            if (j) kj *= D.tailTip;
+            const a = restOf(j) + th[j], dj = D.tailDamp * 2 * Math.sqrt(kj);
+            const torque = D.swing * (jx * dir * Math.sin(a) - jy * Math.cos(a));   // the jolt across the segment, the way that raises θ
+            om[j] += (kj * (below - th[j]) - dj * om[j] + torque) * h;
+            om[j] = clamp(om[j], -40, 40);
+            th[j] = clamp(th[j] + om[j] * h, -1.4, 1.4);
+            below = th[j];
+          }
+        }
+      }
       dot(tx, GY - 4, 4, TARGET); ring(tx, GY - 4, 7, "rgba(245,193,105,0.5)");   // the toy: a ball of yarn
       drawCat(x, y, sx, sy, wig, tilt, t);
       label(D.label, W / 2, H - 6, null, "center");
@@ -2432,33 +2498,49 @@ def("X", "Xhair", "headings", "aim assist: the crosshair slows inside a target's
 });
 rhymeOf("Xhair", "Xlock", "a bigger ring, a stickier friction and twice the pull — console-grade lock-on that all but aims for you", { assist: 0.28, friction: 0.12, pull: 300 });
 
-def("L", "Leaf", "headings", "a leaf slides along its tilt: gravity along the face, drag across it, a sine rocks the tilt — press to drop one", function (u) {
+def("L", "Leaf", "headings", "a leaf slides along its tilt: gravity along the face, drag across it, and the airspeed torques the tilt on Upright's spring — the flutter is that loop overshooting — press to drop one", function (u) {
   var D = { g: 1.4,                                     // gravity as a fraction of H per s²
             dragAcross: 9, dragAlong: 0.9,              // air resistance across the face (big) and along it (small)
-            rock: 1.6, amp: 0.9,                        // the rocking sine: rad/s and radians
-            pitch: 0.012,                               // how much airspeed along the face tips the leaf back
+            rock: 1.6,                                  // the tilt spring's natural rate, rad/s (its k = rock²)
+            amp: 0.9,                                   // the furthest tilt the airspeed may ask for, radians — the flutter's reach
+            rockDamp: 0.2,                              // the tilt's damping as a fraction of critical — low, so it overshoots; the overshoot feeds the slide feeds the tilt
+            pitch: 0.012,                               // radians of tilt asked per px/s of airspeed along the face: a fast slide tips the leaf back
             count: 6,
-            label: "along the face: g·sin θ  ·  across it: drag" };
+            label: "along the face: g·sin θ · across it: drag · θ'' = k·(−pitch·v∥ − θ) − c·θ'" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, line, poly, arrow, label, clamp, rand, GOOD, DIM } = u;
   // a leaf falls the way it does because air resists it very unequally:
   // hugely ACROSS its face, hardly at all ALONG it. so its velocity is split
   // into those two directions every frame, each damped by its own drag,
   // and gravity's pull along the tilted face makes the leaf SLIDE sideways.
-  // the tilt itself is Pendulum's rock — a slow sine — plus a push-back
-  // from the airspeed, so a fast slide levels the leaf and flips it the
-  // other way: the flutter is that feedback loop, and nothing is scripted.
+  // the tilt is never assigned: it is Upright's angular spring, integrated
+  // (α = −k·θ − c·ω), whose rest the airspeed along the face moves — a
+  // fast slide asks the leaf to tip back. the slide drives the tilt, the
+  // tilt drives the slide, and with the damping this low the loop is
+  // unstable about "flat": a leaf let go crooked tips, slides, overshoots
+  // the level, slides the other way — the flutter, and it can overshoot
+  // into a flip. nothing is scripted; a straight fall is the one thing it
+  // cannot do for long.
   const leaves = [];
   let next = 0;
-  function spawn(l, x, y) { l.x = x; l.y = y; l.vx = 0; l.vy = 0; l.ph = rand(0, TAU); l.a = 0; l.vf = 0; }
+  function spawn(l, x, y) { l.x = x; l.y = y; l.vx = 0; l.vy = 0; l.a = rand(-0.5, 0.5); l.om = rand(-1, 1); l.vf = 0; }   // let go crooked, so the loop has something to grow
   for (let i = 0; i < D.count; i++) { const l = {}; spawn(l, rand(W * 0.1, W * 0.9), rand(-H * 0.1, GY - H * 0.2)); leaves.push(l); }
   return {
     press(x, y) { spawn(leaves[next], x, y); next = (next + 1) % leaves.length; },
     frame(dt, t) {
       stage(); ground();
       const g = H * D.g;
+      const k = D.rock * D.rock, c = 2 * D.rockDamp * D.rock;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of at most 0.02 s when the frame is coarse
       for (let i = 0; i < leaves.length; i++) {
         const l = leaves[i];
-        l.a = Math.sin(t * D.rock + l.ph) * D.amp + clamp(-l.vf * D.pitch, -1.1, 1.1);   // the tilt: a sine + airspeed
+        const rest = clamp(-l.vf * D.pitch, -D.amp, D.amp);   // what the airspeed asks of the tilt
+        for (let s = 0; s < sub; s++) {                 // the tilt: Upright's spring toward it, never assigned
+          l.om += (k * (rest - l.a) - c * l.om) * h;
+          l.om = clamp(l.om, -30, 30);
+          l.a += l.om * h;
+          if (l.a > Math.PI) { l.a = Math.PI; l.om = Math.min(0, l.om); }   // a full flip either way is as far as it goes
+          if (l.a < -Math.PI) { l.a = -Math.PI; l.om = Math.max(0, l.om); }
+        }
         const fx = Math.cos(l.a), fy = Math.sin(l.a);   // along the face
         const nx = -fy, ny = fx;                        // across it (the normal)
         l.vy += g * dt;
@@ -6552,11 +6634,13 @@ def("A", "Avalanche", "bodies", "boulders on Normals' hill: a = g·sin θ along 
 });
 rhymeOf("Avalanche", "Alpine", "a slope twice as steep and twice the restitution — the same rocks leap where they used to roll", { top: 0.12, bottom: 0.88, e: 0.75 });
 
-def("K", "Kite", "bodies", "Rope's string, lift = wind² · sin(angle of attack), a follow-chain tail — press to gust from your click", function (u) {
+def("K", "Kite", "bodies", "Rope's string, lift = wind² · sin(angle of attack), a verlet ribbon tail that only remembers where the kite has been — press to gust from your click", function (u) {
   var D = { n: 9, seg: 0.06, rounds: 6, g: 1.6, damp: 0.99,           // string links, link ×H, passes, the kite's gravity ×H
             wind: 0.5, gustiness: 0.35, lift: 40, bridle: 0.55,       // wind ×W/s, noise speed, lift gain, face tilt (rad)
             gust: 1.2, tail: 7,                                        // press gust ×W/s, tail links
-            label: "F = k·|w|²·sin α along the face normal" };
+            tailDrag: 5,                                               // how fast a tail link's own velocity gives in to the wind, per second (a ribbon: all drag, little mass)
+            tailWeight: 0.15,                                          // the tail's share of g — it sags when the wind drops
+            label: "F = k·|w|²·sin α along the face normal · tail: v += (w − v)(1 − e^(−drag·dt)), then re-tied" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, poly, arrow, mote, label, len, clamp, noise, BONE, MOVER, GOOD, DIM } = u;
   // a flat plate in a wind feels one force, along its own NORMAL, of size
   // k·|w|²·sin α — α being the ANGLE OF ATTACK between the apparent wind
@@ -6566,7 +6650,11 @@ def("K", "Kite", "bodies", "Rope's string, lift = wind² · sin(angle of attack)
   // string, so the string (Rope's verlet chain, pinned in the flyer's
   // hand) always presents the face to the wind — and the string's pull is
   // what holds it up there; let go and it would just blow away. the tail
-  // is Tentacle's follow-chain: it only remembers where the kite has been.
+  // is a second, lighter chain: every link a verlet point of its own, whose
+  // velocity gives in to the wind at a rate (linear drag, integrated
+  // exactly) and which is then pulled back to one link's length from the
+  // link before it — so it only remembers where the kite has been, and
+  // the snaking is the kite's own dance and the wind's gusts, nothing else.
   const seg = H * D.seg, G = H * D.g, n = D.n;
   const hx = W * 0.22, hy = GY - 14;                   // the hand
   const pts = [];
@@ -6575,7 +6663,7 @@ def("K", "Kite", "bodies", "Rope's string, lift = wind² · sin(angle of attack)
     pts.push({ x: x, y: y, px: x, py: y });
   }
   const tail = [];
-  for (let i = 0; i < D.tail; i++) tail.push({ x: pts[n - 1].x - i * 6, y: pts[n - 1].y });
+  for (let i = 0; i < D.tail; i++) { const x = pts[n - 1].x - i * 6, y = pts[n - 1].y; tail.push({ x: x, y: y, px: x, py: y }); }
   let gx = 0, gy2 = 0, gustT = 0, alpha = 0, fmag = 0, nx = 0, ny = -1;
   return {
     press(mx, my) {
@@ -6622,11 +6710,15 @@ def("K", "Kite", "bodies", "Rope's string, lift = wind² · sin(angle of attack)
         }
       }
       tail[0].x = kite.x; tail[0].y = kite.y;
-      for (let i = 1; i < tail.length; i++) {          // Tentacle's follow-chain, blown downwind
+      const give = 1 - Math.exp(-D.tailDrag * dt);     // how much of the gap to the wind one frame closes: exact for linear drag
+      for (let i = 1; i < tail.length; i++) {          // the ribbon: verlet links that drift with the wind, then re-tied
         const s = tail[i], p = tail[i - 1];
-        s.x += wx * 0.25 * dt; s.y += (G * 0.15 + Math.sin(t * 5 - i) * 20) * dt;
-        const a = Math.atan2(s.y - p.y, s.x - p.x);
-        s.x = p.x + Math.cos(a) * 6; s.y = p.y + Math.sin(a) * 6;
+        let vx = clamp((s.x - s.px) / dt, -W, W), vy = clamp((s.y - s.py) / dt, -W, W);
+        vx += (wx - vx) * give; vy += (wy - vy) * give + G * D.tailWeight * dt;
+        s.px = s.x; s.py = s.y;
+        s.x += vx * dt; s.y += vy * dt;
+        const dx = s.x - p.x, dy = s.y - p.y, d = len(dx, dy) || 1;   // the tie: one link's length from the link before
+        s.x = p.x + dx / d * 6; s.y = p.y + dy / d * 6;
       }
       arrow(W * 0.1, H * 0.1, W * 0.1 + wx * 0.12, H * 0.1 + wy * 0.12, DIM);
       label("wind", W * 0.1, H * 0.1 - 6, DIM, "center");
@@ -9623,28 +9715,39 @@ def("M", "Mantle", "verbs", "ledge grab: chest ray blocked, head ray clear → h
 });
 rhymeOf("Mantle", "Monkeybars", "the hands catch an edge even while rising, and the arc takes a third of the time — a climber, not a clamberer", { fromBelow: true, mantleT: 0.15, hang: 0.2 });
 
-def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and turns gravity off; a hop off the top (Grid's snap, one axis) — press above to climb, below to drop", function (u) {
+def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and turns gravity off; a hop off the top (Grid's snap, one axis); a rope is the same rail on an angular spring the climber's weight and pulls swing — press above to climb, below to drop", function (u) {
   var D = { g: 2.2,            // gravity, ×H per second²
             climb: 0.22,       // climb speed, ×H per second
             walk: 0.25,        // walk speed, ×W per second
             hopV: 0.55,        // the little hop off the top, ×H per second
-            sway: 0,           // 0 = a ladder; 1 = a rope that swings
-            swayRate: 1.6,     // rope swing, radians per second
+            sway: 0,           // 0 = a ladder (rigid: nothing the climber does moves it); 1 = a rope that swings
+            swayRate: 1.6,     // the rope's natural swing rate, radians per second (its k = swayRate²)
+            swayDamp: 0.35,    // its damping as a fraction of critical — under 1, so a let-go rope rings for a few swings before it hangs still
+            load: 0.25,        // the climber's weight, hung to one side: rad/s² of lean at the top of the rope, scaled by their height
+            pull: 0.15,        // each hand-over-hand pull shoves the rope sideways, rad/s, alternating sides
+            reach: 0.05,       // height climbed per pull, ×H
             top: 0.22,         // the ladder's top, ×H
-            label: "in rect ∧ up ⇒ x = rail, g = 0, y −= climb·dt · top ⇒ hop" };
-  const { ctx, W, H, GY, stage, ground, line, rect, mote, label, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
+            label: "in rect ∧ up ⇒ x = rail, g = 0, y −= climb·dt · top ⇒ hop · rope: θ'' = −k·θ − c·θ' + sway·(load·h + pulls)" };
+  const { ctx, W, H, GY, stage, ground, dot, line, rect, mote, label, clamp, MOVER, TARGET, GOOD, HOT, BONE, DIM } = u;
   // a LADDER is a rectangle and a mode. inside the rectangle, pressing up
   // ENTERS the mode: x snaps to the rail (the way Grid snaps to a cell, but
   // on one axis only), gravity is switched off, and up/down move y at a
   // fixed climb speed. leaving happens three ways: walk off the side, drop
   // (gravity back on), or reach the top, where a small scripted hop puts
   // the feet on the platform so the body never pops through it. a ROPE is
-  // the same mode with the rail swaying: the sway dial bends the rail's x
-  // by height, and the climber's x follows it.
+  // the same mode with the rail on a hinge: one angle θ from vertical,
+  // rooted at the ground, on Upright's spring (α = −k·θ − c·ω, k from
+  // swayRate) — and what swings it is the CLIMBER: their weight hangs to
+  // one side, a torque that grows with their height, and every pull up
+  // shoves it the other way. let go and the load vanishes: the rope
+  // springs back and rings, under-damped, long after the climber has gone.
+  // the climber's x follows the rail, so a rope you climb swings because
+  // you are on it.
   const R = 8, lx = W * 0.5, half = W * 0.05;
   let x = W * 0.1, y = GY - R, vy = 0, dir = 1, state = "walk", want = 0;   // want: +1 up, −1 down
   const topY = H * D.top, platX = lx + half;           // the platform the top exits onto
-  function railX(py, t) { return lx + Math.sin(t * D.swayRate + (GY - py) / H * 2.5) * D.sway * W * 0.06 * ((GY - py) / (GY - topY)); }
+  let th = 0, om = 0, climbed = 0, side = 1;           // the rope's angle and rate; height climbed since the last pull, and which hand pulls next
+  function railX(py) { return lx + Math.sin(th) * (GY - py); }   // the rail at height py: the hinge is at the ground
   return {
     press(x0, y0) {
       if (state === "climb") { if (y0 > y) { state = "fall"; vy = 0; } }
@@ -9659,8 +9762,11 @@ def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and 
         if (x > W + R) { x = -R; y = GY - R; dir = 1; }
         if (x < R) dir = 1;
       } else if (state === "climb") {
-        x = railX(y, t);                               // the snap, every frame
-        y -= want * H * D.climb * dt;
+        const dy = want * H * D.climb * dt;
+        y -= dy;
+        climbed += Math.abs(dy);
+        if (climbed > H * D.reach) { climbed = 0; side = -side; om += D.sway * D.pull * side; }   // a pull: the weight shifts to the other hand
+        x = railX(y);                                  // the snap, every frame — to wherever the rope is now
         if (y - R < topY) { state = "hop"; vy = -H * D.hopV; }
       } else if (state === "hop") {
         vy += H * D.g * dt; y += vy * dt; x += W * D.walk * dt;
@@ -9670,6 +9776,21 @@ def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and 
         vy += H * D.g * dt; y += vy * dt;
         if (y >= GY - R) { y = GY - R; vy = 0; state = "walk"; dir = 1; }
       }
+      // the rope's hinge: Upright's spring on θ, loaded by the climber while
+      // they hang on it (their weight to one side, a torque that grows with
+      // their height up the rope). sway = 0 leaves k·θ = 0 and no load: a
+      // ladder. a coarse frame is cut into substeps of at most 0.02 s
+      {
+        const k = D.swayRate * D.swayRate, c = 2 * D.swayDamp * Math.sqrt(k);
+        const hf = state === "climb" ? clamp((GY - y) / (GY - topY), 0, 1) : 0;   // how far up the rope the load hangs
+        const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+        for (let s = 0; s < sub; s++) {
+          om += (-k * th - c * om + D.sway * D.load * hf) * h;
+          th += om * h;
+          if (th > 0.6) { th = 0.6; om = Math.min(0, om); }   // a rope can only lean so far before it is a slide
+          if (th < -0.6) { th = -0.6; om = Math.max(0, om); }
+        }
+      }
       // the world: the ladder rect, the rails and rungs, the top platform
       rect(lx - half, topY, half * 2, GY - topY, "rgba(155,226,138,0.06)");
       ctx.strokeStyle = "rgba(155,226,138,0.35)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
@@ -9677,14 +9798,18 @@ def("L", "Ladder", "verbs", "ladder: up inside the rect snaps x to the rail and 
       ctx.strokeStyle = BONE; ctx.lineWidth = 1.5; ctx.beginPath();
       const n = 10;
       for (let i = 0; i <= n; i++) {
-        const yy = topY + (GY - topY) * i / n, rx = railX(yy, t);
+        const yy = topY + (GY - topY) * i / n, rx = railX(yy);
         if (i === 0) ctx.moveTo(rx - half * 0.6, yy); else ctx.lineTo(rx - half * 0.6, yy);
       }
-      for (let i = n; i >= 0; i--) { const yy = topY + (GY - topY) * i / n; ctx.lineTo(railX(yy, t) + half * 0.6, yy); }
+      for (let i = n; i >= 0; i--) { const yy = topY + (GY - topY) * i / n; ctx.lineTo(railX(yy) + half * 0.6, yy); }
       ctx.stroke();
-      for (let i = 1; i < n; i++) { const yy = topY + (GY - topY) * i / n, rx = railX(yy, t); line(rx - half * 0.6, yy, rx + half * 0.6, yy, BONE, 1); }
+      for (let i = 1; i < n; i++) { const yy = topY + (GY - topY) * i / n, rx = railX(yy); line(rx - half * 0.6, yy, rx + half * 0.6, yy, BONE, 1); }
       rect(platX, topY, W - platX, 4, BONE);
       ground();
+      if (D.sway) {                                    // the hinge and its angle, read off the state
+        dot(lx, GY, 2.5, TARGET);
+        label("θ = " + (th * 180 / Math.PI).toFixed(1) + "°", lx + half + 4, GY - 4, DIM);
+      }
       if (state === "climb") {
         line(x, y, lx, y, TARGET, 1);                  // x is owned by the rail
         label("g = 0 · x = rail", x + R + 6, y + 3, GOOD);
@@ -11398,30 +11523,39 @@ def("U", "Uboat", "wheels", "buoyancy up, ballast down, dive planes pitching a s
 });
 rhymeOf("Uboat", "Ultraslow", "a pump at a quarter of the rate, planes that answer in seconds and half the way — a deep-sea crawl where every correction is late", { pumpRate: 0.08, planeRate: 0.25, speed: 0.06 });
 
-def("Y", "Yak", "wheels", "the rider is the mount's child (Nest): mount + R(θ)·offset carries Gait's bob into the saddle; dismount keeps its velocity — press to hop off / on", function (u) {
+def("Y", "Yak", "wheels", "the rider is the mount's child (Nest): mount + R(θ)·offset carries Gait's bob into the saddle, and the rider sits on a spring that lags and bounces after it; dismount keeps its velocity — press to hop off / on", function (u) {
   var D = { speed: 0.22,          // the mount's walk, ×W/s
             size: 0.1,            // the mount's body height, ×H
             bob: 0.035,           // the gait bob, ×H
             tilt: 0.08,           // radians of body rock with the stride
             offset: [0.05, -0.95],  // the saddle, in body sizes (x forward, y up)
+            omega: 12,            // the seat spring's ω, rad/s: how fast the rider settles into the saddle
+            zeta: 0.35,           // its damping ratio — under 1, so the rider bounces past the saddle after every step
+            lean: 0.08,           // radians of rider lean per H/s² of seat acceleration: pushed forward, they tip back
             hop: 0.22,            // the dismount hop, ×H
             g: 2.2,               // gravity ×H/s²
             rideFor: 4.5,         // seconds ridden before the autopilot hops off
-            label: "rider = mount + R(θ)·offset   ·   dismount: v = v_mount + hop" };
+            label: "saddle = mount + R(θ)·offset · rider: a = ω²(saddle − p) − 2ζω·v · dismount: v = v_rider + hop" };
   const { ctx, W, H, GY, TAU, stage, ground, dot, ring, line, rect, mote, label, clamp, MOVER, BONE, TARGET, HOT, DIM } = u;
   // a MOUNT is a parent frame (Nest): the rider stores one local OFFSET —
-  // the saddle — and every frame is placed at mount + rotate(offset, θ),
+  // the saddle — and every frame the SADDLE is placed at mount + rotate(offset, θ),
   // so the mount's gait BOB and stride rock (Gait, Hover's derivative
-  // lean) reach the rider without a line of rider code. DISMOUNT is the
+  // lean) reach the saddle without a line of rider code. the rider is not
+  // welded to it: they sit on a spring toward the saddle point (Grab's
+  // holding spring, ω and ζ from Damp), so every step's bob reaches them
+  // late, they overshoot it, and they are still settling when the next
+  // step comes — that lag is what "riding" looks like. DISMOUNT is the
   // un-parenting: the rider becomes a body of its own, and the honest part
-  // is that it keeps the mount's velocity plus a hop — nobody stops dead in
-  // mid-air. mounting is the reverse: close enough to the saddle, re-parent.
+  // is that it keeps whatever velocity it had plus a hop — nobody stops
+  // dead in mid-air. mounting is the reverse: close enough to the saddle,
+  // re-parent, and the spring reels them in from wherever they landed.
   const S = H * D.size, LEG = S * 0.8;
   let mx = W * 0.3, dir = 1, phase = 0;
-  let mode = "ride", rx = 0, ry = 0, rvx = 0, rvy = 0, rideT = 0;
+  let mode = "ride", rx = mx + D.offset[0] * S, ry = GY - LEG - S * 0.5 + D.offset[1] * S, rvx = 0, rvy = 0, rideT = 0;   // the rider starts in the saddle
+  let lth = 0, lom = 0;                                // the rider's lean, and its rate
   const G = H * D.g;
   let sx = 0, sy = 0, by = 0, th = 0;
-  function dismount() { mode = "air"; rvx = dir * W * D.speed; rvy = -Math.sqrt(2 * G * H * D.hop); rideT = 0; }
+  function dismount() { mode = "air"; rvy -= Math.sqrt(2 * G * H * D.hop); rideT = 0; }   // the hop is added to the velocity the spring gave them
   return {
     press() {
       if (mode === "ride") dismount();
@@ -11440,7 +11574,17 @@ def("Y", "Yak", "wheels", "the rider is the mount's child (Nest): mount + R(θ)�
       sx = mx + ox * Math.cos(th) - oy * Math.sin(th);                  // ← the saddle: parent + R(θ)·offset
       sy = by + ox * Math.sin(th) + oy * Math.cos(th);
       if (mode === "ride") {
-        rx = sx; ry = sy; rideT += dt;
+        // the seat spring: a = ω²·(saddle − rider) − 2ζω·v, symplectic, in
+        // substeps of at most 0.02 s when the frame is coarse (Substep). the
+        // lean is the same spring on an angle, driven by the seat's push
+        const w = D.omega, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+        for (let s = 0; s < sub; s++) {
+          const ax = w * w * (sx - rx) - 2 * D.zeta * w * rvx, ay = w * w * (sy - ry) - 2 * D.zeta * w * rvy;
+          rvx += ax * h; rvy += ay * h; rx += rvx * h; ry += rvy * h;
+          lom += (w * w * (-dir * D.lean * ax / H - lth) - 2 * D.zeta * w * lom) * h;   // pushed forward, the rider tips back
+          lth = clamp(lth + lom * h, -0.8, 0.8);
+        }
+        rideT += dt;
         if (rideT > D.rideFor) dismount();
       } else {
         if (mode === "air") {
@@ -11472,8 +11616,9 @@ def("Y", "Yak", "wheels", "the rider is the mount's child (Nest): mount + R(θ)�
       ctx.setLineDash([]);
       dot(mx, by, 2, TARGET);
       ring(sx, sy, 3, TARGET, 1);
-      mote(rx, ry, mode === "air" ? Math.atan2(rvy, rvx) : (dir > 0 ? 0 : Math.PI), MOVER, 6);
-      label(mode === "ride" ? "riding: θ = " + Math.round(th * 180 / Math.PI) + "°" : mode === "air" ? "v = v_mount + hop" : "on foot", rx, ry - 14, mode === "air" ? HOT : DIM, "center");
+      if (mode === "ride") line(sx, sy, rx, ry, "rgba(245,193,105,0.5)", 1);   // the spring: saddle to rider
+      mote(rx, ry, mode === "air" ? Math.atan2(rvy, rvx) : dir > 0 ? (mode === "ride" ? lth : 0) : Math.PI - (mode === "ride" ? lth : 0), MOVER, 6);
+      label(mode === "ride" ? "riding: lag " + Math.round(Math.hypot(rx - sx, ry - sy)) + " px · θ = " + Math.round(th * 180 / Math.PI) + "°" : mode === "air" ? "v = v_rider + hop" : "on foot", rx, ry - 14, mode === "air" ? HOT : DIM, "center");
       label(D.label, W / 2, H - 8, null, "center");
     }
   };

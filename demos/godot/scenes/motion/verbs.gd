@@ -32,15 +32,19 @@ const DEFS := [
 		"rhyme": { "name": "Monkeybars", "hint": "the hands catch an edge even while rising, and the arc takes a third of the time — a climber, not a clamberer",
 			"dials": { "fromBelow": true, "mantleT": 0.15, "hang": 0.2 } } },
 	{ "id": "ladder", "letter": "L", "name": "Ladder",
-		"hint": "ladder: up inside the rect snaps x to the rail and turns gravity off; a hop off the top (Grid's snap, one axis) — press above to climb, below to drop",
+		"hint": "ladder: up inside the rect snaps x to the rail and turns gravity off; a hop off the top (Grid's snap, one axis); a rope is the same rail on an angular spring the climber's weight and pulls swing — press above to climb, below to drop",
 		"dials": { "g": 2.2,            # gravity, ×H per second²
 			"climb": 0.22,              # climb speed, ×H per second
 			"walk": 0.25,               # walk speed, ×W per second
 			"hopV": 0.55,               # the little hop off the top, ×H per second
-			"sway": 0,                  # 0 = a ladder; 1 = a rope that swings
-			"swayRate": 1.6,            # rope swing, radians per second
+			"sway": 0,                  # 0 = a ladder (rigid: nothing the climber does moves it); 1 = a rope that swings
+			"swayRate": 1.6,            # the rope's natural swing rate, radians per second (its k = swayRate²)
+			"swayDamp": 0.35,           # its damping as a fraction of critical — under 1, so a let-go rope rings for a few swings before it hangs still
+			"load": 0.25,               # the climber's weight, hung to one side: rad/s² of lean at the top of the rope, scaled by their height
+			"pull": 0.15,               # each hand-over-hand pull shoves the rope sideways, rad/s, alternating sides
+			"reach": 0.05,              # height climbed per pull, ×H
 			"top": 0.22,                # the ladder's top, ×H
-			"label": "in rect ∧ up ⇒ x = rail, g = 0, y −= climb·dt · top ⇒ hop" },
+			"label": "in rect ∧ up ⇒ x = rail, g = 0, y −= climb·dt · top ⇒ hop · rope: θ'' = −k·θ − c·θ' + sway·(load·h + pulls)" },
 		"rhyme": { "name": "Lianas", "hint": "the rail sways like a jungle rope and the climb is slow — the same mode, a different plant",
 			"dials": { "sway": 1, "climb": 0.12, "swayRate": 1.2 } } },
 	{ "id": "wallrun", "letter": "W", "name": "Wallrun",
@@ -262,11 +266,9 @@ static func _m_jump(b: Dictionary) -> void:
 	b.state = "air"
 
 # ---- Ladder: the rail's x at a height (a rope bends it) ----
-static func _l_rail_x(b: Dictionary, py: float, t: float) -> float:
-	var D: Dictionary = b.D
+static func _l_rail_x(b: Dictionary, py: float) -> float:   # the rail at height py: the hinge is at the ground
 	var lx: float = b.w * 0.5
-	var topY: float = b.h * D.top
-	return lx + sin(t * D.swayRate + (b.gy - py) / b.h * 2.5) * D.sway * b.w * 0.06 * ((b.gy - py) / (b.gy - topY))
+	return lx + sin(float(b.th)) * (b.gy - py)
 
 # ---- Dodge: begin a roll, unless recovering ----
 static func _d_roll(b: Dictionary, d: int) -> void:
@@ -393,14 +395,24 @@ static func init(b: Dictionary) -> void:
 			# fixed climb speed. leaving happens three ways: walk off the side, drop
 			# (gravity back on), or reach the top, where a small scripted hop puts
 			# the feet on the platform so the body never pops through it. a ROPE is
-			# the same mode with the rail swaying: the sway dial bends the rail's x
-			# by height, and the climber's x follows it.
+			# the same mode with the rail on a hinge: one angle θ from vertical,
+			# rooted at the ground, on Upright's spring (α = −k·θ − c·ω, k from
+			# swayRate) — and what swings it is the CLIMBER: their weight hangs to
+			# one side, a torque that grows with their height, and every pull up
+			# shoves it the other way. let go and the load vanishes: the rope
+			# springs back and rings, under-damped, long after the climber has gone.
+			# the climber's x follows the rail, so a rope you climb swings because
+			# you are on it.
 			b.x = b.w * 0.1
 			b.y = b.gy - R
 			b.vy = 0.0
 			b.dir = 1
 			b.state = "walk"
 			b.want = 0                                   # want: +1 up, −1 down
+			b.th = 0.0                                   # the rope's angle and rate
+			b.om = 0.0
+			b.climbed = 0.0                              # height climbed since the last pull, and which hand pulls next
+			b.side = 1.0
 		"wallrun":
 			# the WALL RUN is a timer that borrows the wall for gravity. Ninja clung
 			# and slid; here the body must arrive FAST — a speed below minSpeed just
@@ -805,8 +817,14 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if b.x < R:
 					b.dir = 1
 			elif st == "climb":
-				b.x = _l_rail_x(b, b.y, t)                   # the snap, every frame
-				b.y -= b.want * b.h * D.climb * dt
+				var dy: float = b.want * b.h * D.climb * dt
+				b.y -= dy
+				b.climbed += absf(dy)
+				if b.climbed > b.h * float(D.reach):         # a pull: the weight shifts to the other hand
+					b.climbed = 0.0
+					b.side = -b.side
+					b.om += float(D.sway) * float(D.pull) * b.side
+				b.x = _l_rail_x(b, b.y)                      # the snap, every frame — to wherever the rope is now
 				if b.y - R < topY:
 					b.state = "hop"
 					b.vy = -b.h * D.hopV
@@ -829,6 +847,30 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					b.vy = 0.0
 					b.state = "walk"
 					b.dir = 1
+			# the rope's hinge: Upright's spring on θ, loaded by the climber while
+			# they hang on it (their weight to one side, a torque that grows with
+			# their height up the rope). sway = 0 leaves k·θ = 0 and no load: a
+			# ladder. a coarse frame is cut into substeps of at most 0.02 s
+			var rate: float = D.swayRate
+			var k: float = rate * rate
+			var c: float = 2.0 * float(D.swayDamp) * sqrt(k)
+			var hf: float = clampf((b.gy - b.y) / (b.gy - topY), 0.0, 1.0) if b.state == "climb" else 0.0   # how far up the rope the load hangs
+			var drive: float = float(D.sway) * float(D.load) * hf
+			var th: float = b.th
+			var om: float = b.om
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				om += (-k * th - c * om + drive) * h
+				th += om * h
+				if th > 0.6:                                 # a rope can only lean so far before it is a slide
+					th = 0.6
+					om = minf(0.0, om)
+				if th < -0.6:
+					th = -0.6
+					om = maxf(0.0, om)
+			b.th = th
+			b.om = om
 		"wallrun":
 			var wx: float = b.w * D.wall
 			var st: String = b.state
@@ -1436,17 +1478,20 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var rail := PackedVector2Array()
 			for i in nn + 1:
 				var yy: float = topY + (b.gy - topY) * i / float(nn)
-				rail.append(Vector2(_l_rail_x(b, yy, t) - half * 0.6, yy))
+				rail.append(Vector2(_l_rail_x(b, yy) - half * 0.6, yy))
 			for i in range(nn, -1, -1):
 				var yy: float = topY + (b.gy - topY) * i / float(nn)
-				rail.append(Vector2(_l_rail_x(b, yy, t) + half * 0.6, yy))
+				rail.append(Vector2(_l_rail_x(b, yy) + half * 0.6, yy))
 			n.draw_polyline(rail, Kit.BONE, 1.5)
 			for i in range(1, nn):
 				var yy: float = topY + (b.gy - topY) * i / float(nn)
-				var rx := _l_rail_x(b, yy, t)
+				var rx := _l_rail_x(b, yy)
 				Kit.line(n, Vector2(rx - half * 0.6, yy), Vector2(rx + half * 0.6, yy), Kit.BONE, 1.0)
 			Kit.rect(n, Rect2(platX, topY, b.w - platX, 4.0), Kit.BONE)
 			Kit.ground(n, b)
+			if float(D.sway) != 0.0:                     # the hinge and its angle, read off the state
+				Kit.dot(n, Vector2(lx, b.gy), 2.5, Kit.TARGET)
+				Kit.label(n, b, "θ = %.1f°" % rad_to_deg(float(b.th)), Vector2(lx + half + 4.0, b.gy - 4.0), Kit.DIM)
 			if st == "climb":
 				Kit.line(n, Vector2(x, y), Vector2(lx, y), Kit.TARGET, 1.0)   # x is owned by the rail
 				Kit.label(n, b, "g = 0 · x = rail", Vector2(x + R + 6.0, y + 3.0), Kit.GOOD)

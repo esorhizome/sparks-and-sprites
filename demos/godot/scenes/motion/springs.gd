@@ -105,11 +105,16 @@ const DEFS := [
 		"rhyme": { "name": "Sludge", "hint": "a heavy blob: tiny hops, long sits — the same squash rules on a much lazier body",
 			"dials": { "apex": 0.05, "hop": 0.1, "sit": 0.9 } } },
 	{ "id": "cat", "letter": "C", "name": "Cat",
-		"hint": "a pounce: a butt-wiggle crouch (anticipation), then one parabola aimed at the toy — press to move the toy",
+		"hint": "a pounce: a butt-wiggle crouch (anticipation), then one parabola aimed at the toy; the tail is a chain of springs the body's jolts swing — press to move the toy",
 		"dials": { "g": 2.6, "apex": 0.2,                                  # gravity and apex as fractions of H
 			"sit": 1.1, "crouch": 0.6, "land": 0.16,                       # seconds sitting, crouching, landing
-			"wiggle": 18.0, "tail": 3.0,                                   # the butt-wiggle's rate; the tail's sway rate (rad/s)
-			"label": "v₀ = √(2gh)      vx = distance ÷ airtime" },
+			"wiggle": 18.0,                                                # the butt-wiggle's rate (rad/s)
+			"tailSegs": 6,                                                 # segments in the tail chain
+			"tailK": 220.0,                                                # the tail root's stiffness (per inertia): how fast it springs back to its curl
+			"tailTip": 1.25,                                               # each segment's k as a multiple of the one below — lighter, so quicker
+			"tailDamp": 0.35,                                              # a segment's damping as a fraction of its own critical — under 1, so the tip whips through
+			"swing": 6.0,                                                  # rad/s² of tail swing per H/s² of body jolt: the take-off and the landing are the drive
+			"label": "v₀ = √(2gh)      vx = distance ÷ airtime   ·   tail: θⱼ'' = kⱼ(θⱼ₋₁ − θⱼ) − dⱼθⱼ' + swing·(g − a_body)·ê⊥" },
 		"rhyme": { "name": "Cougar", "hint": "a bigger cat: a higher, floatier arc and a longer, more menacing crouch before the spring",
 			"dials": { "apex": 0.42, "g": 2.0, "crouch": 1.0 } } },
 ]
@@ -211,17 +216,26 @@ static func _qs_struggle(b: Dictionary) -> void:
 	b.ripple = 1.0
 
 ## Cat: the body, drawn about the paws — scaled, tilted, wiggling, tail on a sine.
-static func _draw_cat(n: CanvasItem, b: Dictionary, o: Vector2, sx: float, sy: float, wig: float, tilt: float, t: float) -> void:
-	var D: Dictionary = b.D
+## Cat: the tail's resting curl — each segment a little more upright, radians above backward.
+static func _cat_rest(j: int) -> float:
+	return 0.45 + j * 0.12
+
+static func _draw_cat(n: CanvasItem, b: Dictionary, o: Vector2, sx: float, sy: float, wig: float, tilt: float, _t: float) -> void:
 	var origin: Vector2 = (b.rect as Rect2).position
 	var dir: float = b.dir
 	n.draw_set_transform(origin + o, tilt, Vector2(sx, sy))   # scale about the paws
 	var bx := -dir * 8.0 + wig                        # the body, behind the head
 	var by := -7.0
 	Kit.dot(n, Vector2(bx, by), 7.0, Color(0.541, 0.851, 0.961, 0.85))
-	for i in 6:                                       # the tail sways on a sine
-		var s: float = sin(t * D.tail + i * 0.7) * i * 1.4
-		Kit.dot(n, Vector2(bx - dir * (6.0 + i * 3.6), by - i * 2.4 - s), 2.4 - i * 0.2, Color(0.541, 0.851, 0.961, 0.6))
+	var J: int = b.J
+	var th: PackedFloat32Array = b.th
+	var px := bx
+	var py := by
+	for j in J:                                       # the tail: walk the chain of angles from the body
+		var a: float = _cat_rest(j) + th[j]
+		px -= dir * cos(a) * 4.3
+		py -= sin(a) * 4.3
+		Kit.dot(n, Vector2(px, py), 2.4 - j * 0.2, Color(0.541, 0.851, 0.961, 0.6))
 	var hx := dir * 6.0
 	var hy := -11.0
 	Kit.dot(n, Vector2(hx, hy), 6.0, Kit.MOVER)
@@ -411,6 +425,12 @@ static func init(b: Dictionary) -> void:
 			# pick the apex h, v₀ = √(2gh) fixes the airtime T = 2v₀/g, and
 			# vx = distance/T lands it on the toy exactly. once airborne nothing can
 			# be corrected — a pounce is BALLISTIC, which is why cats miss.
+			# the TAIL is not animated: it is a chain of angle springs (Grass), each
+			# segment chasing the one below on its own under-damped spring, rooted
+			# in the body. what drives it is the body's own jolt: in the body's
+			# frame the tail feels g − a_body, so a take-off flings it down and back,
+			# the arc leaves it weightless to ring on its springs, and the landing
+			# flings it down again — then it settles, later than the body does.
 			b.x = b.w * 0.25
 			b.y = b.gy
 			b.vx = 0.0
@@ -423,6 +443,18 @@ static func init(b: Dictionary) -> void:
 			b.sy = 1.0
 			b.wig = 0.0
 			b.tilt = 0.0
+			var J := maxi(1, int(D.tailSegs))
+			var th := PackedFloat32Array()                # each segment's angle off its rest curl, and its rate
+			var om := PackedFloat32Array()
+			th.resize(J)
+			om.resize(J)
+			b.J = J
+			b.th = th
+			b.om = om
+			b.pbx = b.x - 8.0                            # the tail root's last position and velocity, for the jolt
+			b.pby = b.y - 7.0
+			b.pvx = 0.0
+			b.pvy = 0.0
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var D: Dictionary = b.D
@@ -785,6 +817,47 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.sy = sy
 			b.wig = wig
 			b.tilt = tilt
+			# the tail's drive: the jolt of the point it hangs from — the body, plus
+			# the wiggle — as a second difference, in H/s². in the body's frame the
+			# tail feels g − a_body: on the ground that is gravity's droop, in the
+			# arc it is nothing at all (free fall: the tail floats and just rings),
+			# and the take-off and the landing are one-frame spikes that fling it.
+			# the spring chain is stiff up the tail (k · tailTip per segment), so a
+			# coarse frame is cut into substeps of at most 0.02 s (Substep)
+			if dt > 0.0:
+				var dir: float = b.dir
+				var rbx: float = b.x - dir * 8.0 + wig
+				var rby: float = b.y - 7.0
+				var rvx: float = (rbx - b.pbx) / dt
+				var rvy: float = (rby - b.pby) / dt
+				var jx: float = -(rvx - b.pvx) / dt / b.h        # g − a_body, per H
+				var jy: float = (g - (rvy - b.pvy) / dt) / b.h
+				b.pbx = rbx
+				b.pby = rby
+				b.pvx = rvx
+				b.pvy = rvy
+				var J: int = b.J
+				var th: PackedFloat32Array = b.th
+				var om: PackedFloat32Array = b.om
+				var tailK: float = D.tailK
+				var tailTip: float = D.tailTip
+				var tailDamp: float = D.tailDamp
+				var swing: float = D.swing
+				var sub := maxi(1, ceili(dt * 50.0))
+				var h := dt / float(sub)
+				for _s in sub:
+					var below := 0.0                     # the root chases the curl itself; each segment above chases the one below
+					var kj: float = tailK
+					for j in J:
+						if j > 0:
+							kj *= tailTip
+						var a: float = _cat_rest(j) + th[j]
+						var dj: float = tailDamp * 2.0 * sqrt(kj)
+						var torque: float = swing * (jx * dir * sin(a) - jy * cos(a))   # the jolt across the segment, the way that raises θ
+						om[j] += (kj * (below - th[j]) - dj * om[j] + torque) * h
+						om[j] = clampf(om[j], -40.0, 40.0)
+						th[j] = clampf(th[j] + om[j] * h, -1.4, 1.4)
+						below = th[j]
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	Kit.stage(n, b)
