@@ -4995,37 +4995,57 @@ def("J", "Jetsam", "weather", "floating on that water: each body rises by how de
 });
 rhymeOf("Jetsam", "Junkraft", "eight small floats on a choppy surface — every bob drives the springs, so the raft of junk makes its own weather", { count: 8, size: 0.5, chop: 2 });
 
-def("W", "Waterline", "weather", "where water meets shore: a foam line that advances and retreats on a slow sine, and a wet band behind it that dries as it is left (atlas Tide) — press to push a big wave", function (u) {
+def("W", "Waterline", "weather", "where water meets shore: the run-up is a body on a spring toward a slow tidal rest, so a pressed wave overshoots up the slope and the backwash undershoots, a foam line that chases the edge on its own lag, and a wet band behind it that dries as it is left (atlas Tide) — press to throw a big wave", function (u) {
   var D = { shore: 0.62,       // the slope runs from the left edge up to this fraction of W
-            tide: 0.55,        // radians per second of the in-out sine
-            reach: 0.3,        // how far the sine carries the edge, of the slope
-            surge: 0.3,        // what a press adds to the reach
+            tide: 0.55,        // radians per second of the slow in-out sine the REST level follows
+            reach: 0.3,        // how far the tide carries the rest level, of the slope
+            wk: 6,             // the run-up's stiffness toward the tidal rest: √wk rad/s, a wave every ~2.6 s
+            wdamp: 0.35,       // its damping as a fraction of critical — under 1, so a wave overshoots up the slope and the backwash undershoots
+            surge: 1.2,        // the velocity a press adds to the run-up, slopes per second (about 0.3 of the slope at the crest)
+            foamk: 12,         // the foam line's own spring toward the water's edge
+            foamdamp: 0.5,     // its damping, of critical — the froth lags the water going up and is left behind coming down
             dry: 6,            // seconds for wet sand to fade back
             cols: 48,          // wet-memory columns along the slope
             sea: "#2E7FB8", sand: "#D8C08A", wet: "#6A4A28",
-            label: "edge = slope⁻¹(level(t)) · wet α = 1 − age ÷ dry" };
+            label: "r'' = wk·(tide(t) − r) − wdamp·2√wk·r' · press: r' += surge · foam'' = foamk·(r − foam) − foamdamp·2√foamk·foam' · wet α = 1 − age ÷ dry" };
   const { ctx, W, H, GY, TAU, stage, hero, dot, line, label, clamp, rgba, mix, shade, INK } = u;
-  // seen from the side: a beach is a SLOPE and the sea is a flat LEVEL that
-  // rises and falls on a slow sine. the WATERLINE is simply where the level
-  // meets the slope, so it runs up the beach and back. two things make it
-  // read as surf rather than a moving rectangle: FOAM, a bright line at the
-  // edge that is thickest while the water advances, and the WET BAND — every
-  // column of sand remembers when it was last covered and darkens by that age,
-  // drying over D.dry seconds. Tide's trick, turned on its side.
-  let lastT = [], surgeAt = -99, prevR = 0.5, foam = 0;
+  // seen from the side: a beach is a SLOPE and the sea is a flat LEVEL. the
+  // WATERLINE is simply where the level meets the slope, so it runs up the
+  // beach and back. the level is not a clock: the run-up r is a BODY on a
+  // spring (the lexicon's Damp) whose rest is the slow tide, so it carries
+  // momentum — a press does not lift the water, it throws it: a velocity
+  // kick that the spring turns into a wave that overshoots up the slope, a
+  // backwash that undershoots below the rest, and a ring-down of a few
+  // seconds. the FOAM is a second body chasing the first on its own slacker
+  // spring, so it trails the edge on the way up and is left on the sand on
+  // the way down. the WET BAND — every column of sand remembers when it was
+  // last covered and darkens by that age, drying over D.dry seconds — is
+  // Tide's trick, turned on its side.
+  let lastT = [], r = 0.5, v = 0, fr = 0.5, fv = 0;
   for (let c = 0; c < D.cols; c++) lastT.push(-99);
   const lowY = H * 0.97;
   function sandY(x) { const sx = W * D.shore; return x >= sx ? GY : lowY + (GY - lowY) * (x / sx); }
   return {
-    press() { surgeAt = -1; },                            // set on the next frame's clock
+    press() { v += D.surge; },                            // a velocity kick: the spring does the rest
     frame(dt, t) {
-      if (surgeAt === -1) surgeAt = t;
       stage({ night: 0.05 });
       const sx = W * D.shore;
-      const r = clamp(0.5 + D.reach * Math.sin(t * D.tide) + D.surge * Math.exp(-(t - surgeAt) * 1.4) * (t >= surgeAt ? 1 : 0), 0.05, 0.95);
+      const rest = 0.5 + D.reach * Math.sin(t * D.tide);                          // the tide: where the run-up would sit if it stood still
+      // two springs, stepped symplectically; a coarse frame is cut into substeps
+      // of at most 0.02 s (S·Substep) so foamk stays well inside √k·h < 2
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const wc = D.wdamp * 2 * Math.sqrt(D.wk), fc = D.foamdamp * 2 * Math.sqrt(D.foamk);
+      for (let s = 0; s < sub; s++) {
+        v += (D.wk * (rest - r) - wc * v) * h;
+        r += v * h;
+        if (r > 0.95) { r = 0.95; v = Math.min(v, 0); }                             // the top of the beach and the sea floor stop it dead
+        if (r < 0.05) { r = 0.05; v = Math.max(v, 0); }
+        fv += (D.foamk * (r - fr) - fc * fv) * h;                                   // the foam chases the water, late
+        fr = clamp(fr + fv * h, 0.02, 0.98);
+      }
       const level = lowY + (GY - lowY) * r, edge = sx * r;
-      const adv = (r - prevR) / Math.max(dt, 1e-3); prevR = r;
-      foam += (clamp(adv * 6, 0, 1) - foam) * clamp(dt * 3, 0, 1);   // foam blooms on the advance, lingers a moment
+      const fx = sx * fr, fy = lowY + (GY - lowY) * fr;                             // the foam line sits on the sand, wherever it has got to
+      const foam = clamp(Math.max(v, 0) * 5 + Math.abs(r - fr) * 6, 0, 1);         // froth: the advance, and the gap the foam has yet to close
       ctx.fillStyle = D.sand;                                        // the beach: the slope, then the flat
       ctx.beginPath(); ctx.moveTo(0, lowY); ctx.lineTo(sx, GY); ctx.lineTo(W, GY); ctx.lineTo(W, H); ctx.lineTo(0, H); ctx.closePath(); ctx.fill();
       const cw = sx / D.cols;
@@ -5041,17 +5061,18 @@ def("W", "Waterline", "weather", "where water meets shore: a foam line that adva
       ctx.beginPath(); ctx.moveTo(0, level);
       for (let x = 0; x <= edge; x += 4) ctx.lineTo(x, level + Math.sin(x * 0.08 - t * 3) * 1.2 * (1 - x / Math.max(edge, 1)));
       ctx.lineTo(edge, level); ctx.lineTo(0, lowY); ctx.closePath(); ctx.fill();
-      ctx.strokeStyle = rgba(INK, 0.25 + foam * 0.7); ctx.lineWidth = 1 + foam * 3;   // the foam line at the edge
-      ctx.beginPath(); ctx.moveTo(Math.max(0, edge - W * 0.12 * (0.4 + foam)), level); ctx.lineTo(edge, level); ctx.stroke();
-      for (let k = 0; k < 5; k++) dot(edge - k * 5 - 2, level - 1 + Math.sin(t * 5 + k) * 1.2, 1.2 + foam * 1.5, rgba(INK, 0.5 + foam * 0.5));
+      ctx.strokeStyle = rgba(INK, 0.25 + foam * 0.7); ctx.lineWidth = 1 + foam * 3;   // the foam line: from where the froth is to the water's edge
+      ctx.beginPath(); ctx.moveTo(fx, fy); ctx.lineTo(edge, level); ctx.stroke();
+      for (let k = 0; k < 5; k++) dot(fx - k * 5 - 2, fy - 1 + Math.sin(t * 5 + k) * 1.2, 1.2 + foam * 1.5, rgba(INK, 0.5 + foam * 0.5));
       hero(W * 0.82, GY, { face: -1, pose: "stand", frame: t });
       line(edge, level, edge, H * 0.3, rgba(INK, 0.18), 1);          // the edge's x, read off the slope
-      label("level " + Math.round(r * 100) + "% · foam " + Math.round(foam * 100) + "%", edge, H * 0.28, null, "center");
+      line(sx * rest, lowY + (GY - lowY) * rest, sx * rest, H * 0.34, rgba(INK, 0.1), 1);   // and the rest it is springing toward
+      label("level " + Math.round(r * 100) + "% · r' " + (v >= 0 ? "+" : "") + v.toFixed(2) + " · foam " + Math.round(foam * 100) + "%", edge, H * 0.28, null, "center");
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
 });
-rhymeOf("Waterline", "Wintersurf", "a slow grey sea that takes a long time to dry — the same slope and sine, at a colder pace", { tide: 0.25, dry: 14, sea: "#5A6E80" });
+rhymeOf("Waterline", "Wintersurf", "a slow grey sea that takes a long time to dry — the same slope and spring, the tide at a colder pace", { tide: 0.25, dry: 14, sea: "#5A6E80" });
 
 def("P", "Puddle", "weather", "flat ellipses that reflect: the flipped sprite (Wetfloor's trick, the atlas's Mirror) clipped to each puddle, sky in the rest, rain rings on top — press to toggle the rain", function (u) {
   var D = { puddles: [[0.2, 0.1, 0.11, 0.028], [0.54, 0.16, 0.16, 0.036], [0.83, 0.07, 0.08, 0.02]],   // x (of W), depth into the ground band (of H), rx (of W), ry (of H)
@@ -5306,26 +5327,35 @@ def("Y", "Yeti", "weather", "footprints in snow: each plant stamps a print and d
 });
 rhymeOf("Yeti", "Yellowsand", "dune sand: the same height field, but the wind pays back a little depth every second, so old trails heal and only the walked one stays", { surface: "sand", refill: 0.12, fade: 10 });
 
-def("Q", "Quiver", "weather", "reeds: every blade is a spring on an angle, leaning on wind noise and parting from whoever walks through, with a rustle meter (Grass) — press to walk through at x", function (u) {
+def("Q", "Quiver", "weather", "reeds: every blade is a chain of angles on springs (Grass) — the root leans on wind noise and parts from whoever walks through, the joints above chase it under-damped so the tips lag and whip through after the body has passed, with a rustle meter that hears every joint — press to walk through at x", function (u) {
   var D = { blades: 60,        // reeds across the stage
             height: 1,         // blade height, × (of 0.28 H)
-            k: 40,             // angle spring stiffness
-            c: 3.5,            // angle damping
+            k: 40,             // the root spring's stiffness
+            c: 3.5,            // the root's damping (2√k would be critical)
+            joints: 3,         // segments per reed: the root + the joints that follow it (1 = the old rigid needle)
+            tip: 1.4,          // each joint's k as a multiple of the one below: above 1 because the segment above is lighter — the same bend rights it faster
+            tipdamp: 0.4,      // a joint's damping, as a fraction of ITS OWN critical — well under 1, so the tip overshoots the root and whips through
             wind: 0.18,        // radians the wind leans them by
             windSpeed: 0.7,    // how fast the noise scrolls
             part: 0.9,         // radians the hero pushes a blade aside
             reach: 0.09,       // the hero's push radius, of W
             walk: 0.16,        // hero speed, of W per second
-            label: "θ'' = k·(target − θ) − c·θ' · target = wind·noise + part·(away from hero)" };
-  const { ctx, W, H, GY, TAU, stage, hero, line, label, clamp, rng, noise, noiseBurst, rgba, shade, GOOD, INK } = u;
-  // Grass bent blades away from the body with a damped spring on an angle;
-  // reeds add the WIND: the spring's target is noise(t·speed + x) scaled by
-  // D.wind, so neighbours lean together in slow waves, plus a push AWAY
-  // from the hero that fades with distance. the RUSTLE is the sum of every
-  // blade's angular speed — a meter you can watch, and after the first press
-  // a short filtered noise burst whenever it spikes (rate-limited).
+            label: "root: θ'' = k·(target − θ) − c·θ' · joint j: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − tipdamp·2√kⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · target = wind·noise + part·(away)" };
+  const { ctx, W, H, GY, TAU, stage, hero, line, label, poly, clamp, rng, noise, noiseBurst, rgba, shade, GOOD, INK, DIM } = u;
+  // Grass bends every blade as a CHAIN of angles: the root is a damped spring
+  // toward a target, and each joint above is the same spring again, chasing
+  // the segment below on a quicker, much less damped spring, so the tip lags
+  // on the way out and whips through on the way back. reeds add the WIND:
+  // the root's target is noise(t·speed + x) scaled by D.wind, so neighbours
+  // lean together in slow waves, plus a push AWAY from the hero that fades
+  // with distance — and the joints pass all of it up to the tips a beat late.
+  // the RUSTLE is the mean angular speed over every segment of every reed —
+  // a meter you can watch, and after the first press a short filtered noise
+  // burst whenever it spikes (rate-limited).
   const R = rng(11), blades = [];
-  for (let i = 0; i < D.blades; i++) blades.push({ x: (i + 0.5) / D.blades * W + (R() - 0.5) * 6, h: (0.7 + R() * 0.6), th: 0, w: 0, hue: R() });
+  const J = Math.max(1, Math.floor(D.joints));
+  for (let i = 0; i < D.blades; i++) blades.push({ i: i, x: (i + 0.5) / D.blades * W + (R() - 0.5) * 6, h: (0.7 + R() * 0.6), th: 0, w: 0, hue: R() });
+  const tj = new Float32Array(blades.length * (J - 1)), oj = new Float32Array(blades.length * (J - 1));   // joint angles + velocities, reed-major: [i * (J − 1) + j]
   let hx = W * 0.2, dir = 1, goal = null, armed = false, cool = 0, rustle = 0;
   return {
     press(x) { armed = true; goal = clamp(x, 8, W - 8); },
@@ -5335,26 +5365,51 @@ def("Q", "Quiver", "weather", "reeds: every blade is a spring on an angle, leani
       const dx = g - hx, sp = W * D.walk * dt;
       if (Math.abs(dx) <= sp) { hx = g; if (goal !== null) goal = null; else dir = -dir; } else hx += Math.sign(dx) * sp;
       const face = dx < 0 ? -1 : 1, reach = W * D.reach;
+      // the joints up a reed are stiffer than the root (k · tip per joint), and a
+      // symplectic step is only stable while √k·h < 2 — so a coarse frame is cut
+      // into substeps of at most 0.02 s (S·Substep): one step at 60 fps
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       let sum = 0;
       for (let i = 0; i < blades.length; i++) {
         const b = blades[i];
         let target = noise(t * D.windSpeed + b.x / W * 3) * D.wind;
         const d = b.x - hx, ad = Math.abs(d);
         if (ad < reach) target += (d < 0 ? -1 : 1) * D.part * (1 - ad / reach);    // parting: away from the body
-        b.w += (D.k * (target - b.th) - D.c * b.w) * dt;                                // the spring, on an angle
-        b.th += b.w * dt; b.th = clamp(b.th, -1.4, 1.4);
+        for (let s = 0; s < sub; s++) {
+          b.w += (D.k * (target - b.th) - D.c * b.w) * h;                              // the root spring, on an angle
+          b.th = clamp(b.th + b.w * h, -1.4, 1.4);
+          let below = b.th, kj = D.k;                                                  // the joints: each chases the segment below
+          for (let j = 0; j < J - 1; j++) {
+            kj *= D.tip;                                                               // quicker with every joint up the reed
+            const dj = D.tipdamp * 2 * Math.sqrt(kj), idx = i * (J - 1) + j;          // a fraction of THIS joint's critical damping
+            oj[idx] += (kj * (below - tj[idx]) - dj * oj[idx]) * h;
+            tj[idx] = clamp(tj[idx] + oj[idx] * h, -1.6, 1.6);
+            below = tj[idx];
+          }
+        }
         sum += Math.abs(b.w);
+        for (let j = 0; j < J - 1; j++) sum += Math.abs(oj[i * (J - 1) + j]);         // the joints rustle too
       }
-      rustle += (sum / blades.length - rustle) * clamp(dt * 8, 0, 1);
+      rustle += (sum / (blades.length * J) - rustle) * clamp(dt * 8, 0, 1);            // the meter's own smoothing, a readout not a motion
       cool -= dt;
       if (armed && rustle > 0.9 && cool <= 0) { cool = 0.45; noiseBurst({ dur: 0.22, vol: 0.07, lowpass: 3200, highpass: 700, sweepTo: 1200 }); }
       const behind = [], front = [];                                                       // reeds behind the hero, then the hero, then the rest
       for (let i = 0; i < blades.length; i++) (blades[i].x < hx - 4 ? behind : front).push(blades[i]);
-      const draw = (b) => {                                                                // a tapered blade bent by θ
-        const hgt = H * 0.28 * D.height * b.h, s = Math.sin(b.th), c = Math.cos(b.th);
-        const tx = b.x + s * hgt, ty = GY - c * hgt, cx = b.x + s * hgt * 0.35, cy = GY - hgt * 0.55;
-        ctx.fillStyle = shade(GOOD, -0.45 + b.hue * 0.3 + s * 0.2);
-        ctx.beginPath(); ctx.moveTo(b.x - 2, GY); ctx.quadraticCurveTo(cx - 1, cy, tx, ty); ctx.quadraticCurveTo(cx + 1, cy, b.x + 2, GY); ctx.closePath(); ctx.fill();
+      const draw = (b) => {                                                                // a tapered polygon walked up the chain, root to tip
+        const hgt = H * 0.28 * D.height * b.h, seg = hgt / J, hw = 2;
+        let px = b.x, py = GY, tipS = 0;
+        const left = [[b.x - hw, GY]], right = [[b.x + hw, GY]];
+        for (let j = 0; j < J; j++) {
+          const a = j === 0 ? b.th : tj[b.i * (J - 1) + j - 1];
+          px += Math.sin(a) * seg; py -= Math.cos(a) * seg; tipS = Math.sin(a);
+          if (j < J - 1) {
+            const w = hw * (1 - (j + 1) / J), sx = Math.cos(a) * w, sy = Math.sin(a) * w;
+            left.push([px - sx, py - sy]); right.push([px + sx, py + sy]);
+          }
+        }
+        left.push([px, py]);                                                               // the tip, shared by both sides
+        right.reverse();
+        poly(left.concat(right), shade(GOOD, -0.45 + b.hue * 0.3 + tipS * 0.2));
       };
       for (let i = 0; i < behind.length; i++) draw(behind[i]);
       hero(hx, GY, { face: face, pose: "run", frame: t });
@@ -5367,11 +5422,12 @@ def("Q", "Quiver", "weather", "reeds: every blade is a spring on an angle, leani
       ctx.fillStyle = rgba(INK, 0.15); ctx.fillRect(W - 66, 8, 58, 6);
       ctx.fillStyle = rgba(m > 0.36 ? GOOD : INK, 0.8); ctx.fillRect(W - 66, 8, 58 * m, 6);
       label("rustle", W - 8, 22, null, "right");
+      if (J > 1) label(J + " segs · joints k ×" + D.tip + " · damp " + D.tipdamp + " of their own critical", 8, H - 20, DIM);
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
 });
-rhymeOf("Quiver", "Quillfield", "tall stiff reeds under a slow wind — a high spring constant snaps them back, so the parting is a clean V that closes behind", { height: 1.7, k: 110, windSpeed: 0.25 });
+rhymeOf("Quiver", "Quillfield", "tall stiff reeds under a slow wind — a high spring constant snaps them back, so the parting is a clean V that closes behind, the tips a beat late", { height: 1.7, k: 110, windSpeed: 0.25 });
 
 def("U", "Updraft", "weather", "wind zones: regions that carry leaves, dust and the hero, each gust an attack / sustain / release envelope drawn as a graph (lexicon Vectorfield, Conveyor) — press to gust now", function (u) {
   var D = { zones: [{ x: 0.08, y: 0.35, w: 0.5, h: 0.45, dx: 1, dy: 0 }, { x: 0.68, y: 0.05, w: 0.18, h: 0.75, dx: 0, dy: -1 }],   // fractions of W, H; a unit direction
@@ -5452,20 +5508,27 @@ def("U", "Updraft", "weather", "wind zones: regions that carry leaves, dust and 
 });
 rhymeOf("Updraft", "Upwell", "one tall column blowing straight up — leaves rise, hang while the envelope holds, and rain back down on the release", { zones: [{ x: 0.36, y: 0.02, w: 0.28, h: 0.78, dx: 0, dy: -1 }], force: 3, sustain: 2 });
 
-def("Y", "Year", "weather", "seasons on one clock: buds, green, a turn to red and a fall, snow that settles and melts — every leaf reads the same phase (atlas Nightfall) — press to advance the season", function (u) {
+def("Y", "Year", "weather", "seasons on one clock: buds, green, a turn to red and a fall that flutters and settles by formula, snow that settles and melts — every leaf reads the same phase and nothing is stored (atlas Nightfall) — press to advance the season", function (u) {
   var D = { year: 20,          // seconds per year
             leaves: 56,        // leaves in the canopy
             snow: 1,           // snowfall density, ×
             fallDur: 0.08,     // of the year a leaf spends falling
-            label: "p = (t ÷ year) mod 1 → colour(p), fallen(p), snow(p): one clock, every state" };
+            swings: 2,         // full flutters a leaf makes on the way down (ω = 2π·swings per fall)
+            settle: 3,         // the flutter's decay, e^(−settle·q): at 3 a leaf lands with 5% of its sway left
+            label: "p = (t ÷ year) mod 1 → colour(p), fall(p): y ∝ q², x = e^(−λq)·sin(ωq + φ), snow(p): one clock, no memory" };
   const { ctx, W, H, GY, TAU, stage, hero, dot, line, ellipse, label, clamp, rng, mix, rgba, ease, GOOD, HOT, SUN, INK } = u;
   // Nightfall turned one clock into five palettes; a YEAR is the same idea
   // with more states. the phase p runs 0..1 and every leaf is a pure
   // function of it: size grows in spring, colour turns from green toward
   // red as autumn passes the leaf's own turn time, then from its fallAt it
-  // slides to the ground on a sway, and lies there as litter. snow is a
-  // second function of p — settling through winter, melting in the first
-  // weeks of spring. nothing is remembered, so a skip costs nothing.
+  // falls on q² (it accelerates) with a sway that is a damped oscillation
+  // WRITTEN OUT — A·e^(−settle·q)·(sin(2π·swings·q + φ) − sin φ), φ the
+  // leaf's own phase — so it flutters hardest just after letting go and
+  // settles before it lands, instead of swinging like a metronome. no
+  // velocity is stored: that formula IS the solution of the spring, read
+  // off at q. then it lies there as litter. snow is a second function of p —
+  // settling through winter, melting in the first weeks of spring. nothing
+  // is remembered, so a skip costs nothing.
   const R = rng(21), leaves = [], tx = W * 0.32, cr = H * 0.2;
   for (let i = 0; i < D.leaves; i++) {
     const a = R() * TAU, r = Math.sqrt(R()) * cr;
@@ -5485,7 +5548,7 @@ def("Y", "Year", "weather", "seasons on one clock: buds, green, a turn to red an
       ctx.fillStyle = "#5A3E2B";                                                              // trunk and three branches
       ctx.fillRect(tx - cr * 0.09, GY - cr * 1.3, cr * 0.18, cr * 1.3);
       line(tx, GY - cr * 1.1, tx - cr * 0.7, GY - cr * 1.7, "#5A3E2B", 3); line(tx, GY - cr * 1.2, tx + cr * 0.75, GY - cr * 1.75, "#5A3E2B", 3); line(tx, GY - cr * 1.3, tx, GY - cr * 2.1, "#5A3E2B", 3);
-      const cy = GY - cr * 1.7;
+      const cy = GY - cr * 1.7, swayA = 9 * (H / 170);
       for (let i = 0; i < leaves.length; i++) {
         const L = leaves[i];
         const size = p < 0.2 ? ease(p / 0.2) : 1;                                              // buds grow through spring
@@ -5493,8 +5556,9 @@ def("Y", "Year", "weather", "seasons on one clock: buds, green, a turn to red an
         const colr = turn < 0.5 ? mix(GOOD, SUN, turn * 2) : mix(SUN, HOT, (turn - 0.5) * 2);
         const q = clamp((p - L.fallAt) / D.fallDur, 0, 1);                                     // falling: canopy → ground
         if (p < 0.02 && q > 0) continue;
-        const sx = tx + L.ox + Math.sin(q * 6 + L.ph) * 8 * q * (1 - q) * 4 + L.landX * q;
-        const sy = cy + L.oy + (GY - 2 - (cy + L.oy)) * ease(q);
+        const sway = Math.exp(-D.settle * q) * (Math.sin(TAU * D.swings * q + L.ph) - Math.sin(L.ph));   // the damped oscillation, written out: zero at release, dying by the ground
+        const sx = tx + L.ox + sway * swayA + L.landX * q;
+        const sy = cy + L.oy + (GY - 2 - (cy + L.oy)) * q * q;                                 // q²: it accelerates
         const litter = q >= 1;
         if (litter && p < 0.4) continue;                                                       // last year's litter is gone by mid-spring
         const a = litter ? clamp(1 - snow * 1.2, 0, 1) * 0.8 : 1;
@@ -5778,23 +5842,29 @@ def("L", "Lava", "weather", "lava on a grid: a slow flow down the slope, a crust
 });
 rhymeOf("Lava", "Lavatube", "a deep trench across the field: fast flow, quick crust — the lava runs down the channel and roofs itself over into a tube", { channel: 1, flow: 0.8, crust: 1.2 });
 
-def("C", "Cloudshadow", "weather", "cloud shadows: a scrolling noise mask multiplied over the ground, with clouds drawn overhead from the same field (ch04 noise) — press to send the wind toward your click", function (u) {
+def("C", "Cloudshadow", "weather", "cloud shadows: a scrolling noise mask multiplied over the ground, with clouds drawn overhead from the same field (ch04 noise) — press to aim the wind at your click: the wind vector swings round on a spring, so the shadows sweep rather than cut", function (u) {
   var D = { scale: 0.9,        // noise feature size, of W
             speed: 0.06,       // scroll speed, of W per second
             threshold: 0.15,   // noise above this is cloud
             soft: 0.35,        // the width of the mask's edge (0 = hard)
             dark: 0.45,        // shadow strength
+            windk: 4,          // the wind vector's spring toward the aimed heading: √windk = 2 rad/s
+            winddamp: 0.45,    // its damping, of critical — under 1, so a turn swings past the new heading and settles over a few seconds
             cols: 36, rows: 7, // the ground mask grid
-            label: "shadow α = smoothstep(thr, thr+soft, noise2(x+wind·t, y)) · dark" };
+            label: "shadow α = smoothstep(thr, thr+soft, noise2(x + ∫wind, y)) · dark · wind'' = windk·(aim − wind) − winddamp·2√windk·wind'" };
   const { ctx, W, H, GY, TAU, stage, hero, tree, crate, arrow, label, clamp, noise2, rgba, INK } = u;
   // the cheapest outdoors cue there is: a NOISE FIELD scrolled by the wind,
   // thresholded into blobs, MULTIPLIED over the ground as darkness. the
   // clouds above are the same field sampled along a band of the sky, so
   // their shapes and the shadows drifting under them agree. the mask is a
   // coarse grid of rectangles — a few hundred alpha fills — and it darkens
-  // the hero and props too, because it is drawn after them. press turns the
-  // wind vector toward the click; both layers turn together.
-  let ox = 0, oy = 0, wx = 1, wy = 0.25;
+  // the hero and props too, because it is drawn after them. the wind is a
+  // BODY, not a setting: a press moves the AIM, and the wind vector chases
+  // it on an under-damped spring (one per axis), so it swings past the new
+  // heading, gusts while it turns, and settles over a few seconds; the
+  // offsets integrate the wind as it swings, so both layers sweep round
+  // together instead of cutting to the new direction in a frame.
+  let ox = 0, oy = 0, wx = 1, wy = 0.25, vx = 0, vy = 0, ax = 1, ay = 0.25;
   const shades = [];                                                                 // the mask quantised to 16 alphas, built once
   for (let i = 0; i <= 16; i++) shades.push(rgba("#0A0A1E", i / 16 * D.dark));
   function mask(nx, ny) {                                                            // one octave of value noise, thresholded: the whole mask
@@ -5802,9 +5872,16 @@ def("C", "Cloudshadow", "weather", "cloud shadows: a scrolling noise mask multip
     return D.soft <= 0 ? (n > D.threshold ? 1 : 0) : clamp((n - D.threshold) / D.soft, 0, 1);
   }
   return {
-    press(x, y) { const dx = x - W / 2, dy = y - H / 2, d = Math.hypot(dx, dy) || 1; wx = dx / d; wy = dy / d * 0.4; },
+    press(x, y) { const dx = x - W / 2, dy = y - H / 2, d = Math.hypot(dx, dy) || 1; ax = dx / d; ay = dy / d * 0.4; },   // move the aim; the spring does the turning
     frame(dt, t) {
-      ox += wx * D.speed * dt * W / (D.scale * W); oy += wy * D.speed * dt * W / (D.scale * W);
+      // two springs toward the aim, symplectic, substepped to ≤ 0.02 s (S·Substep);
+      // the offsets integrate the wind inside the same loop so the sweep is exact
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, wc = D.winddamp * 2 * Math.sqrt(D.windk);
+      for (let s = 0; s < sub; s++) {
+        vx += (D.windk * (ax - wx) - wc * vx) * h; vy += (D.windk * (ay - wy) - wc * vy) * h;
+        wx = clamp(wx + vx * h, -3, 3); wy = clamp(wy + vy * h, -3, 3);
+        ox += wx * D.speed * h / D.scale; oy += wy * D.speed * h / D.scale;
+      }
       stage({ night: 0.05 });
       const s = D.scale * W;
       for (let i = 0; i < 26; i++) {                                                   // clouds: the field sampled along the sky band
@@ -5826,8 +5903,9 @@ def("C", "Cloudshadow", "weather", "cloud shadows: a scrolling noise mask multip
         ctx.fillStyle = shades[Math.round(m * 16)];
         ctx.fillRect(x, y, cw + 0.5, ch + 0.5);
       }
+      arrow(W - 40, 22, W - 40 + ax * 22, 22 + ay * 22 / 0.4 * 0.6, rgba(INK, 0.3));    // the aim, faint, and the wind where it has swung to
       arrow(W - 40, 22, W - 40 + wx * 22, 22 + wy * 22 / 0.4 * 0.6, INK);
-      label("wind", W - 40, 40, null, "center");
+      label("wind " + Math.hypot(wx, wy / 0.4).toFixed(2), W - 40, 40, null, "center");
       label("thr " + D.threshold + " · soft " + D.soft + " · dark " + D.dark, 8, 14);
       label(D.label, W / 2, H - 8, null, "center");
     }
