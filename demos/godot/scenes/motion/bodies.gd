@@ -90,11 +90,13 @@ const DEFS := [
 		"rhyme": { "name": "Alpine", "hint": "a slope twice as steep and twice the restitution — the same rocks leap where they used to roll",
 			"dials": { "top": 0.12, "bottom": 0.88, "e": 0.75 } } },
 	{ "id": "kite", "letter": "K", "name": "Kite",
-		"hint": "Rope's string, lift = wind² · sin(angle of attack), a follow-chain tail — press to gust from your click",
+		"hint": "Rope's string, lift = wind² · sin(angle of attack), a verlet ribbon tail that only remembers where the kite has been — press to gust from your click",
 		"dials": { "n": 9, "seg": 0.06, "rounds": 6, "g": 1.6, "damp": 0.99,           # string links, link ×H, passes, the kite's gravity ×H
 			"wind": 0.5, "gustiness": 0.35, "lift": 40, "bridle": 0.55,       # wind ×W/s, noise speed, lift gain, face tilt (rad)
 			"gust": 1.2, "tail": 7,                                        # press gust ×W/s, tail links
-			"label": "F = k·|w|²·sin α along the face normal" },
+			"tailDrag": 5.0,                                               # how fast a tail link's own velocity gives in to the wind, per second (a ribbon: all drag, little mass)
+			"tailWeight": 0.15,                                            # the tail's share of g — it sags when the wind drops
+			"label": "F = k·|w|²·sin α along the face normal · tail: v += (w − v)(1 − e^(−drag·dt)), then re-tied" },
 		"rhyme": { "name": "Kestrel", "hint": "a stronger, steadier wind on a longer string — it hangs high and hardly stirs, like a hovering hawk",
 			"dials": { "wind": 0.85, "gustiness": 0.06, "seg": 0.08 } } },
 	{ "id": "newton", "letter": "N", "name": "Newton",
@@ -487,7 +489,11 @@ static func init(b: Dictionary) -> void:
 			# string, so the string (Rope's verlet chain, pinned in the flyer's
 			# hand) always presents the face to the wind — and the string's pull is
 			# what holds it up there; let go and it would just blow away. the tail
-			# is Tentacle's follow-chain: it only remembers where the kite has been.
+			# is a second, lighter chain: every link a verlet point of its own, whose
+			# velocity gives in to the wind at a rate (linear drag, integrated
+			# exactly) and which is then pulled back to one link's length from the
+			# link before it — so it only remembers where the kite has been, and
+			# the snaking is the kite's own dance and the wind's gusts, nothing else.
 			var seg: float = b.h * D.seg
 			var nn := int(D.n)
 			var hand := Vector2(b.w * 0.22, b.gy - 14.0)     # the hand
@@ -497,7 +503,7 @@ static func init(b: Dictionary) -> void:
 				b.pts.append(_pt(hand.x + i * seg * 0.7, hand.y - i * seg * 0.7))
 			b.tail = []
 			for i in int(D.tail):
-				b.tail.append(Vector2((b.pts[nn - 1].p as Vector2).x - i * 6.0, (b.pts[nn - 1].p as Vector2).y))
+				b.tail.append(_pt((b.pts[nn - 1].p as Vector2).x - i * 6.0, (b.pts[nn - 1].p as Vector2).y))
 			b.gdir = Vector2.ZERO
 			b.gustT = 0.0
 			b.alpha = 0.0
@@ -1028,14 +1034,21 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 						p.p.x -= (p.p.x - p.pp.x) * 0.5
 					p.p.y = maxf(p.p.y, 4.0)
 					p.p.x = clampf(p.p.x, 4.0, b.w - 4.0)
-			tail[0] = kite.p
-			for i in range(1, tail.size()):              # Tentacle's follow-chain, blown downwind
-				var s: Vector2 = tail[i]
-				var q: Vector2 = tail[i - 1]
-				s.x += wx * 0.25 * dt
-				s.y += (G * 0.15 + sin(t * 5.0 - i) * 20.0) * dt
-				var a := (s - q).angle()
-				tail[i] = q + Vector2(cos(a), sin(a)) * 6.0
+			(tail[0] as Dictionary).p = kite.p
+			var give: float = 1.0 - exp(-float(D.tailDrag) * dt)   # how much of the gap to the wind one frame closes: exact for linear drag
+			var tail_w: float = D.tailWeight
+			for i in range(1, tail.size()):              # the ribbon: verlet links that drift with the wind, then re-tied
+				var s: Dictionary = tail[i]
+				var q: Vector2 = (tail[i - 1] as Dictionary).p
+				var sp: Vector2 = s.p
+				var v := Vector2(clampf((sp.x - s.pp.x) / sdt, -b.w, b.w), clampf((sp.y - s.pp.y) / sdt, -b.w, b.w))
+				v.x += (wx - v.x) * give
+				v.y += (wy - v.y) * give + G * tail_w * dt
+				s.pp = sp
+				sp += v * dt
+				var d: Vector2 = sp - q                  # the tie: one link's length from the link before
+				var dl := _or1(d.length())
+				s.p = q + d / dl * 6.0
 		"newton":
 			var nn := int(D.n)
 			var r: float = b.h * D.r
@@ -1447,7 +1460,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for i in nn:
 				string.append(pts[i].p)
 			n.draw_polyline(string, Kit.BONE, 1.0)
-			n.draw_polyline(PackedVector2Array(tail), Color(0.961, 0.541, 0.541, 0.6), 1.0)
+			var ribbon := PackedVector2Array()
+			for s in tail:
+				ribbon.append((s as Dictionary).p)
+			n.draw_polyline(ribbon, Color(0.961, 0.541, 0.541, 0.6), 1.0)
 			var fdir := Vector2(-nrm.y, nrm.x)           # the face runs across the normal
 			var r1: float = b.h * 0.05
 			var r2: float = b.h * 0.03

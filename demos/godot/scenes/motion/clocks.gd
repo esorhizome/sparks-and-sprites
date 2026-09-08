@@ -156,7 +156,7 @@ const DEFS := [
 		"rhyme": { "name": "Insomniac", "hint": "the same four clocks wound tight: panting breath, blinks every second, a restless weight shift — alive, and not okay",
 			"dials": { "breathP": 1.3, "blinkEvery": 0.8, "shiftEvery": 1.4 } } },
 	{ "id": "yacht", "letter": "Y", "name": "Yacht",
-		"hint": "a boat on y = wave(x, t), tilted by its slope, the derivative (Undulate + Normals) — press for more wind",
+		"hint": "a boat on y = wave(x, t), tilted by its slope, the derivative (Undulate + Normals); the sail is a spring toward the apparent wind, so it luffs and fills late — press for more wind",
 		"dials": { "lam1": 0.6,          # the two wavelengths, of W
 			"lam2": 0.22,
 			"amp1": 0.05,                # their heights, of H
@@ -166,7 +166,10 @@ const DEFS := [
 			"winds": [1, 1.7, 0.55],     # wind levels a press cycles through: they scale speed and height
 			"mid": 0.62,                 # the sea's rest level, of H
 			"boatX": 0.42,               # where the boat sits, of W
-			"label": "y = wave(x, t)    tilt = atan(dy/dx)" },
+			"breeze": 0.5,               # the wind's speed at level 1, ×W per second — what the boat's heave is measured against
+			"sailK": 30.0,               # the sail's stiffness toward the apparent wind at level 1 (it scales with wind², like the force on a sail)
+			"sailDamp": 0.3,             # its damping as a fraction of critical — under 1, so it swings past the wind and luffs before it fills
+			"label": "y = wave(x, t) · tilt = atan(dy/dx) · sail: φ'' = k·(φ_wind − φ) − c·φ'" },
 		"rhyme": { "name": "Yikes", "hint": "the same sea in a squall: twice the wave height at three times the wind — the derivative goes wild and so does the boat",
 			"dials": { "winds": [2.6, 3.4, 2], "amp1": 0.085 } } },
 ]
@@ -236,8 +239,18 @@ static func init(b: Dictionary) -> void:
 			b.look = Vector2.ZERO
 			b.gaze = Vector2(b.w * 0.75, b.h * 0.3)
 		"yacht":
+			# the SAIL is the one thing here with a memory: its boom angle φ is
+			# Upright's spring toward the APPARENT wind — the wind minus the boat's
+			# own heave, turned into the hull's frame, so the hull rolling under it
+			# and the deck rising into the wind both move the target. the spring is
+			# under-damped, so the sail swings past the wind (a luff) and fills late.
 			b.wi = 0
 			b.ph = 0.0                                   # ph: the wave's own clock, so a wind change never jumps
+			b.sail = 0.0                                 # the boom's angle off the hull, its rate, and where the wind asks it to be
+			b.sailOm = 0.0
+			b.sailT = 0.0
+			b.by = _wave(b, b.w * float(D.boatX), (D.winds as Array)[0])   # the boat's height, kept for the heave
+			b.tilt = 0.0
 
 
 static func press(b: Dictionary, pos: Vector2) -> void:
@@ -383,6 +396,32 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 		"yacht":
 			var wind: float = (D.winds as Array)[b.wi]
 			b.ph += dt * wind
+			# the apparent wind: the wind (blowing to −x at breeze·wind) minus the
+			# boat's heave, dy/dt read as a difference — then turned into the hull's
+			# frame, where the boom angle lives. the spring toward it is stiffer in
+			# more wind (k ∝ wind²), cut into substeps of at most 0.02 s
+			var bx: float = b.w * float(D.boatX)
+			var by: float = _wave(b, bx, wind)
+			var tilt: float = atan(_slope(b, bx, wind))
+			var vy: float = (by - float(b.by)) / maxf(dt, 1e-6)
+			b.by = by
+			b.tilt = tilt
+			var U: float = b.w * float(D.breeze) * wind
+			var ct := cos(tilt)
+			var st := sin(tilt)
+			var sailT := atan2(U * st - vy * ct, U * ct + vy * st)   # φ_wind: where the boom would point if the sail were a flag
+			var k: float = float(D.sailK) * wind * wind
+			var c: float = 2.0 * float(D.sailDamp) * sqrt(k)
+			var sail: float = b.sail
+			var sailOm: float = b.sailOm
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				sailOm += (k * (sailT - sail) - c * sailOm) * h
+				sail = clampf(sail + sailOm * h, -1.4, 1.4)
+			b.sail = sail
+			b.sailOm = sailOm
+			b.sailT = sailT
 
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
@@ -815,15 +854,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					Kit.dot(n, Vector2(fx + j * 5, _wave(b, fx + j * 5, wind) - 2.5), 1.5, Color(0.91, 0.898, 0.957, 0.6))
 				fx += L1
 			var bx: float = b.w * float(D.boatX)
-			var by: float = _wave(b, bx, wind)
-			var tilt: float = atan(_slope(b, bx, wind))
-			var sail: float = sin(t * 0.7) * 0.5 * wind      # the wind sine leans the sail
+			var by: float = b.by
+			var tilt: float = b.tilt
+			var sail: float = b.sail
+			var fill: float = cos(sail - float(b.sailT))     # 1 when the sail is square to the wind, less while it luffs
 			n.draw_set_transform(origin + Vector2(bx, by), tilt, Vector2.ONE)
 			Kit.poly(n, [Vector2(-16, -2), Vector2(16, -2), Vector2(10, 6), Vector2(-10, 6)], Kit.BONE)
 			Kit.line(n, Vector2(0, -2), Vector2(0, -26), Kit.INK, 1.5)
-			Kit.poly(n, [Vector2(0, -25), Vector2(0, -6), Vector2(-(12.0 + sail * 8.0), -10)], Kit.MOVER)
+			Kit.poly(n, [Vector2(0, -25), Vector2(0, -8), Vector2(-14.0 * cos(sail), -8.0 + 14.0 * sin(sail))],
+				Color(0.541, 0.851, 0.961, 0.45 + 0.5 * maxf(0.0, fill)))   # the boom swings on φ
 			n.draw_set_transform(origin, 0.0, Vector2.ONE)
-			Kit.label(n, b, "wind %s · tilt %d°" % [(D.winds as Array)[b.wi], roundi(rad_to_deg(tilt))], Vector2(b.w / 2.0, 14.0), LBL, true)
+			Kit.label(n, b, "wind %s · tilt %d° · sail off the wind %d°" % [(D.winds as Array)[b.wi], roundi(rad_to_deg(tilt)), roundi(rad_to_deg(sail - float(b.sailT)))], Vector2(b.w / 2.0, 14.0), LBL, true)
 			Kit.label(n, b, D.label, Vector2(b.w / 2.0, b.h - 8.0), LBL, true)
 
 

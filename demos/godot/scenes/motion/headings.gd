@@ -107,13 +107,15 @@ const DEFS := [
 		"rhyme": { "name": "Xlock", "hint": "a bigger ring, a stickier friction and twice the pull — console-grade lock-on that all but aims for you",
 			"dials": { "assist": 0.28, "friction": 0.12, "pull": 300.0 } } },
 	{ "id": "leaf", "letter": "L", "name": "Leaf",
-		"hint": "a leaf slides along its tilt: gravity along the face, drag across it, a sine rocks the tilt — press to drop one",
+		"hint": "a leaf slides along its tilt: gravity along the face, drag across it, and the airspeed torques the tilt on Upright's spring — the flutter is that loop overshooting — press to drop one",
 		"dials": { "g": 1.4,                                         # gravity as a fraction of H per s²
 			"dragAcross": 9.0, "dragAlong": 0.9,                      # air resistance across the face (big) and along it (small)
-			"rock": 1.6, "amp": 0.9,                                  # the rocking sine: rad/s and radians
-			"pitch": 0.012,                                           # how much airspeed along the face tips the leaf back
+			"rock": 1.6,                                              # the tilt spring's natural rate, rad/s (its k = rock²)
+			"amp": 0.9,                                               # the furthest tilt the airspeed may ask for, radians — the flutter's reach
+			"rockDamp": 0.2,                                          # the tilt's damping as a fraction of critical — low, so it overshoots; the overshoot feeds the slide feeds the tilt
+			"pitch": 0.012,                                           # radians of tilt asked per px/s of airspeed along the face: a fast slide tips the leaf back
 			"count": 6,
-			"label": "along the face: g·sin θ  ·  across it: drag" },
+			"label": "along the face: g·sin θ · across it: drag · θ'' = k·(−pitch·v∥ − θ) − c·θ'" },
 		"rhyme": { "name": "Lace", "hint": "more than twice the air resistance and a quick, small rock — a scrap of lace that shivers down instead of swooping",
 			"dials": { "dragAcross": 22.0, "rock": 3.2, "amp": 0.5 } } },
 ]
@@ -296,9 +298,14 @@ static func init(b: Dictionary) -> void:
 			# hugely ACROSS its face, hardly at all ALONG it. so its velocity is split
 			# into those two directions every frame, each damped by its own drag,
 			# and gravity's pull along the tilted face makes the leaf SLIDE sideways.
-			# the tilt itself is Pendulum's rock — a slow sine — plus a push-back
-			# from the airspeed, so a fast slide levels the leaf and flips it the
-			# other way: the flutter is that feedback loop, and nothing is scripted.
+			# the tilt is never assigned: it is Upright's angular spring, integrated
+			# (α = −k·θ − c·ω), whose rest the airspeed along the face moves — a
+			# fast slide asks the leaf to tip back. the slide drives the tilt, the
+			# tilt drives the slide, and with the damping this low the loop is
+			# unstable about "flat": a leaf let go crooked tips, slides, overshoots
+			# the level, slides the other way — the flutter, and it can overshoot
+			# into a flip. nothing is scripted; a straight fall is the one thing it
+			# cannot do for long.
 			var count: int = b.D.count
 			b.leaves = []
 			b.next = 0
@@ -792,12 +799,28 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			var drag_along: float = D.dragAlong
 			var drag_across: float = D.dragAcross
 			var gy: float = b.gy
+			var k: float = rock * rock
+			var c: float = 2.0 * float(D.rockDamp) * rock
+			var sub := maxi(1, ceili(dt * 50.0))          # substeps of at most 0.02 s when the frame is coarse
+			var h := dt / float(sub)
 			for l in b.leaves:
 				var lp: Vector2 = l.p
 				var lv: Vector2 = l.v
-				var ph: float = l.ph
 				var vf0: float = l.vf
-				var a := sin(t * rock + ph) * amp + clampf(-vf0 * pitch, -1.1, 1.1)   # the tilt: a sine + airspeed
+				var a: float = l.a
+				var om: float = l.om
+				var rest := clampf(-vf0 * pitch, -amp, amp)   # what the airspeed asks of the tilt
+				for _s in sub:                           # the tilt: Upright's spring toward it, never assigned
+					om += (k * (rest - a) - c * om) * h
+					om = clampf(om, -30.0, 30.0)
+					a += om * h
+					if a > PI:                           # a full flip either way is as far as it goes
+						a = PI
+						om = minf(0.0, om)
+					if a < -PI:
+						a = -PI
+						om = maxf(0.0, om)
+				l.om = om
 				var f := Vector2(cos(a), sin(a))         # along the face
 				var nrm := Vector2(-f.y, f.x)            # across it (the normal)
 				lv.y += g * dt
@@ -1218,11 +1241,11 @@ static func _rocket_reset(b: Dictionary) -> void:
 	b.trail = []
 
 ## Leaf: one leaf lets go at p, still, with a fresh rocking phase.
-static func _leaf_spawn(l: Dictionary, p: Vector2) -> void:
+static func _leaf_spawn(l: Dictionary, p: Vector2) -> void:   # let go crooked, so the loop has something to grow
 	l.p = p
 	l.v = Vector2.ZERO
-	l.ph = randf_range(0.0, TAU)
-	l.a = 0.0
+	l.a = randf_range(-0.5, 0.5)
+	l.om = randf_range(-1.0, 1.0)
 	l.vf = 0.0
 
 ## A dashed ring (the canvas setLineDash([3, 4]) on a circle): short arcs
