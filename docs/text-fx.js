@@ -4473,50 +4473,91 @@ rhymeOf("Bounce-in", "Moon bounce", "gravity quartered, bounces livelier — the
   };
 });
 
-rhymeOf("Jelly", "Set gelatin", "the resting wobble dies away to stillness — until a press jiggles it twice as hard", function (u) {
-  const { ctx, W, INK, BASE, layout, stage } = u;
-  // dials moved: idle wobble decays to zero · press ripple amplitude ×2
+rhymeOf("Jelly", "Set gelatin", "the resting wobble dies away as the gel sets — the idle pokes fade and the spring damps harder — until a press kicks it twice as hard and loosens it again", function (u) {
+  const { ctx, W, INK, BASE, PHRASE, rand, layout, stage } = u;
+  // dials moved: the idle pokes fade with `calm` · damping rises as the gel sets (ζ 0.15 → 0.4) · press kick ×2 · a press resets the calm
+  // the same per-letter spring as Jelly, y'' = −k·y − c·y', kicked once by the
+  // front as it passes. what SETS is the gel: calm climbs from 0 to 1 over
+  // four seconds, the random idle pokes shrink to nothing with it, and the
+  // damping rises from loose toward stiff, so a set gel rings down in a wobble
+  // or two where a fresh one rings on. a press kicks twice as hard as Jelly's
+  // and knocks the calm back to zero — the jolt loosens it.
+  const k = 120;                         // stiffness (1/s²); the damping is the dial, below
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n), nudge = new Float32Array(n);
+  for (let i = 0; i < n; i++) nudge[i] = rand(0.2, 1.5);
   let waves = [], calm = 0;
   return {
     press(x) { waves.push({ x: x === undefined ? W / 2 : x, age: 0 }); calm = 0; },
     frame(dt, t) {
       stage();
       calm = Math.min(1, calm + dt * 0.25);                // stillness earns itself back
+      const zeta = 0.15 + calm * 0.25, c = 2 * zeta * Math.sqrt(k);   // the gel sets: damping climbs
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;     // ≤ 0.02 s steps: a coarse frame is cut up, not trusted
+      for (const w of waves) {           // the front crosses each letter once, and kicks it once — twice as hard
+        const was = w.age * W * 0.9, now = (w.age + dt) * W * 0.9;
+        for (const l of L) {
+          const d = Math.abs(l.cx - w.x);
+          if (d >= was && d < now) vy[l.i] -= BASE * 6.4 * Math.max(0.25, 1 - w.age * 0.8);
+        }
+        w.age += dt;
+      }
+      waves = waves.filter(w => w.age < 1.2);
       ctx.fillStyle = INK;
       for (const l of L) {
-        let y = Math.sin(t * 3 + l.i * 1.7) * BASE * 0.03 * (1 - calm);
-        let s = 1;
-        for (const w of waves) {
-          const d = Math.abs(l.cx - w.x);
-          const front = w.age * W * 0.9;
-          const k = Math.exp(-Math.pow((d - front) / (BASE * 1.2), 2)) * Math.max(0, 1 - w.age * 1.2);
-          y -= k * BASE * 0.7;
-          s += k * 0.4;
+        const i = l.i;
+        nudge[i] -= dt;
+        if (nudge[i] < 0) { vy[i] += rand(-0.25, 0.25) * BASE * (1 - calm); nudge[i] = rand(0.6, 1.8); }   // the idle poke, fading as it sets
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (-k * y[i] - c * vy[i]) * h;
+          y[i] += vy[i] * h;
         }
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
+        const sc = Math.max(0.6, Math.min(1.5, 1 - y[i] / BASE * 0.6));   // lifted = wider, dipped = taller — twice the travel, twice the bulge
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.scale(s, 2 - s);
+        ctx.translate(l.cx, l.y + y[i]);
+        ctx.scale(sc, 2 - sc);
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
-      for (const w of waves) w.age += dt;
-      waves = waves.filter(w => w.age < 1.2);
     }
   };
 });
 
-rhymeOf("Pendulum", "Metronome", "all the pendulums lock into sync, and the swing ticks in quantized beats", function (u) {
+rhymeOf("Pendulum", "Metronome", "one shared rod, so every letter swings in sync — an escapement pushes it at the bottom of each swing to keep it going, and the swing shows in quantized ticks; press to widen the beat", function (u) {
   const { ctx, INK, BASE, layout, stage } = u;
-  // dials moved: per-letter drift removed (one shared period) · motion quantized to ticks
-  let push = 0;
+  // dials moved: per-letter lengths → one shared rod (one θ for the whole row) · the breath of air → an escapement · the drawn angle quantized to ticks · a press widens the set amplitude instead of shoving
+  // the same pendulum as Pendulum, θ'' = −(g/L)·sin θ − c·θ', but ONE of them,
+  // and every letter reads its angle — that is the whole of "in sync". a
+  // metronome is a damped pendulum that would die in a minute, kept alive by
+  // an escapement: each time the rod passes the bottom it gets one small push
+  // in the direction it is already going, sized to what the swing is short of
+  // its set amplitude and capped, so the amplitude settles to the setting
+  // instead of being assigned. the drawn angle is snapped to the escapement's
+  // steps — the ticks — while the real θ underneath stays smooth.
+  const g = 8, len = 0.75, zeta = 0.06;  // gravity (letter-heights/s²), the shared rod's length, and damping as a fraction of critical
+  const w0 = Math.sqrt(g / len), c = 2 * zeta * w0;
+  const step = 0.04;                     // one tick of the escapement, in radians
+  let th = 0.12, om = 0, push = 0;
   return {
-    press() { push = 1; },
+    press() { push = 1; },               // the beat widens, then narrows back over a few seconds
     frame(dt, t) {
       stage();
       push = Math.max(0, push - dt * 0.5);
-      const beat = Math.round(Math.sin(t * 3.2) * 2) / 2;  // −1, −0.5, 0, 0.5, 1: the escapement
-      const a = beat * (0.12 + push * 0.2);
+      const amp = 0.12 + push * 0.2;     // the set amplitude
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;     // ≤ 0.02 s steps keep the symplectic step honest
+      for (let s = 0; s < sub; s++) {
+        const was = th;
+        om += (-w0 * w0 * Math.sin(th) - c * om) * h;
+        th += om * h;
+        if ((was < 0) !== (th < 0)) {    // through the bottom: the escapement's push, with the motion, never against it
+          const want = w0 * amp;         // the speed at the bottom that carries the rod to the set amplitude
+          const kick = Math.max(0, Math.min(want * 0.5, want - Math.abs(om)));
+          om += Math.sign(om) * kick;
+        }
+      }
+      om = Math.max(-1.7 * w0, Math.min(1.7 * w0, om));   // never enough to go over the top
+      const a = Math.round(th / step) * step;              // the ticks: the rod is smooth, the hands are stepped
       const L = layout();
       ctx.fillStyle = INK;
       for (const l of L) {
@@ -4530,26 +4571,46 @@ rhymeOf("Pendulum", "Metronome", "all the pendulums lock into sync, and the swin
   };
 });
 
-rhymeOf("Buoy", "Storm swell", "the same sea in worse weather — bigger, faster, with spray at the crests", function (u) {
-  const { ctx, INK, BASE, rand, layout, stage } = u;
-  // dials moved: amplitude ×2.5 · speed ×1.7 · spray flecks added at wave tops
+rhymeOf("Buoy", "Storm swell", "the same buoys in worse weather — the swell ×2.5 and faster with a short chop on top, spray where a crest breaks; press and a breaker hits the whole row at once and the sea stays rough for a while", function (u) {
+  const { ctx, W, INK, BASE, PHRASE, rand, layout, stage } = u;
+  // dials moved: swell amplitude ×2.5 · swell speed ×1.7 · a second, shorter chop wave added · tilt gain up · press: a wake front → one breaker for the whole row, and the sea roughens while `chop` fades · spray at the crests
+  // the same springs as Buoy — buoyancy y'' = −k·(y − water) − c·y', and a
+  // lazier tilt spring aimed by the vertical speed — but the WATER is worse:
+  // a bigger, faster swell with a short chop riding on it. the letters are
+  // the same floats, so they lag and overshoot the same way; they just have
+  // more to follow. a press is a breaker: every letter is kicked at once and
+  // the sea's amplitude is raised for a few seconds while `chop` fades. spray
+  // is thrown where a letter rides high and rising, and falls under gravity.
+  const k = 40, zeta = 0.18;             // buoyancy stiffness (1/s²) and damping as a fraction of critical
+  const kt = 30, zt = 0.4;               // the tilt spring: lazier, calmer
+  const c = 2 * zeta * Math.sqrt(k), ct = 2 * zt * Math.sqrt(kt);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n), tilt = new Float32Array(n), vt = new Float32Array(n);
   let chop = 0, spray = [];
   return {
-    press() { chop = 1; },
+    press() { chop = 1; for (let i = 0; i < n; i++) vy[i] -= BASE * rand(1.2, 2.2); },   // the breaker: one kick for every letter, uneven
     frame(dt, t) {
       stage();
       chop = Math.max(0, chop - dt * 0.4);
+      const rough = (1 + chop * 1.5) * 2.5;                 // how much sea there is to follow
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.fillStyle = INK;
       for (const l of L) {
-        const k = (1 + chop * 1.5) * 2.5;
-        const y = (Math.sin(t * 2.2 + l.i * 0.9) * 0.5 + Math.sin(t * 4.6 + l.i * 2.3) * 0.3) * BASE * 0.12 * k;
-        const tilt = Math.sin(t * 1.9 + l.i * 1.4) * 0.14 * (1 + chop);
-        if (y < -BASE * 0.22 && Math.random() < 0.1)       // a crest breaks
-          spray.push({ x: l.cx + rand(-3, 3), y: l.y + y - BASE * 0.5, vx: rand(-20, 20), vy: rand(-40, -10), life: 0.7 });
+        const i = l.i;
+        const water = (Math.sin(t * 2.2 - l.cx / W * 4) * 0.05 + Math.sin(t * 4.6 - l.cx / W * 9) * 0.02) * BASE * rough;   // the swell, and the chop on it, both travelling
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (k * (water - y[i]) - c * vy[i]) * h;
+          y[i] += vy[i] * h;
+          const aim = Math.max(-0.6, Math.min(0.6, -vy[i] * 0.16 / BASE));   // 0.16 s of vertical speed becomes the lean: it leans harder out here
+          vt[i] += (kt * (aim - tilt[i]) - ct * vt[i]) * h;
+          tilt[i] += vt[i] * h;
+        }
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
+        if (y[i] < -BASE * 0.22 && vy[i] < 0 && Math.random() < 0.1)       // a crest breaks: high, and still rising
+          spray.push({ x: l.cx + rand(-3, 3), y: l.y + y[i] - BASE * 0.5, vx: rand(-20, 20), vy: rand(-40, -10), life: 0.7 });
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.rotate(tilt);
+        ctx.translate(l.cx, l.y + y[i]);
+        ctx.rotate(tilt[i]);
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
@@ -4563,24 +4624,46 @@ rhymeOf("Buoy", "Storm swell", "the same sea in worse weather — bigger, faster
   };
 });
 
-rhymeOf("Skip rope", "Double dutch", "two ropes in counter-phase — odd letters ride one, even letters the other", function (u) {
-  const { ctx, INK, BASE, layout, stage } = u;
-  // dials moved: a second rope added at opposite phase · turn rate ×1.25
-  let speed = 1;
+rhymeOf("Skip rope", "Double dutch", "two ropes turned in counter-phase from the same hands — odd letters ride one, even letters the other — each a string the turn has to travel in along; press to hurry the turners", function (u) {
+  const { ctx, INK, BASE, PHRASE, layout, stage } = u;
+  // dials moved: one string → two, driven at opposite phase · turn rate ×1.25 · tension ×1.25² (so the first resonance keeps its place just above the turn rate) · the hands' circle 0.12 → 0.1
+  // two of Skip rope's strings, y'' = k·(y₋ + y₊ − 2y) − c·y', each driven at
+  // its END masses only, the second rope's hands half a turn behind the
+  // first. a letter rides whichever rope its index picks, so the row shows
+  // both ropes at once — where one is up the other is down — and both
+  // middles lag their hands, because the turn still has to travel in. the
+  // ropes are turned faster, so they are tightened by the square of that:
+  // a string's resonance goes as √k, and it must stay above the turn rate.
+  const k = 148, zeta = 0.05;            // tension (letters²/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length;
+  const ya = new Float32Array(n), va = new Float32Array(n), yb = new Float32Array(n), vb = new Float32Array(n);   // y in letter-heights
+  let speed = 1, phase = 0;
+  function turn(y, vy, hand, h) {        // one string, one step: the ends are held, the middle is pulled by its neighbours
+    y[0] = hand; y[n - 1] = hand; vy[0] = 0; vy[n - 1] = 0;
+    for (let i = 1; i < n - 1; i++) vy[i] += (k * (y[i - 1] + y[i + 1] - 2 * y[i]) - c * vy[i]) * h;
+    for (let i = 1; i < n - 1; i++) y[i] = Math.max(-1, Math.min(1, y[i] + vy[i] * h));
+  }
   return {
-    press() { speed = 2.2; },
+    press() { speed = 1.6; },            // hurry the turners
     frame(dt, t) {
       stage();
-      speed = Math.max(1, speed - dt * 0.8);
+      speed = Math.max(1, speed - dt * 0.5);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        phase += 4 * speed * h;          // the hands' turn, integrated: quicker after a press, never a jump
+        const hand = Math.sin(phase) * 0.1;                  // the small circle the hands make
+        turn(ya, va, hand, h);           // the first rope
+        turn(yb, vb, -hand, h);          // the second, half a turn behind
+      }
       const L = layout();
       ctx.fillStyle = INK;
       for (const l of L) {
-        const arc = Math.sin(l.i / (l.n - 1) * Math.PI);
-        const phase = t * 4 * speed + (l.i % 2 ? Math.PI : 0);           // the second rope
-        const y = Math.sin(phase) * arc * BASE * 0.34;
+        const y = (l.i % 2 ? yb : ya)[l.i];                  // odd letters ride one rope, even the other
+        const sy = 1 - Math.min(1, Math.abs(y) / 0.34) * 0.12;   // foreshortening as it turns
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.scale(1, Math.max(0.5, 1 - Math.abs(Math.sin(phase)) * arc * 0.12));
+        ctx.translate(l.cx, l.y + y * BASE);
+        ctx.scale(1, Math.max(0.5, sy));
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
@@ -4588,12 +4671,21 @@ rhymeOf("Skip rope", "Double dutch", "two ropes in counter-phase — odd letters
   };
 });
 
-rhymeOf("Ripple press", "Stone skip", "one press throws a skipping stone — three splashes in a row, each smaller", function (u) {
-  const { ctx, W, INK, BASE, MID, layout, stage, TAU } = u;
-  // dials moved: one drop → three, spaced and delayed like a skipping stone · rings ×0.7 smaller
+rhymeOf("Ripple press", "Stone skip", "one press throws a skipping stone — three splashes in a row, each smaller, each a ring that kicks the letters it reaches, and every letter bobs on after each ring has passed", function (u) {
+  const { ctx, W, INK, BASE, MID, PHRASE, layout, stage, TAU } = u;
+  // dials moved: one drop → three, spaced and delayed like a skipping stone · rings ×0.7 smaller and slower · each ring's kick scaled by its skip's k · the pond no longer drips on its own
+  // Ripple press's spring under every letter, y'' = −k·y − c·y', and three
+  // fronts instead of one: the stone lands, skips, lands again, later and
+  // further along each time, and each ring kicks a letter's velocity once as
+  // it reaches it — a smaller kick for a smaller splash. a letter reached by
+  // all three rings adds the kicks to whatever it was already doing, so the
+  // bobs pile up and ring down together.
+  const k = 90, zeta = 0.15;             // stiffness (1/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n);
   let drops = [];
   return {
-    press(x, y) {
+    press(x, y0) {
       const sx = x === undefined ? W * 0.25 : x;
       for (let s = 0; s < 3; s++)          // each skip lands further along, later, smaller
         drops.push({ x: sx + s * W * 0.22, y: MID - BASE * 0.5, age: -s * 0.35, k: 1 - s * 0.3 });
@@ -4601,24 +4693,28 @@ rhymeOf("Ripple press", "Stone skip", "one press throws a skipping stone — thr
     frame(dt, t) {
       stage();
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const d of drops) {
+        const was = d.age * W * 0.5 * d.k, now = (d.age + dt) * W * 0.5 * d.k;   // negative until the skip lands: nothing is reached
+        if (now > 0) for (const l of L) {  // the ring reaches a letter: one kick, this skip's size
+          const dist = Math.hypot(l.cx - d.x, l.y - BASE * 0.3 - d.y);
+          if (dist >= was && dist < now) vy[l.i] -= BASE * 2.05 * d.k * Math.max(0, 1 - Math.max(0, d.age) * 0.8);
+        }
         d.age += dt;
-        if (d.age < 0) continue;
-        const r = d.age * W * 0.5 * d.k;
+        if (d.age < 0) continue;           // this skip hasn't landed yet
         ctx.strokeStyle = "rgba(160,190,255," + Math.max(0, 0.4 - d.age * 0.33) * d.k + ")";
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.arc(d.x, d.y, now, 0, TAU); ctx.stroke();
       }
       ctx.fillStyle = INK;
       for (const l of L) {
-        let y = 0;
-        for (const d of drops) {
-          if (d.age < 0) continue;
-          const dist = Math.hypot(l.cx - d.x, l.y - BASE * 0.3 - d.y);
-          const front = d.age * W * 0.5 * d.k;
-          y -= Math.exp(-Math.pow((dist - front) / (BASE * 0.9), 2)) * Math.max(0, 1 - d.age * 0.8) * BASE * 0.22 * d.k;
+        const i = l.i;
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (-k * y[i] - c * vy[i]) * h;
+          y[i] += vy[i] * h;
         }
-        ctx.fillText(l.ch, l.x, l.y + y);
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
+        ctx.fillText(l.ch, l.x, l.y + y[i]);
       }
       drops = drops.filter(d => d.age < 1.4);
     }
@@ -4994,33 +5090,52 @@ rhymeOf("Clock hands", "Compass rose", "they never settle upright — all the le
   };
 });
 
-rhymeOf("Tumble dry", "Zero-g", "no walls, no bounces — the letters wrap around the card until gravity is switched on", function (u) {
+rhymeOf("Tumble dry", "Zero-g", "no walls, no bounces — the letters wrap around the card, drifting slower, until gravity is switched on: then the same drop, floor and springs as the drum, with one softer bounce", function (u) {
   const { ctx, W, H, INK, BASE, rand, layout, stage } = u;
-  // dials moved: wall bounce → wraparound · drift ×0.6 slower · press lands with one bounce
+  // dials moved: wall bounce → wraparound · drift ×0.6 slower · restitution 0.4 → 0.25 (one soft bounce, then rest) · gravity off: the same slow drift, not the drum's shove
+  // Tumble dry's physics with the walls taken out: weightless, a letter
+  // coasts and wraps — off the right edge, on at the left. gravity ON is the
+  // same ballistics as the drum: vy += g·dt, a floor at the baseline with
+  // restitution, and the two under-critical springs that slide x to the slot
+  // and turn the letter upright. the restitution is lower, so the landing is
+  // one soft bounce and then rest. nothing is teleported: when gravity goes
+  // off again each letter drifts away from wherever it lies.
+  const g = 10, e = 0.25;                // gravity (letter-heights/s²) and restitution
+  const kx = 30, zx = 0.5;               // the slot spring and its damping as a fraction of critical
+  const ka = 40, za = 0.4;               // the righting spring: turns the letter upright, and rocks past it
+  const cx = 2 * zx * Math.sqrt(kx), ca = 2 * za * Math.sqrt(ka);
   let bods = null, settle = 0;
+  function drift(b) { b.vx = rand(-18, 18); b.vy = rand(-18, 18); b.va = rand(-2, 2); }   // zero-g: a slow coast, velocities only
   return {
-    press() { settle = 4; },
+    press() {
+      settle = 4;                        // gravity, for four seconds
+      if (bods) for (const b of bods) b.a = Math.atan2(Math.sin(b.a), Math.cos(b.a));   // the same angle, counted the short way round
+    },
     frame(dt, t) {
       stage();
       const L = layout();
-      if (!bods) bods = L.map(l => ({
-        x: rand(0, W), y: rand(0, H),
-        vx: rand(-18, 18), vy: rand(-18, 18), a: rand(0, u.TAU), va: rand(-2, 2), vv: 0
-      }));
+      if (!bods) bods = L.map(l => { const b = { x: rand(0, W), y: rand(0, H), a: rand(0, u.TAU) }; drift(b); return b; });
+      const wasOn = settle > 0;
       settle = Math.max(0, settle - dt);
+      if (wasOn && settle <= 0) for (const b of bods) drift(b);   // gravity off: each letter floats away from where it lies
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.fillStyle = INK;
       for (const l of L) {
         const b = bods[l.i];
-        if (settle > 0) {                  // gravity on: fall to the baseline, one soft bounce
-          b.vv += 260 * dt;
-          b.y += b.vv * dt;
-          if (b.y > l.y) { b.y = l.y; b.vv = -b.vv * 0.35; }
-          b.x += (l.cx - b.x) * Math.min(1, dt * 4);
-          b.a += (0 - b.a) * Math.min(1, dt * 4);
+        if (settle > 0) {
+          for (let s = 0; s < sub; s++) {
+            b.vy += g * BASE * h;                                  // fall
+            b.vx += (kx * (l.cx - b.x) - cx * b.vx) * h;           // slide toward the slot
+            b.va += (ka * (0 - b.a) - ca * b.va) * h;              // turn upright
+            b.x += b.vx * h; b.y += b.vy * h; b.a += b.va * h;
+            if (b.y > l.y) {                                       // the floor: one soft bounce, then rest
+              b.y = l.y; b.vy = -b.vy * e;
+              if (Math.abs(b.vy) < BASE * 0.3) b.vy = 0;
+            }
+          }
         } else {
-          b.vv = 0;
-          b.x = (b.x + b.vx * dt + W) % W; // the wrap IS the dial
-          b.y = (b.y + b.vy * dt + H) % H;
+          b.x = ((b.x + b.vx * dt) % W + W) % W;                   // the wrap IS the dial
+          b.y = ((b.y + b.vy * dt) % H + H) % H;
           b.a += b.va * dt;
         }
         ctx.save();
@@ -5665,31 +5780,50 @@ rhymeOf("Chalk dust", "Wet paint", "the dust becomes drips — paint runs down f
   };
 });
 
-rhymeOf("Star assembly", "Star scatter", "the cycle reversed — the phrase stands, sheds its letters as motes, and regathers", function (u) {
-  const { ctx, W, H, INK, BASE, rand, layout, stage, glow } = u;
-  // dials moved: converge → shed (targets swapped with sources) · the phrase dims as it sheds
+rhymeOf("Star assembly", "Star scatter", "the cycle reversed — the phrase stands, flings its letters off as motes that coast to a stop, then hauls them home on the spring, overshoot and all, and regathers as they land", function (u) {
+  const { ctx, INK, BASE, rand, layout, stage, glow } = u;
+  // dials moved: converge → shed, then regather (the same spring runs the second half) · the shedding is a kick and air drag, not a lerp to an edge · the phrase dims as it sheds and firms as the motes come home
+  // three seconds standing, three shedding, three regathering. a shed mote is
+  // KICKED off its letter — a velocity, sideways and a little up or down —
+  // and then only air drag acts on it, v' = −drag·v, so it coasts to a stop
+  // a letter-height or two away and hangs there. the regather is Star
+  // assembly's spring, v' = k·(home − p) − c·v, under-damped: every mote is
+  // hauled back from where it stopped, overshoots its letter, swings back,
+  // and counts as home only when it is close AND slow. the phrase dims as it
+  // sheds and firms back up as they land.
+  const k = 20, zeta = 0.4;              // the homing spring (1/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k), drag = 2;   // drag: a coasting mote loses most of its speed in a second
   let motes = [], solidity = 1, phase = 0;
   return {
     press() { phase = 3; },                // shed early
     frame(dt, t) {
       stage();
       phase += dt;
-      if (phase > 9) phase = 0;
-      const shedding = phase > 3 && phase < 6;
+      if (phase > 9) { phase = 0; motes = []; }
+      const shedding = phase > 3 && phase < 6, homing = phase >= 6;
       const L = layout();
       if (shedding) {
         solidity = Math.max(0, solidity - dt * 0.5);
-        if (Math.random() < 0.7) {
+        if (Math.random() < 0.7) {         // a letter lets go of a mote: a kick, one way or the other
           const l = L[Math.floor(rand(0, L.length))];
-          if (l.ch !== " ") motes.push({ x: l.cx, y: l.y - BASE * 0.3,
-            tx: rand(0, 1) < 0.5 ? rand(-20, 0) : rand(W, W + 20), ty: rand(0, H), life: 1 });
+          if (l.ch !== " ") motes.push({ x: l.cx, y: l.y - BASE * 0.3, hx: l.cx, hy: l.y - BASE * 0.3,
+            vx: (Math.random() < 0.5 ? -1 : 1) * rand(2, 4.5) * BASE, vy: rand(-1.2, 1.2) * BASE, life: 1 });
         }
-      } else solidity = Math.min(1, solidity + dt * 0.6);
+      } else if (homing) solidity = Math.min(1, solidity + dt * 0.6);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.globalCompositeOperation = "lighter";
       for (const m of motes) {
-        m.x += (m.tx - m.x) * Math.min(1, dt * 1.2);
-        m.y += (m.ty - m.y) * Math.min(1, dt * 1.2);
-        m.life -= dt * 0.5;
+        for (let s = 0; s < sub; s++) {
+          if (homing) {                    // the spring: hauled home from wherever it stopped
+            m.vx += (k * (m.hx - m.x) - c * m.vx) * h;
+            m.vy += (k * (m.hy - m.y) - c * m.vy) * h;
+          } else {                         // the coast: drag only
+            m.vx -= drag * m.vx * h;
+            m.vy -= drag * m.vy * h;
+          }
+          m.x += m.vx * h; m.y += m.vy * h;
+        }
+        if (homing && Math.abs(m.x - m.hx) < 4 && Math.abs(m.y - m.hy) < 4 && Math.hypot(m.vx, m.vy) < 40) m.life = 0;   // close AND slow: landed
         if (m.life > 0) glow(m.x, m.y, 2.5, "rgba(220,220,255," + m.life * 0.8 + ")");
       }
       motes = motes.filter(m => m.life > 0);
@@ -5700,9 +5834,17 @@ rhymeOf("Star assembly", "Star scatter", "the cycle reversed — the phrase stan
   };
 });
 
-rhymeOf("Dust burst", "Bubble burst", "gravity flipped — the letters burst into bubbles that rise and pop", function (u) {
+rhymeOf("Dust burst", "Bubble burst", "gravity flipped — the letters burst into bubbles that rise under buoyancy, the big ones faster, wobbling as they go, and pop at their fuse or at the top", function (u) {
   const { ctx, INK, BASE, rand, layout, stage } = u;
-  // dials moved: dust grains → bubbles (outlined circles) · gravity flipped · pops at the top
+  // dials moved: dust grains → bubbles (outlined circles) · gravity down → buoyancy up, ∝ size, with drag to a terminal speed · the sideways wobble is a drag toward a little side-wind of the bubble's own · pop at the fuse, or at the top of the card
+  // a bubble is a snowflake upside down: buoyancy lifts it in proportion to
+  // its size, and drag holds it to a terminal speed, vy' = −lift·r − drag·vy,
+  // so a big bubble outruns a small one and none of them goes at a fixed
+  // rate — they start from rest and get up to speed. sideways, each is
+  // dragged toward a wobble of its own, vx' = drag·(sway − vx): the zigzag a
+  // real bubble makes as it sheds eddies. when the fuse runs out, or it
+  // reaches the top of the card, it pops.
+  const lift = 18, drag = 1.6;           // lift per px of radius (px/s² per px) and drag (1/s): terminal rise 22–56 px/s for r 2–5
   let bubbles = [], gone = 0;
   return {
     press() {
@@ -5712,7 +5854,7 @@ rhymeOf("Dust burst", "Bubble burst", "gravity flipped — the letters burst int
         if (l.ch === " ") continue;
         for (let i = 0; i < 4; i++)
           bubbles.push({ x: l.cx + rand(-l.w, l.w) * 0.4, y: l.y - rand(0, BASE * 0.6),
-                         vx: rand(-15, 15), vy: rand(-40, -15), r: rand(2, 5), life: rand(0.8, 1.6) });
+                         vx: rand(-15, 15), vy: 0, r: rand(2, 5), life: rand(0.8, 1.6), ph: rand(0, u.TAU), wf: rand(4, 8) });   // from rest: buoyancy does the lifting
       }
       gone = 2.2;
     },
@@ -5724,8 +5866,13 @@ rhymeOf("Dust burst", "Bubble burst", "gravity flipped — the letters burst int
         ctx.strokeStyle = "rgba(180,220,255,0.8)";
         ctx.lineWidth = 1;
         for (const b of bubbles) {
-          b.x += b.vx * dt + Math.sin(b.y * 0.1) * 6 * dt;
-          b.y += b.vy * dt;
+          if (b.life > 0) {                // still whole: rise, wobble
+            b.ph += b.wf * dt;
+            b.vy += (-lift * b.r - drag * b.vy) * dt;        // buoyancy up, drag toward the terminal speed
+            b.vx += drag * (Math.sin(b.ph) * 12 - b.vx) * dt; // dragged toward its own little side-wind
+            b.x += b.vx * dt; b.y += b.vy * dt;
+            if (b.y < b.r) b.life = 0;     // the top of the card: pop
+          }
           b.life -= dt;
           if (b.life > 0) {
             ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, u.TAU); ctx.stroke();
@@ -5790,58 +5937,105 @@ rhymeOf("Sparkle crown", "Frost sparkle", "cold twinkles at half the rate — an
   };
 });
 
-rhymeOf("Electron letters", "Moth lamp", "the orbits abandoned — the motes crowd toward one drifting lamp instead", function (u) {
-  const { ctx, INK, BASE, rand, layout, stage, glow } = u;
-  // dials moved: per-letter orbits → shared attraction point · letters brighten near the lamp
-  let moths = null;
+rhymeOf("Electron letters", "Moth lamp", "the orbits abandoned for one drifting lamp — the same ring spring, but every mote shares the one centre, and it strolls, so they lag it, crowd it, and circle; press to startle them outward", function (u) {
+  const { ctx, W, H, MID, INK, BASE, PHRASE, rand, layout, stage, glow } = u;
+  // dials moved: per-letter centres → one shared lamp that strolls · ring radius 0.55 → 0.7 letter-heights, the spring looser · a flutter of random kicks, moth-style · press: a radial shove (as Electron letters) instead of new random positions · letters brighten near the lamp
+  // the same physics as Electron letters: position + velocity, a spring in r
+  // toward a ring radius that damps only the RADIAL motion, so the sideways
+  // speed — the angular momentum — is kept and the mote keeps circling. the
+  // one dial that changes everything is the CENTRE: all the motes share it,
+  // and it moves, so a mote is forever being hauled after a lamp that has
+  // already strolled on. a small tangential drag and a flutter of random
+  // kicks keep them clumsy rather than clockwork.
+  const k = 30, zeta = 0.3, zt = 0.02;   // the ring spring (1/s²), radial damping, and a whisper of tangential drag, as fractions of critical
+  const c = 2 * zeta * Math.sqrt(k), ct = 2 * zt * Math.sqrt(k);
+  const n = PHRASE.length, r0 = BASE * 0.7;
+  const px = new Float32Array(n), py = new Float32Array(n), vx = new Float32Array(n), vy = new Float32Array(n), flit = new Float32Array(n);
+  let lampX = W / 2, lampY = MID - BASE * 1.1;
+  for (let i = 0; i < n; i++) {          // scattered, each already on the wing: sideways to the lamp, so it circles rather than dives
+    px[i] = rand(0, W); py[i] = rand(0, H); flit[i] = rand(0, 0.4);
+    const rx = px[i] - lampX, ry = py[i] - lampY, r = Math.hypot(rx, ry) || 1, s = Math.sqrt(k) * r0 * rand(0.6, 1) * (Math.random() < 0.5 ? -1 : 1);
+    vx[i] = -ry / r * s; vy[i] = rx / r * s;
+  }
   return {
-    press() { moths = null; },             // startle them into new positions
+    press() {                            // the startle: straight away from the lamp, velocity only
+      for (let i = 0; i < n; i++) { const rx = px[i] - lampX, ry = py[i] - lampY, r = Math.hypot(rx, ry) || 1; vx[i] += rx / r * r0 * 8; vy[i] += ry / r * r0 * 8; }
+    },
     frame(dt, t) {
       stage();
       const L = layout();
-      if (!moths) moths = L.map(() => ({ x: rand(0, u.W), y: rand(0, u.H), vx: 0, vy: 0 }));
-      const lampX = u.W / 2 + Math.sin(t * 0.5) * u.W * 0.3;             // the lamp strolls
-      const lampY = u.MID - BASE * 1.1 + Math.sin(t * 0.9) * BASE * 0.4;
+      lampX = W / 2 + Math.sin(t * 0.5) * W * 0.3;                       // the lamp strolls
+      lampY = MID - BASE * 1.1 + Math.sin(t * 0.9) * BASE * 0.4;
       for (const l of L) {
-        const k = Math.max(0, 1 - Math.abs(l.cx - lampX) / (BASE * 2.5));
-        ctx.fillStyle = "rgba(232,229,244," + (0.35 + k * 0.65) + ")";
+        const near = Math.max(0, 1 - Math.abs(l.cx - lampX) / (BASE * 2.5));
+        ctx.fillStyle = "rgba(232,229,244," + (0.35 + near * 0.65) + ")";
         ctx.fillText(l.ch, l.x, l.y);
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.globalCompositeOperation = "lighter";
       glow(lampX, lampY, BASE * 0.9, "rgba(255,230,160,0.35)");
-      for (const m of moths) {             // clumsy attraction, moth-style
-        m.vx += (lampX - m.x) * 2.2 * dt + rand(-1, 1) * 30 * dt;
-        m.vy += (lampY - m.y) * 2.2 * dt + rand(-1, 1) * 30 * dt;
-        m.vx *= Math.pow(0.5, dt); m.vy *= Math.pow(0.5, dt);
-        m.x += m.vx * dt; m.y += m.vy * dt;
-        glow(m.x, m.y, 2, "rgba(255,235,180,0.7)");
+      for (let i = 0; i < n; i++) {
+        flit[i] -= dt;
+        if (flit[i] < 0) { vx[i] += rand(-1, 1) * BASE * 1.5; vy[i] += rand(-1, 1) * BASE * 1.5; flit[i] = rand(0.1, 0.5); }   // the flutter: a kick now and then
+        for (let s = 0; s < sub; s++) {
+          const rx = px[i] - lampX, ry = py[i] - lampY, r = Math.hypot(rx, ry) || 1, ux = rx / r, uy = ry / r;
+          const vr = vx[i] * ux + vy[i] * uy, vtan = -vx[i] * uy + vy[i] * ux;   // radial and sideways parts of the velocity
+          const f = -k * (r - r0) - c * vr;                    // the ring spring, damping the radial part only
+          vx[i] += (f * ux + ct * vtan * uy) * h; vy[i] += (f * uy - ct * vtan * ux) * h;   // the sideways drag acts along (−uy, ux)
+          px[i] += vx[i] * h; py[i] += vy[i] * h;
+        }
+        const rx = px[i] - lampX, ry = py[i] - lampY, r = Math.hypot(rx, ry);
+        if (r > r0 * 8) { px[i] = lampX + rx * r0 * 8 / r; py[i] = lampY + ry * r0 * 8 / r; }   // a leash, in case of a run of presses
+        glow(px[i], py[i], 2, "rgba(255,235,180,0.7)");
       }
       ctx.globalCompositeOperation = "source-over";
     }
   };
 });
 
-rhymeOf("Snow fill", "Sandstorm", "the snow turned sideways and hostile — grit streams past and scours the letters pale", function (u) {
-  const { ctx, W, DIM, BASE, rand, layout, stage } = u;
-  // dials moved: fall vertical → horizontal stream · fill-up → scour (brightness worn away per letter)
-  let grains = [], worn = null;
+rhymeOf("Snow fill", "Sandstorm", "the snow turned sideways and hostile — grit dragged along by a wind that comes in gust fronts, streaming past and scouring the letters pale; press and the wind drops for a moment, the grit sags, and the letters recover", function (u) {
+  const { ctx, W, H, DIM, BASE, rand, layout, stage } = u;
+  // dials moved: gravity → a sideways wind (the grain is dragged toward the air, exactly as the flake is) · the gust is a front of extra speed that sweeps downwind · a small sag under gravity · fill-up → scour (brightness worn away per letter) · press: a lull instead of a brush
+  // Snow fill's flake with the wind turned up and gravity turned down: a
+  // grain is dragged toward the air's speed, vx' = drag·(wind − vx), and the
+  // air is a steady stream with GUSTS riding on it — bumps of extra speed
+  // that sweep downwind, so a grain near the front surges first and one
+  // further along surges later, each 1/drag seconds behind the air. sand is
+  // heavy, so it also sags, vy' = g − drag·vy, toward a slow terminal drop.
+  // a press is a lull: the air stops for a moment and the grit, with nothing
+  // pushing it, slows and sinks; then the wind comes back.
+  const g = 25, mean = 150;              // the sag (px/s²) and the steady wind (px/s); each grain's drag sets how closely it follows
+  let grains = [], worn = null, gust = null, calm = rand(1, 3), lull = 0;
+  function blow() { gust = { x: -W * 0.3, k: rand(80, 160) }; }   // a gust starts upwind and travels downwind, always left to right here
+  function wind(x) {                     // the air's speed at x: still in a lull, else the stream plus any gust bump
+    if (lull > 0) return 0;
+    if (!gust) return mean;
+    const d = (x - gust.x) / (W * 0.2);
+    return mean + gust.k * Math.exp(-d * d);
+  }
   return {
-    press() { worn = null; },              // the wind drops for a moment; the letters recover
+    press() { worn = null; lull = 1.5; },  // the wind drops for a moment; the letters recover
     frame(dt, t) {
       stage();
+      lull = Math.max(0, lull - dt);
+      calm -= dt;
+      if (!gust && calm < 0) blow();
+      if (gust) { gust.x += W * 0.6 * dt; if (gust.x > W * 1.4) { gust = null; calm = rand(1, 3); } }
       const L = layout(BASE, 0, 600);
       if (!worn) worn = L.map(() => 0);
-      if (grains.length < 40)
-        grains.push({ x: -4, y: rand(0, u.H), v: rand(120, 240), life: 1 });
+      if (grains.length < 40 && lull <= 0)   // recruited upwind, already moving with the stream
+        grains.push({ x: -4, y: rand(0, H), vx: rand(90, 150), vy: 0, drag: rand(3, 6) });
       ctx.fillStyle = "rgba(225,200,150,0.7)";
-      for (const g of grains) {
-        g.x += g.v * dt; g.y += Math.sin(g.x * 0.05) * 10 * dt;
-        ctx.fillRect(g.x, g.y, 2.2, 1.2);
+      for (const gr of grains) {
+        gr.vx += gr.drag * (wind(gr.x) - gr.vx) * dt;      // toward the local air, 1/drag seconds behind it
+        gr.vy += (g - gr.drag * gr.vy) * dt;               // the sag, toward its slow terminal drop
+        gr.x += gr.vx * dt; gr.y += gr.vy * dt;
+        ctx.fillRect(gr.x, gr.y, 2.2, 1.2);
         for (const l of L)                 // grit wears the letters as it passes
-          if (Math.abs(g.y - (l.y - BASE * 0.3)) < BASE * 0.5 && Math.abs(g.x - l.cx) < l.w)
+          if (Math.abs(gr.y - (l.y - BASE * 0.3)) < BASE * 0.5 && Math.abs(gr.x - l.cx) < l.w)
             worn[l.i] = Math.min(1, worn[l.i] + dt * 2);
       }
-      grains = grains.filter(g => g.x < W + 6);
+      grains = grains.filter(gr => gr.x < W + 6 && gr.y < H + 6);
       for (const l of L) {
         worn[l.i] = Math.max(0, worn[l.i] - dt * 0.1);
         const wgt = worn[l.i];
