@@ -7,7 +7,7 @@ const Base := preload("res://scenes/elements/lightning.gd")
 const RHYMES := {
 	"static_charge": { "name": "Static dust", "hint": "gold motes, bolt becomes a shimmer" },
 	"tesla_ring": { "name": "Halo arcs", "hint": "warmed to gold, slowed to a waltz" },
-	"storm_cloud": { "name": "Snow cloud", "hint": "the strike dial swapped for a flurry" },
+	"storm_cloud": { "name": "Snow cloud", "hint": "the strike dial swapped for a flurry — recoil kick 60 → 12" },
 	"circuit": { "name": "Ink trace", "hint": "wet ink on pale paper, pulses ÷2" },
 	"plasma_globe": { "name": "Sun globe", "hint": "amber filaments, wander ×2" },
 	"neon": { "name": "Steady cyan", "hint": "hue rotated, hum ÷4, dropouts rare" },
@@ -19,9 +19,16 @@ static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "storm_cloud":
 		b.flakes = []
+		_turn(b, { "kick": 12.0 })        # dial: a flurry's release is a nudge, not a bolt's recoil
 	if b.id == "circuit":
 		for p in b.paths:                  # the ÷2 pulse dial lives here
 			p.v *= 0.5
+
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	Base.press(b, pos)
@@ -29,7 +36,8 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	match b.id:
 		"storm_cloud":
-			# dial: bolt → snowfall burst
+			# dial: bolt → snowfall burst (the cloud's spring is the original's)
+			Base._cloud_spring(b, dt)
 			b.press_v = maxf(0.0, b.press_v - dt * 1.2)
 			if b.press_v > 0.0 or randf() < 0.06:
 				b.flakes.append({ "pos": Vector2(b.rect.size.x / 2.0 + randf_range(-30, 30), -12.0),
@@ -73,8 +81,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				for i in 8:
 					_gold_arc(n, b, i / 8.0 * TAU + t, pv)
 		"storm_cloud":
-			var cy := o.y - 16.0 + sin(t * 0.8) * 2.0
+			var cy: float = o.y - float(b.D.rest) + float(b.cy)
 			ElemKit.face(n, r, Color(0.07, 0.078, 0.125, 0.95), Color(0.78, 0.84, 0.96, 0.4 + pv * 0.5))
+			if b.flicker > 0.0:
+				ElemKit.glow(n, Vector2(r.get_center().x + randf_range(-14, 14), cy), 14.0,
+					Color(0.86, 0.9, 0.98, float(b.flicker) * 0.5), 3)
 			ElemKit.label(n, r, "FLURRY", Color(0.9, 0.93, 0.98))
 			for i in 5:
 				n.draw_circle(Vector2(r.get_center().x + (i - 2) * 13.0, cy + sin(i * 2.7) * 3.0),

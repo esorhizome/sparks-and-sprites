@@ -6,12 +6,12 @@ const ElemKit := preload("res://scenes/elements/kit.gd")
 const TITLE := "Acid & goo"
 const BLURB := "things that bubble, drip, and should not be touched"
 const DEFS := [
-	{ "id": "acid_bath", "name": "Acid bath", "hint": "green liquid simmers in the lower third; press for a violent boil" },
+	{ "id": "acid_bath", "name": "Acid bath", "hint": "green liquid simmers in the lower third — bubbles rise on buoyancy against drag, wobbling on a sideways spring kicked at release; press for a violent boil" },
 	{ "id": "miasma", "name": "Miasma", "hint": "a sickly haze breathes around it; press to blow the cloud away" },
 	{ "id": "slime", "name": "Slime coat", "hint": "goo drips off the face at its own pace; press to jiggle it" },
 	{ "id": "venom", "name": "Venom", "hint": "two fangs drip; press and they spit an arc" },
 	{ "id": "radiant", "name": "Radiant decay", "hint": "three glow sectors rotate like a warning; press for geiger crackle" },
-	{ "id": "ecto", "name": "Ectoplasm", "hint": "a ghost drifts through the button; press to startle it away" },
+	{ "id": "ecto", "name": "Ectoplasm", "hint": "a ghost drifts on a push against drag, floating on a soft vertical spring, its wisps trailing on springs of their own; press to spook it — an impulse it bleeds off as it flees, wisps stretched behind" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -19,6 +19,21 @@ static func init(b: Dictionary) -> void:
 	b.parts = []
 	var r: Rect2 = b.rect
 	match b.id:
+		"acid_bath":
+			b.D = { "buoy": 30.0,       # buoyancy per px of radius, px/s² — bigger bubbles pull harder
+				"drag": 6.0,            # drag, 1/s — terminal rise = buoy·r/drag
+				"boilBuoy": 2.5,        # how much a full boil multiplies the buoyancy (hotter liquid, lighter gas)
+				"kx": 40.0,             # the sideways spring toward the line it rose from, 1/s²
+				"zeta": 0.1,            # its damping as a fraction of critical — the wobble dies over a few swings
+				"kick": 20.0,           # the sideways kick as a bubble lets go of the floor, px/s
+				"rate": 0.2,            # bubble chance per frame at a simmer — a full boil multiplies it by 4.5
+				"rmin": 1.5,            # the smallest bubble, px
+				"rmax": 3.5 }           # and the biggest
+			# the same body as the bubble tank: buoyancy (∝ radius) against drag gives
+			# a terminal rise reached a fraction of a second after release; the wobble
+			# is a soft sideways spring around the rise line, kicked once at the floor.
+			# the boil multiplies the buoyancy and the spawn rate — the speed is what
+			# the extra buoyancy builds, not a number swapped in.
 		"miasma":
 			b.wisps = []
 			for i in 8:
@@ -33,8 +48,30 @@ static func init(b: Dictionary) -> void:
 			b.fangs = [r.size.x / 2.0 - 22.0, r.size.x / 2.0 + 22.0]
 			b.hit = 0.0
 		"ecto":
-			b.gx = -30.0
-			b.spooked = 0.0
+			b.D = { "thrust": 19.0,     # the ghost's forward push, px/s² — cruising speed = thrust/drag ≈ 16 px/s
+				"drag": 1.2,            # drag, 1/s — a spook's impulse decays over ~1/drag s
+				"spook": 220.0,         # the press: forward speed injected, px/s
+				"hop": 60.0,            # the press: upward speed injected, px/s
+				"ky": 6.0,              # the vertical float spring, 1/s² (a 2.6 s bob)
+				"yzeta": 0.12,          # its damping — it keeps bobbing a while after every nudge
+				"nudge": 20.0,          # an idle nudge's size, px/s — the float comes from these, on 2 % of frames
+				"kw": 40.0,             # each wisp's spring toward its place behind the head, 1/s²
+				"wzeta": 0.25 }         # wisp damping — they stretch when the head bolts and catch up late
+			# the ghost is a body: a constant forward push against drag gives it a
+			# cruising speed; the spook is an impulse on top, which the same drag takes
+			# back over a second or two. its height is a soft spring around the
+			# button's midline, kicked by the spook and nudged now and then. the three
+			# wisps are bodies too, each on a spring toward a spot behind the head —
+			# when the head bolts they lag and stretch, and they overshoot on the way
+			# back. the fade while spooked is read off the actual speed.
+			b.gx = -30.0                # the head's x
+			b.gvx = float(b.D.thrust) / float(b.D.drag)   # its speed — starts at cruise
+			b.gy = 0.0                  # its height off the midline, px
+			b.gvy = 0.0
+			b.spooked = 0.0             # how much of the fright is left, read off the speed
+			b.wisps = []
+			for k in range(-1, 2):
+				b.wisps.append({ "k": k, "pos": Vector2(b.gx + k * 7 - 11, r.size.y / 2.0 + 10.0), "vel": Vector2.ZERO })
 
 static func press(b: Dictionary, _pos: Vector2) -> void:
 	var r: Rect2 = b.rect
@@ -49,21 +86,41 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 				b.parts.append({ "kind": "spit", "pos": Vector2(fx, 10.0),
 					"vel": Vector2(randf_range(-25, 25), randf_range(-90, -60)), "life": 1.0 })
 		"ecto":
-			b.spooked = 1.0
+			b.gvx += float(b.D.spook)     # the fright: an impulse forward and a hop up
+			b.gvy -= float(b.D.hop)
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	b.press_v = maxf(0.0, b.press_v - dt * (0.4 if b.id == "miasma" else 0.8))
 	var r: Rect2 = b.rect
 	match b.id:
 		"acid_bath":
-			if randf() < 0.2 + b.press_v * 0.7:
-				b.parts.append({ "kind": "bub", "pos": Vector2(randf_range(4, r.size.x - 4), r.size.y - 2.0),
-					"r": randf_range(1.5, 3.5) })
-			if randf() < 0.02 + b.press_v * 0.1:
+			var D: Dictionary = b.D
+			var boil: float = b.press_v
+			if randf() < float(D.rate) * (1.0 + boil * 3.5):
+				var x0 := randf_range(4, r.size.x - 4)
+				var kick: float = D.kick
+				b.parts.append({ "kind": "bub", "pos": Vector2(x0, r.size.y - 2.0), "x0": x0,
+					"r": randf_range(float(D.rmin), float(D.rmax)), "vel": Vector2(randf_range(-kick, kick), 0.0) })
+			if randf() < 0.02 + boil * 0.1:
 				b.parts.append({ "kind": "drip", "pos": Vector2(randf_range(6, r.size.x - 6), r.size.y), "vy": 10.0 })
+			var buoy: float = float(D.buoy) * (1.0 + boil * float(D.boilBuoy))
+			var drag: float = D.drag
+			var kx: float = D.kx
+			var dx: float = float(D.zeta) * 2.0 * sqrt(kx)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / sub
 			for p in b.parts:
-				if p.kind == "bub":
-					p.pos.y -= (14.0 + b.press_v * 30.0) * dt
+				if p.kind == "bub":         # buoyancy − drag upward, the kicked spring sideways
+					var v: Vector2 = p.vel
+					var pos: Vector2 = p.pos
+					var x0: float = p.x0
+					var rad: float = p.r
+					for _s in sub:
+						v.y += (-buoy * rad - drag * v.y) * h   # up is −y
+						v.x += (kx * (x0 - pos.x) - dx * v.x) * h
+						pos += v * h
+					p.vel = v
+					p.pos = pos
 				else:
 					p.pos.y += p.vy * dt
 					p.vy += 70.0 * dt
@@ -96,11 +153,53 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"ecto":
-			b.gx += (16.0 + b.spooked * 220.0) * dt
-			if b.gx > r.size.x + 40.0:
-				b.gx = -40.0
-				b.spooked = maxf(0.0, b.spooked - 0.99)
-			b.spooked = maxf(0.0, b.spooked - dt * 0.25)
+			_haunt(b, dt)
+
+## The ghost's bodies, shared with its rhyme: the head on push-and-drag forward
+## and a soft spring vertically, each wisp on a spring toward its spot behind
+## the head. Symplectic Euler in ≤ 0.02 s steps; the fright is read off the speed.
+static func _haunt(b: Dictionary, dt: float) -> void:
+	var D: Dictionary = b.D
+	var r: Rect2 = b.rect
+	var thrust: float = D.thrust
+	var drag: float = D.drag
+	var ky: float = D.ky
+	var kw: float = D.kw
+	var dy: float = float(D.yzeta) * 2.0 * sqrt(ky)
+	var dw: float = float(D.wzeta) * 2.0 * sqrt(kw)
+	var cruise: float = thrust / drag
+	var gx: float = b.gx
+	var gvx: float = b.gvx
+	var gy: float = b.gy
+	var gvy: float = b.gvy
+	if randf() < 0.02:                  # an idle nudge: the float
+		gvy += randf_range(-float(D.nudge), float(D.nudge))
+	var sub := maxi(1, ceili(dt * 50.0))
+	var h := dt / sub
+	for _s in sub:
+		gvx += (thrust - drag * gvx) * h
+		gx += gvx * h
+		gvy += (-ky * gy - dy * gvy) * h
+		gy += gvy * h
+		for w in b.wisps:
+			var tgt := Vector2(gx + float(w.k) * 7.0 - 11.0, r.size.y / 2.0 + gy + 10.0)
+			var v: Vector2 = w.vel
+			var p: Vector2 = w.pos
+			v += (kw * (tgt - p) - dw * v) * h
+			p += v * h
+			w.vel = v
+			w.pos = p
+	gy = clampf(gy, -40.0, 40.0)
+	if gx > r.size.x + 40.0:            # round again, wisps and all
+		gx -= r.size.x + 80.0
+		for w in b.wisps:
+			w.pos.x -= r.size.x + 80.0
+	b.gx = gx
+	b.gvx = gvx
+	b.gy = gy
+	b.gvy = gvy
+	var spook: float = D.spook
+	b.spooked = 0.0 if absf(spook) < 1e-6 else clampf((gvx - cruise) / spook * 2.0, 0.0, 1.0)
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect
@@ -178,13 +277,13 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"ecto":
 			ElemKit.face(n, r, Color(0.078, 0.086, 0.1, 0.96 - b.spooked * 0.2), Color(0.75, 0.9, 0.82, 0.4))
 			ElemKit.label(n, r, "BOO", Color(0.88, 0.95, 0.91))
-			var gy: float = r.size.y / 2.0 + sin(t * 1.3) * 8.0 - b.spooked * 10.0
+			var gy: float = r.size.y / 2.0 + float(b.gy)   # wherever its spring has floated it
 			var in_face: bool = b.gx > 0.0 and b.gx < r.size.x
 			var a: float = (0.18 if in_face else 0.34) + b.spooked * 0.2
 			var gp := o + Vector2(b.gx, gy)
 			ElemKit.glow(n, gp, 13.0, Color(0.75, 1.0, 0.88, a), 3)
-			for k in range(-1, 2):
-				ElemKit.qcurve(n, gp + Vector2(k * 4, 7),
-					gp + Vector2(k * 6 - 6, 12),
-					gp + Vector2(k * 7 - 11, 10 + sin(t * 5.0 + k) * 3.0),
+			for w in b.wisps:                # trailing wisps: from the head's hem to wherever each has got to
+				var hem := gp + Vector2(float(w.k) * 4.0, 7.0)
+				var tip: Vector2 = o + w.pos
+				ElemKit.qcurve(n, hem, Vector2((hem.x + tip.x) / 2.0, gp.y + 12.0), tip,
 					Color(0.75, 1.0, 0.88, a * 0.8), 1.2)

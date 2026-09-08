@@ -6,14 +6,20 @@ const Base := preload("res://scenes/elements/air.gd")
 
 const RHYMES := {
 	"zephyr": { "name": "Solar wind", "hint": "golden, streams ×3 faster" },
-	"cyclone": { "name": "Water spout", "hint": "open sea: blue, slower, with spray" },
+	"cyclone": { "name": "Water spout", "hint": "open sea: blue, with spray — spin 6 → 4, the amble spring ÷4" },
 	"smoke_signal": { "name": "Bubble signal", "hint": "underwater — puffs rise fast, pop at the rim" },
-	"fog_bank": { "name": "Night fog", "hint": "darker, slower — the press GLOWS instead of parting" },
+	"fog_bank": { "name": "Night fog", "hint": "darker, drift ÷2 — the press GLOWS instead of parting (gust → 0)" },
 	"updraft": { "name": "Ember updraft", "hint": "the thermal carries embers, faster and hotter" },
-	"vacuum": { "name": "Repulsor", "hint": "the field's sign flipped — everything pushed AWAY" },
+	"vacuum": { "name": "Repulsor", "hint": "the field's sign flipped (G → −G) — everything pushed AWAY" },
 	"sonic_boom": { "name": "Quiet ripple", "hint": "violence dialled out — see-through, serene" },
 	"windsock": { "name": "Kite tail", "hint": "festival colours, tied to a stiffer breeze" },
 }
+
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
@@ -21,9 +27,12 @@ static func init(b: Dictionary) -> void:
 		"zephyr":
 			for w in b.winds:           # the ×3 stream dial
 				w.v *= 3.0
-		"fog_bank":
-			for bl in b.blobs:          # the ÷2 drift dial
-				bl.v *= 0.5
+		"cyclone":                      # dials: a slower spin, an amble at half the pace with longer pauses
+			_turn(b, { "spin": 4.0, "kw": 1.0, "retarget": 5.0 })
+		"fog_bank":                     # dials: drift ÷2 · the gust switched off — the press only lights it
+			_turn(b, { "drift": 0.5, "gust": 0.0 })
+		"vacuum":                       # dial: the pull's sign flipped — a push of the same strength
+			_turn(b, { "G": -20000.0 })
 		"windsock":
 			b.wind = 2.2                # a stiffer resting breeze
 
@@ -57,16 +66,19 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 0.9
 			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.pos.y > -34.0)
 		"vacuum":
-			# dial: pull → push (sign flipped), motes recycled at the centre
+			# dial: pull → push (G's sign, turned in init); motes reborn at the CENTRE once flung clear
 			b.press_v = maxf(0.0, b.press_v - dt * 1.3)
-			var push: float = 12.0 + b.press_v * 260.0
+			var push: float = float(b.D.G) * (1.0 + b.press_v * float(b.D.slam))
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / sub
 			for m in b.motes:
-				var d: Vector2 = m.pos - r.size / 2.0
-				var dist := maxf(4.0, d.length())
-				m.pos += d / dist * push * dt
-				if dist > r.size.x * 0.75:
-					var th := randf_range(0, TAU)
-					m.pos = r.size / 2.0 + Vector2(cos(th), sin(th)) * randf_range(4.0, 10.0)
+				for _s in sub:
+					var dist := Base._mote_step(b, m, h, push)
+					if dist > r.size.x * 0.75:
+						var th := randf_range(0, TAU)
+						m.pos = r.size / 2.0 + Vector2(cos(th), sin(th)) * randf_range(4.0, 10.0)
+						m.vel = Vector2.ZERO
+						break
 			if b.press_v > 0.0:
 				b.ring = b.ring + 200.0 * dt   # the ring runs outward too
 		"windsock":
@@ -99,23 +111,27 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				ElemKit.qcurve(n, o + Vector2(x - 20.0 - pv * 10.0, y + 2), o + Vector2(x - 8, y - 1),
 					o + Vector2(x, y), Color(1, 0.86, 0.51, 0.35 + pv * 0.4), 1.4)
 		"cyclone":
-			# dials: dust twister → water spout, wander ÷2, debris → spray
+			# dials: dust twister → water spout, debris → spray (spin and amble dials in init)
 			ElemKit.face(n, r, Color(0.047, 0.086, 0.125, 0.92), Color(0.55, 0.78, 0.92, 0.5))
 			ElemKit.label(n, r, "SPOUT", Color(0.85, 0.93, 0.97))
-			var cx := o.x + r.size.x / 2.0 + sin(t * 0.25) * r.size.x * 0.55
+			var cx0 := o.x + r.size.x / 2.0
+			var X: PackedFloat32Array = b.X
+			var ang: PackedFloat32Array = b.ang
+			var N := X.size()
 			var base_y := o.y + r.size.y + 6.0
 			var top_y := o.y - 14.0 - pv * 8.0
 			var size_m := 1.0 + pv * 0.8
-			for i in 9:
-				var k := i / 8.0
+			for i in N:
+				var k := i / float(N - 1)
 				var y := base_y + (top_y - base_y) * k
 				var rad := (2.0 + k * 12.0) * size_m
-				var a := t * (4.0 - k * 1.5) + i
-				ElemKit.ellipse(n, Vector2(cx + sin(t * 1.2 + k * 3.0) * 3.0, y), rad, rad * 0.3,
+				var a: float = ang[i]
+				ElemKit.ellipse(n, Vector2(cx0 + X[i], y), rad, rad * 0.3,
 					Color(0.55, 0.8, 0.94, 0.55 - k * 0.25 + pv * 0.3), 1.4, a, a + 4.0, 10)
 			for p in b.parts:
 				var y: float = base_y + (top_y - base_y) * p.h
 				var rad: float = (2.0 + p.h * 12.0) * size_m
+				var cx: float = cx0 + X[mini(N - 1, roundi(p.h * (N - 1)))]
 				n.draw_circle(Vector2(cx + cos(p.a) * rad, y + sin(p.a) * rad * 0.3), 1.3,
 					Color(0.8, 0.92, 1.0, p.life * 0.85))
 		"smoke_signal":
@@ -132,7 +148,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			if pv > 0.0:
 				ElemKit.glow(n, r.get_center(), 26.0, Color(1, 0.86, 0.55, pv * 0.4), 4)
 			for bl in b.blobs:
-				var x: float = r.get_center().x + bl.ox * 0.6
+				var x: float = r.get_center().x + bl.x * 0.6
 				ElemKit.glow(n, Vector2(x, r.get_center().y + bl.oy), bl.r,
 					Color(0.55, 0.55, 0.7, 0.14 + pv * 0.1), 3)
 		"updraft":

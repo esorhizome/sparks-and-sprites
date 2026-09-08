@@ -8,7 +8,7 @@ const BLURB := "charge, arc, and the crack of discharge"
 const DEFS := [
 	{ "id": "static_charge", "name": "Static charge", "hint": "tiny crackles bite the edges; press for a bolt across the face" },
 	{ "id": "tesla_ring", "name": "Tesla ring", "hint": "an arc dances between button and outer ring; press fires them all" },
-	{ "id": "storm_cloud", "name": "Storm cloud", "hint": "a cloud broods overhead; press and it strikes the button" },
+	{ "id": "storm_cloud", "name": "Storm cloud", "hint": "a cloud broods overhead, bobbing on a spring only its own mutters nudge; press and it strikes the button — and recoils from the bolt" },
 	{ "id": "circuit", "name": "Circuit trace", "hint": "pulses travel etched copper paths; press to send them all at once" },
 	{ "id": "plasma_globe", "name": "Plasma globe", "hint": "filaments wander from the core; press and they chase your finger" },
 	{ "id": "neon", "name": "Neon flicker", "hint": "a buzzing neon tube border; press to steady it for a moment" },
@@ -21,6 +21,19 @@ static func init(b: Dictionary) -> void:
 	b.parts = []
 	var r: Rect2 = b.rect
 	match b.id:
+		"storm_cloud":
+			b.D = { "k": 30.0,          # the cloud's vertical spring, 1/s² (ω ≈ 5.5 rad/s: a 1.1 s bob)
+				"zeta": 0.15,           # damping as a fraction of critical — well under 1, so it rings a few times
+				"kick": 60.0,           # the bolt's recoil, px/s upward, injected the instant it fires
+				"mutter": 8.0,          # a mutter's nudge, px/s either way — the idle bob comes from these, not a clock
+				"rest": 16.0 }          # the cloud's resting height above the button, px
+			# the cloud is one mass on a vertical spring. nothing moves it but kicks: a
+			# mutter gives a small random nudge, the bolt a big upward one (the recoil),
+			# and the under-damped spring does the rest — it rises, falls back through
+			# the rest height, and settles in a couple of swings. no sine anywhere.
+			b.cy = 0.0                  # displacement from rest, px (down is +)
+			b.cvy = 0.0                 # and its velocity, px/s
+			b.flicker = 0.0             # the mutter's glow, fading
 		"circuit":
 			b.paths = []
 			for p in 4:
@@ -71,6 +84,8 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			if b.id == "neon":
 				b.steady = 2.0
 				b.dropout = 0.0
+			if b.id == "storm_cloud":
+				b.cvy -= float(b.D.kick)   # the recoil: the bolt throws the cloud upward
 		"circuit":
 			b.press_v = 1.0
 			for p in b.paths:
@@ -93,6 +108,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.bolt.life -= dt * 3.0
 				if b.bolt.life <= 0.0:
 					b.bolt = null
+		"storm_cloud":
+			_cloud_spring(b, dt)
 		"circuit":
 			for p in b.paths:
 				p.d += p.v * (1.0 + b.press_v * 3.0) * dt
@@ -120,6 +137,27 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.pos += p.vel * dt
 					p.life -= dt * 1.8
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
+
+## The storm cloud's spring, shared with its rhyme: symplectic Euler in ≤ 0.02 s
+## steps (a coarse frame would otherwise make the ringing grow), plus the
+## mutters — each one a random nudge to the velocity and a brief glow.
+static func _cloud_spring(b: Dictionary, dt: float) -> void:
+	var D: Dictionary = b.D
+	var k: float = D.k
+	var damp: float = float(D.zeta) * 2.0 * sqrt(k)
+	var cy: float = b.cy
+	var cvy: float = b.cvy
+	var sub := maxi(1, ceili(dt * 50.0))
+	var h := dt / sub
+	for _s in sub:
+		cvy += (-k * cy - damp * cvy) * h
+		cy += cvy * h
+	if randf() < 0.01:                  # the cloud mutters to itself, and shifts
+		b.flicker = 0.5
+		cvy += randf_range(-float(D.mutter), float(D.mutter))
+	b.cy = clampf(cy, -60.0, 60.0)
+	b.cvy = cvy
+	b.flicker = maxf(0.0, float(b.flicker) - dt * 2.0)
 
 static func _path_point(p: Dictionary, d: float) -> Vector2:
 	var pts: Array = p.pts
@@ -161,13 +199,14 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				for i in 8:
 					_tesla_arc(n, b, i / 8.0 * TAU + t, pv)
 		"storm_cloud":
-			var cy := o.y - 16.0 + sin(t * 0.8) * 2.0
+			var cy: float = o.y - float(b.D.rest) + float(b.cy)   # wherever the spring has carried it
 			var hit := pv > 0.55
 			ElemKit.face(n, r, Color(0.47, 0.51, 0.7, 0.95) if hit else Color(0.078, 0.078, 0.14, 0.95),
 				Color(0.59, 0.67, 1.0, 0.4 + pv * 0.6))
 			ElemKit.label(n, r, "STORM", Color(0.06, 0.07, 0.16) if hit else Color(0.85, 0.87, 1.0))
-			if randf() < 0.01:
-				ElemKit.glow(n, Vector2(r.get_center().x + randf_range(-14, 14), cy), 14.0, Color(0.75, 0.78, 1.0, 0.45), 3)
+			if b.flicker > 0.0:
+				ElemKit.glow(n, Vector2(r.get_center().x + randf_range(-14, 14), cy), 14.0,
+					Color(0.75, 0.78, 1.0, float(b.flicker) * 0.9), 3)
 			for i in 5:
 				n.draw_circle(Vector2(r.get_center().x + (i - 2) * 13.0, cy + sin(i * 2.7) * 3.0),
 					10.0 + (i % 2) * 3.0, Color(0.35, 0.37, 0.47))

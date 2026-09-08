@@ -10,18 +10,25 @@ const RHYMES := {
 	"halo_orbit": { "name": "Twin moons", "hint": "two beads counter-rotating — count and sign" },
 	"lens_flare": { "name": "Prism flare", "hint": "each ghost given its own hue" },
 	"lighthouse": { "name": "Search party", "hint": "the wedge doubled and put in opposition" },
-	"firefly_jar": { "name": "Plankton jar", "hint": "gone marine — cyan, slower, longer glows" },
+	"firefly_jar": { "name": "Plankton jar", "hint": "gone marine — cyan, longer glows, the push 40 → 16 and the steering ÷2" },
 	"prism": { "name": "Moon prism", "hint": "desaturated to silver — the night shift" },
 	"spotlight": { "name": "Candle study", "hint": "warm, small, and honestly flickery" },
 	"glowworm": { "name": "Comet crawler", "hint": "cold-blue, quick, double the memory" },
 	"supernova": { "name": "Patient nova", "hint": "patience ×2, the voice lowered" },
 }
 
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
+
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "firefly_jar":
 		for f in b.flies:               # the ÷2 blink-clock dial
 			f.sp *= 0.5
+		_turn(b, { "thrust": 16.0, "turn": 3.0 })   # dials: plankton drifts — less push, a lazier heading
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	Base.press(b, pos)

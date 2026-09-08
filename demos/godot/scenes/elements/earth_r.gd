@@ -9,17 +9,27 @@ const RHYMES := {
 	"crumble": { "name": "Gentle collapse", "hint": "gravity ÷3, spin ×2 — same grid" },
 	"sandstorm": { "name": "Pollen wind", "hint": "slow and green-gold — spring, not desert" },
 	"landslide": { "name": "Bubble rise", "hint": "gravity flipped: pebbles become climbing bubbles" },
-	"geode": { "name": "Furnace door", "hint": "the interior is molten instead of crystal" },
-	"tectonic": { "name": "Ice floes", "hint": "pale blue open water, plates drift further" },
+	"geode": { "name": "Furnace door", "hint": "the interior is molten instead of crystal — a heavier door: spring 60 → 30" },
+	"tectonic": { "name": "Ice floes", "hint": "pale blue open water — creep and range ×2, the grip a quarter of stone's" },
 	"quicksand": { "name": "Snow sink", "hint": "softened to powder — half the pull" },
 	"boulder": { "name": "Beach ball", "hint": "bounce dial cranked, gravity eased" },
 }
+
+## Turn dials the original already has — a rhyme never invents a key.
+static func _turn(b: Dictionary, dials: Dictionary) -> void:
+	for k in dials:
+		assert(b.D.has(k), "rhyme dial %s.%s is not a dial of the original" % [b.id, k])
+		b.D[k] = dials[k]
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "sandstorm":
 		for g in b.grains:              # the ÷2 wind dial
 			g.v *= 0.45
+	if b.id == "geode":
+		_turn(b, { "k": 30.0 })         # dial: a furnace door is heavier — half the spring, a slower swing
+	if b.id == "tectonic":              # dials: floes drift twice as far, and ice barely grips
+		_turn(b, { "creep": 4.0, "range": 10.0, "stick": 50.0, "slide": 15.0 })
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -147,8 +157,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for p in b.parts:
 				ElemKit.ellipse(n, o + p.pos, p.r, p.r, Color(0.67, 0.88, 0.94, 0.85), 1.0)
 		"geode":
-			# dials: amethyst interior → molten furnace
-			var gap: float = b.open * 14.0
+			# dials: amethyst interior → molten furnace (the spring dial is in init)
+			var gap: float = b.gap
 			if b.open > 0.05:
 				ElemKit.face(n, r, Color(0.23, 0.086, 0.02))
 				ElemKit.glow(n, r.get_center(), 16.0 + b.open * 10.0, Color(1, 0.7, 0.27, 0.5 * b.open), 4)
@@ -164,13 +174,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			if b.open < 0.4:
 				ElemKit.label(n, r, "FURNACE", Color(0.95, 0.85, 0.75))
 		"tectonic":
-			# dials: stone plates → ice floes, drift ×2, open water between
+			# dials: stone plates → ice floes, open water between (drift and grip dials in init)
 			ElemKit.face(n, r, Color(0.055, 0.11, 0.165), Color(0.55, 0.78, 0.92, 0.5))
 			var pw := r.size.x / 3.0
+			var px: PackedFloat32Array = b.px
 			for p in 3:
-				var off: float = sin(t * (0.4 + p * 0.2) + p * 2) * 4.0
-				off += pv * (0.0 if p == 1 else (5.0 if p == 0 else -5.0))
-				var plate := Rect2(o + Vector2(p * pw + off + 2.0, sin(t * 0.6 + p) * 1.5 + 2.0),
+				var plate := Rect2(o + Vector2(p * pw + px[p] + 2.0, 2.0),
 					Vector2(pw - 4.0, r.size.y - 4.0))
 				n.draw_rect(plate, Color(0.85, 0.92, 0.97))
 				n.draw_rect(plate, Color(0.63, 0.82, 0.94, 0.6), false, 1.0)

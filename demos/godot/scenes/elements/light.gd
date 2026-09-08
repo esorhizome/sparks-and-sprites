@@ -11,7 +11,7 @@ const DEFS := [
 	{ "id": "halo_orbit", "name": "Halo orbit", "hint": "a bright bead rides the border; press and it splits into three" },
 	{ "id": "lens_flare", "name": "Lens flare", "hint": "a flare drifts across on schedule; press for the full anamorphic" },
 	{ "id": "lighthouse", "name": "Lighthouse", "hint": "the beam sweeps round and round; press to aim it at your click" },
-	{ "id": "firefly_jar", "name": "Firefly jar", "hint": "fireflies blink on their own clocks; press to sync them once" },
+	{ "id": "firefly_jar", "name": "Firefly jar", "hint": "fireflies wander on their own headings — a steering push against drag, soft walls at the glass — and blink on their own clocks; press to sync the blinks once" },
 	{ "id": "prism", "name": "Prism", "hint": "white light splits into drifting rainbow bands; press to sweep" },
 	{ "id": "spotlight", "name": "Spotlight", "hint": "roaming lights reveal the caption; press for house lights" },
 	{ "id": "glowworm", "name": "Glowworm", "hint": "a worm of light inches along the border; press and it sprints a lap" },
@@ -34,11 +34,22 @@ static func init(b: Dictionary) -> void:
 			b.aim = 0.0
 			b.hold = 0.0
 		"firefly_jar":
+			b.D = { "thrust": 40.0,     # the wander push, px/s², along a heading that random-walks
+				"drag": 2.0,            # drag, 1/s — cruising speed ≈ thrust/drag
+				"turn": 6.0,            # how fast the heading wanders, rad/s of random walk
+				"wallK": 20.0,          # the soft wall: push back per px past the margin, 1/s²
+				"margin": 8.0 }         # the margin inside the glass where the wall begins, px
+			# each fly is a body with a velocity. it pushes itself along a heading that
+			# drifts at random, drag caps its speed, and the glass is a soft wall — a
+			# force that grows with how far past the margin it has strayed — so it
+			# curves off the sides instead of sticking to them. the drift of the path
+			# is the drift of the heading, not a clock.
 			b.flies = []
 			var r: Rect2 = b.rect
 			for i in 10:
 				b.flies.append({ "pos": Vector2(randf_range(8, r.size.x - 8), randf_range(6, r.size.y - 6)),
-					"ph": randf_range(0, TAU), "sp": randf_range(0.7, 1.4), "wx": randf_range(0, 9), "wy": randf_range(0, 9) })
+					"vel": Vector2.ZERO, "th": randf_range(0, TAU),
+					"ph": randf_range(0, TAU), "sp": randf_range(0.7, 1.4) })
 			b.sync = 0.0
 		"prism":
 			b.sweep = -1.0
@@ -95,9 +106,35 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.a += dt * 1.5
 		"firefly_jar":
 			b.sync = maxf(0.0, b.sync - dt * 1.5)
+			var D: Dictionary = b.D
+			var thrust: float = D.thrust
+			var drag: float = D.drag
+			var turn: float = D.turn
+			var wall_k: float = D.wallK
+			var margin: float = D.margin
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / sub
 			for f in b.flies:
-				f.pos.x += sin(t * 0.7 + f.wx) * 6.0 * dt
-				f.pos.y += cos(t * 0.9 + f.wy) * 5.0 * dt
+				var pos: Vector2 = f.pos
+				var v: Vector2 = f.vel
+				var th: float = f.th
+				for _s in sub:              # steer, push, drag, and the soft walls
+					th += randf_range(-1, 1) * turn * h
+					var a := Vector2(cos(th), sin(th)) * thrust
+					if pos.x < margin:
+						a.x += wall_k * (margin - pos.x)
+					if pos.x > r.size.x - margin:
+						a.x -= wall_k * (pos.x - r.size.x + margin)
+					if pos.y < margin:
+						a.y += wall_k * (margin - pos.y)
+					if pos.y > r.size.y - margin:
+						a.y -= wall_k * (pos.y - r.size.y + margin)
+					v += (a - drag * v) * h
+					pos += v * h
+					pos = Vector2(clampf(pos.x, 0.0, r.size.x), clampf(pos.y, 0.0, r.size.y))
+				f.pos = pos
+				f.vel = v
+				f.th = th
 		"prism":
 			if b.sweep >= 0.0:
 				b.sweep += dt * 1.8

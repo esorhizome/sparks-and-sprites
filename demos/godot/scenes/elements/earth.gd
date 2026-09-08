@@ -10,8 +10,8 @@ const DEFS := [
 	{ "id": "crumble", "name": "Crumble", "hint": "press and the face collapses into rubble — then rebuilds itself" },
 	{ "id": "sandstorm", "name": "Sandstorm", "hint": "grains stream past and gnaw the edges; press for a gust" },
 	{ "id": "landslide", "name": "Landslide", "hint": "pebbles trickle down the face; press to let the whole slope go" },
-	{ "id": "geode", "name": "Geode", "hint": "plain rock outside; press to split it open on the sparkle" },
-	{ "id": "tectonic", "name": "Tectonic", "hint": "three plates drift and grind; press to collide them" },
+	{ "id": "geode", "name": "Geode", "hint": "plain rock outside; press and the halves crack apart on a spring — past the stop, rocking back — then close on the sparkle" },
+	{ "id": "tectonic", "name": "Tectonic", "hint": "three plates creep on a slow drive, stick while the seam loads, then slip in a jerk — the grind is stress building and letting go; press to shove the outer plates in" },
 	{ "id": "quicksand", "name": "Quicksand", "hint": "the caption is slowly sinking; press to pull it back out" },
 	{ "id": "boulder", "name": "Boulder", "hint": "a boulder patrols overhead; press and it drops on the button" },
 ]
@@ -48,12 +48,47 @@ static func init(b: Dictionary) -> void:
 				b.grains.append({ "pos": Vector2(randf_range(-10, r.size.x + 10), randf_range(-14, r.size.y + 14)),
 					"v": randf_range(30, 90) })
 		"geode":
-			b.open = 0.0
-			b.opening = false
+			b.D = { "k": 60.0,          # the crack's spring, 1/s² (ω ≈ 7.7 rad/s)
+				"zeta": 0.25,           # damping while opening, as a fraction of critical — it overshoots the stop and rocks back
+				"closeZeta": 1.1,       # damping while closing — over critical, so the halves settle shut without a bounce
+				"crack": 60.0,          # the press: outward speed injected the instant it cracks, px/s
+				"stop": 14.0,           # the open gap the spring aims for, px
+				"hold": 1.6 }           # seconds held open (once it has arrived) before the close
+			# the gap between the halves is a spring toward a target: the stop when
+			# opening, zero when closing. the press moves the target and throws in a
+			# little outward speed — the crack — and the lightly damped spring carries
+			# the halves past the stop and rocks them back. the close uses a heavier
+			# damping on the same spring, so it settles rather than slams.
+			b.gap = 0.0                 # the gap between the halves, px
+			b.gap_v = 0.0               # and its speed, px/s
+			b.target = 0.0              # where the spring is aiming: stop or 0
+			b.held = 0.0                # seconds spent resting at the stop
+			b.open = 0.0                # gap / stop, clipped to 1 — what the painter reads
 			b.glitter = []
 			for i in 12:
 				b.glitter.append({ "pos": Vector2(randf_range(14, r.size.x - 14), randf_range(8, r.size.y - 8)),
 					"ph": randf_range(0, 9) })
+		"tectonic":
+			b.D = { "creep": 2.0,       # the drive's crawl, px/s — the outer plates are pushed inward this slowly
+				"range": 5.0,           # how far the drive walks before it reverses (convergence, then rift), px
+				"k": 80.0,              # the drive-to-plate spring: stress = k · (drive − plate), px/s² per px
+				"stick": 200.0,         # static friction — the stress a stuck plate holds before it lets go, px/s²
+				"slide": 60.0,          # sliding friction — the constant drag on a moving plate, px/s²
+				"damp": 2.0,            # a little viscous loss while sliding, 1/s
+				"shove": 6.0 }          # the press: how far the outer drives jump inward, px
+			# stick-slip. each outer plate is a block on a spring whose far end (the
+			# drive) creeps inward and, at the range, turns round. while the block is
+			# stuck the spring loads; the moment the load beats static friction it lets
+			# go and slides — under the spring minus a smaller sliding friction — until
+			# it stops and grips again, having overshot. the middle plate is squeezed
+			# toward the mean of its neighbours. the seams glow with the stress they
+			# hold; the jerks are the grind.
+			var zero := PackedFloat32Array([0.0, 0.0, 0.0])
+			b.px = zero.duplicate()         # each plate's offset, px
+			b.pv = zero.duplicate()         # each plate's speed, px/s (0 = stuck)
+			b.dr = zero.duplicate()         # each drive's position, px
+			b.stress = zero.duplicate()     # each plate's load as a fraction of stick
+			b.dir = PackedFloat32Array([1.0, 0.0, -1.0])   # which way each drive is walking
 		"quicksand":
 			b.sink = 0.0
 		"boulder":
@@ -89,9 +124,16 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 				b.parts.append({ "pos": Vector2(randf_range(4, r.size.x - 4), 2.0),
 					"vel": Vector2(0, randf_range(10, 30)), "r": randf_range(1.2, 2.6) })
 		"geode":
-			b.opening = true
+			b.target = float(b.D.stop)     # aim for the stop...
+			b.held = 0.0
+			b.gap_v += float(b.D.crack)    # ...and crack: a jolt of outward speed
 		"tectonic":
-			b.press_v = 1.0
+			var dr: PackedFloat32Array = b.dr
+			var rng: float = b.D.range
+			var shove: float = b.D.shove
+			dr[0] = minf(rng * 2.0, dr[0] + shove)   # the outer drives jump inward
+			dr[2] = maxf(-rng * 2.0, dr[2] - shove)
+			b.dr = dr
 			for i in 8:
 				b.parts.append({ "pos": Vector2(r.size.x * (0.33 + (i % 2) * 0.34) + randf_range(-4, 4), r.size.y / 2.0),
 					"vel": Vector2(0, randf_range(-50, -20)), "life": 1.0 })
@@ -145,13 +187,68 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.pos.x += sin(p.pos.y * 0.3) * 6.0 * dt
 			b.parts = b.parts.filter(func(p): return p.pos.y < r.size.y + 40.0)
 		"geode":
-			if b.opening:
-				b.open = minf(1.0, b.open + dt * 2.4)
-				if b.open >= 1.0:
-					b.opening = false
-			else:
-				b.open = maxf(0.0, b.open - dt * 1.2)
+			var D: Dictionary = b.D
+			var k: float = D.k
+			var stop: float = D.stop
+			var target: float = b.target
+			var damp: float = float(D.zeta if target > 0.0 else D.closeZeta) * 2.0 * sqrt(k)
+			var gap: float = b.gap
+			var gap_v: float = b.gap_v
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / sub
+			for _s in sub:
+				gap_v += (k * (target - gap) - damp * gap_v) * h
+				gap += gap_v * h
+				if gap < 0.0:               # the halves cannot overlap
+					gap = 0.0
+					gap_v = 0.0
+			gap = minf(gap, stop * 3.0)
+			if target > 0.0 and absf(gap - target) < 1.0 and absf(gap_v) < 5.0:
+				b.held += dt
+			if b.held > float(D.hold):      # arrived and rested → the close takes over
+				b.target = 0.0
+			b.gap = gap
+			b.gap_v = gap_v
+			b.open = minf(1.0, gap / stop)
 		"tectonic":
+			var D: Dictionary = b.D
+			var creep: float = D.creep
+			var rng: float = D.range
+			var k: float = D.k
+			var stick: float = D.stick
+			var slide: float = D.slide
+			var damp: float = D.damp
+			var px: PackedFloat32Array = b.px
+			var pvel: PackedFloat32Array = b.pv
+			var dr: PackedFloat32Array = b.dr
+			var dir: PackedFloat32Array = b.dir
+			var stress: PackedFloat32Array = b.stress
+			var rate := [1.0, 0.0, 0.7]     # the right-hand drive is the slower one, so the seams never sync
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / sub
+			for _s in sub:
+				for p in [0, 2]:            # the drives creep, and turn at the range
+					dr[p] += dir[p] * creep * rate[p] * h
+					if absf(dr[p]) > rng and dr[p] * dir[p] > 0.0:
+						dir[p] = -dir[p]
+				dr[1] = (px[0] + px[2]) * 0.5   # the middle plate: squeezed by both neighbours
+				for p in 3:
+					var F := k * (dr[p] - px[p])
+					stress[p] = absf(F) / stick
+					if pvel[p] == 0.0:      # stuck: hold until the load beats static friction
+						if absf(F) <= stick:
+							continue
+						pvel[p] = signf(F) * 1e-3
+					var v0 := pvel[p]
+					pvel[p] += (F - slide * signf(pvel[p]) - damp * pvel[p]) * h
+					if pvel[p] * v0 <= 0.0:  # it stopped: friction grips again
+						pvel[p] = 0.0
+					px[p] = clampf(px[p] + pvel[p] * h, -rng * 3.0, rng * 3.0)
+			b.px = px
+			b.pv = pvel
+			b.dr = dr
+			b.dir = dir
+			b.stress = stress
 			for p in b.parts:
 				p.pos += p.vel * dt
 				p.vel *= pow(0.1, dt)
@@ -236,7 +333,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for p in b.parts:
 				n.draw_circle(o + p.pos, p.r, Color(0.75, 0.65, 0.51, 0.85))
 		"geode":
-			var gap: float = b.open * 14.0
+			var gap: float = b.gap           # the spring's own gap — past the stop when it overshoots
 			if b.open > 0.05:                # the amethyst interior, revealed
 				ElemKit.face(n, r, Color(0.17, 0.11, 0.27))
 				for gl in b.glitter:
@@ -252,17 +349,20 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				ElemKit.label(n, r, "GEODE", Color(0.9, 0.85, 0.8))
 		"tectonic":
 			var pw := r.size.x / 3.0
-			for p in 3:                      # each plate drifts on its own clock
-				var off: float = sin(t * (0.4 + p * 0.2) + p * 2) * 2.0
-				off += pv * (0.0 if p == 1 else (3.0 if p == 0 else -3.0))
-				var plate := Rect2(o + Vector2(p * pw + off, sin(t * 0.6 + p) * 1.0), Vector2(pw, r.size.y))
+			var px: PackedFloat32Array = b.px
+			var pvel: PackedFloat32Array = b.pv
+			var stress: PackedFloat32Array = b.stress
+			for p in 3:                      # each plate sits where its own history put it
+				var plate := Rect2(o + Vector2(p * pw + px[p], 0.0), Vector2(pw, r.size.y))
 				n.draw_rect(plate, Color(0.157, 0.13, 0.1))
 				n.draw_rect(plate, Color(0.75, 0.65, 0.49, 0.4), false, 1.0)
 			ElemKit.label(n, r, "PANGAEA", Color(0.91, 0.86, 0.78))
-			for p in range(1, 3):            # the grinding seams
+			for p in range(1, 3):            # the grinding seams: lit by the stress they hold, and by the slip
 				var sx := o.x + p * pw
+				var load: float = minf(1.0, maxf(stress[p - 1], stress[p]))
+				var slip: float = minf(1.0, (absf(pvel[p - 1]) + absf(pvel[p])) / 20.0)
 				n.draw_line(Vector2(sx, o.y), Vector2(sx, o.y + r.size.y),
-					Color(1, 0.55, 0.24, 0.2 + pv * 0.7), 1.0 + pv * 2.0)
+					Color(1, 0.55, 0.24, 0.2 + load * 0.5 + slip * 0.3), 1.0 + slip * 2.0)
 			for p in b.parts:
 				var pos: Vector2 = o + p.pos
 				var poly := PackedVector2Array([pos + Vector2(-4, 4), pos + Vector2(0, -4), pos + Vector2(4, 4)])
