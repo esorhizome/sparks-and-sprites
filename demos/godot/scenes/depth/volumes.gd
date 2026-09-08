@@ -23,6 +23,9 @@ const K := preload("res://scenes/depth/kit.gd")
 const TITLE := "Volumes near & far"
 const BLURB := "smoke, flame, sparkle sorted by depth — the near ones bigger, brighter, faster; the far ones fading into the air"
 
+const ARMS := 5                                       # Jellyfish: tentacles per bell …
+const SEGS := 8                                       # … and chain points per tentacle
+
 ## A point on a quadratic curve p0 → p2 bent by p1.
 static func _quad(p0: Vector2, p1: Vector2, p2: Vector2, k: float) -> Vector2:
 	var j := 1.0 - k
@@ -109,20 +112,73 @@ static func defs() -> Array:
 
 	# ---- A · Ash -----------------------------------------------------------
 	d.append({ "letter": "A", "name": "Ash", "drag": true,
-		"hint": "flakes falling over a burnt-out night: one z per flake sets size, greyness, speed and a touch of blur — near ones big and fast, far ones tiny and slow",
+		"hint": "flakes falling over a burnt-out night: one z per flake sets size, greyness, speed and a touch of blur — near ones big and fast, far ones tiny and slow; press sets a wind, and the light far flakes take it first, the heavy near ones a second or two later",
 		"dials": { "sky": [Color("0A0608"), Color("2A1410")], "glow": Color("F58A4A"), "near": Color("E8E4E0"), "far": Color("5A5458"),
 			"flakes": 80, "fall": 0.35, "wind": 0.0, "seed": 31,
-			"label": "matter covers: near flakes big, pale, fast, slightly blurred — far ones tiny, dim, slow, fogged" },
+			"gust": 0.25,               # the sideways speed a full wind asks of a flake, screens per second
+			"response": 1.0,            # how quickly the lightest (farthest) flake's drift takes up the wind, per second — a near, heavy flake takes it slower
+			"flutter": 1.0,             # how wide a flake swings on its own as it tumbles (1 = 3 px far … 15 px near)
+			"label": "matter covers: near flakes big, pale, fast, slightly blurred — far ones tiny, dim, slow, fogged, and first to take the wind" },
 		"rhyme": { "name": "Snowfall", "hint": "the same falling flakes in white over a blue night, half the speed — the ash code IS the snow code",
 			"dials": { "sky": [Color("060A1E"), Color("1A2A50")], "glow": Color("8AA0D8"), "near": Color.WHITE, "far": Color("8A98B8"), "fall": 0.18,
 				"label": "change four colours and one speed: the ruin becomes a village and the ash becomes snow" } },
 		"init": func(b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var R := K.rng(int(D.seed))
+			var nn := int(D.flakes)
 			b.flakes = []
-			for j in int(D.flakes): b.flakes.append({ "x": R.randf(), "ph": R.randf(), "z": R.randf(), "sw": R.randf() * 9.0 })
-			b.flakes.sort_custom(func(p, q): return p.z < q.z),          # far first, near last — painter's order
-		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.wind = (pos.x / b.W - 0.5) * 2.0,   # click left/right = the wind
+			for j in nn: b.flakes.append({ "x": R.randf(), "ph": R.randf(), "z": R.randf() })
+			b.flakes.sort_custom(func(p, q): return p.z < q.z)           # far first, near last — painter's order
+			# the motion, one slot per flake in that order (sized here: a packed array read back from b is a copy):
+			# fx / vx the drift and its speed in screens, sw / sv the swing and its speed in px, nx the seconds to the next tumble
+			var fx := PackedFloat32Array(); fx.resize(nn)
+			var vx := PackedFloat32Array(); vx.resize(nn)
+			var sw := PackedFloat32Array(); sw.resize(nn)
+			var sv := PackedFloat32Array(); sv.resize(nn)
+			var nx := PackedFloat32Array(); nx.resize(nn)
+			for j in nn:
+				fx[j] = b.flakes[j].x
+				nx[j] = R.randf() * 2.0
+			b.fx = fx; b.vx = vx; b.sw = sw; b.sv = sv; b.nx = nx,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the fall is a steady rate (a flake at terminal velocity), but the DRIFT is
+			# simulated: each flake carries a sideways velocity that the wind drags toward
+			# its own speed — a light far flake takes it up in a quarter of a second, a
+			# heavy near one over a second or two — so a press does not turn the whole
+			# field on one frame: the gust sweeps through it, back to front. the flutter
+			# is a pendulum swing about the flake's path, kicked at random moments as it
+			# tumbles and catches the air, under-damped so it swings past and back.
+			var D: Dictionary = b.D
+			var R: RandomNumberGenerator = b.rng
+			var flakes: Array = b.flakes
+			var fx: PackedFloat32Array = b.fx
+			var vx: PackedFloat32Array = b.vx
+			var sw: PackedFloat32Array = b.sw
+			var sv: PackedFloat32Array = b.sv
+			var nx: PackedFloat32Array = b.nx
+			var want: float = float(D.wind) * float(D.gust)
+			var response: float = D.response
+			var flutter: float = D.flutter
+			var sub := maxi(1, ceili(dt * 50.0))                           # substeps of ≤ 0.02 s keep the springs stable at any frame rate
+			var h := dt / float(sub)
+			for j in flakes.size():
+				var z: float = flakes[j].z
+				var rate := response / (0.25 + z * 1.5)                    # heavier = slower to take the wind
+				var ks := 9.0 / (0.5 + z)                                  # the swing: near flakes are wider, slower pendulums
+				var w := sqrt(ks)
+				var ds := 0.25 * 2.0 * w                                   # a quarter of critical
+				var amp := flutter * (3.0 + z * 12.0)
+				nx[j] -= dt
+				if nx[j] <= 0.0:                                           # a tumble catches the air: a kick of amp·ω swings it about amp
+					nx[j] = 0.6 + R.randf() * 1.6
+					sv[j] += (-1.0 if R.randf() < 0.5 else 1.0) * (0.5 + R.randf()) * amp * w
+				for _s in sub:
+					vx[j] += (want - vx[j]) * rate * h                     # the wind drags the drift toward its own speed
+					fx[j] += vx[j] * h
+					sv[j] += (ks * (0.0 - sw[j]) - ds * sv[j]) * h
+					sw[j] = clampf(sw[j] + sv[j] * h, -amp * 3.0, amp * 3.0)
+				fx[j] -= floorf(fx[j]),                                    # wrap: out one side, in the other
+		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.wind = (pos.x / b.W - 0.5) * 2.0,   # click left/right = the wind the drifts will chase
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -132,12 +188,16 @@ static func defs() -> Array:
 			K.soft(n, Vector2(W * 0.5, H * 0.82), W * 0.6, D.glow, 0.35)   # something still burning below the rise
 			K.ground(n, b, H * 0.8, Color("050305"))
 			for k in 5: n.draw_rect(Rect2(W * (0.08 + k * 0.2), H * (0.62 + (k % 2) * 0.08), W * 0.07, H * 0.2), Color("050305"))   # ruined walls
-			var fall: float = D.fall; var wind: float = D.wind
-			for f in b.flakes:
+			var fall: float = D.fall
+			var flakes: Array = b.flakes
+			var fx: PackedFloat32Array = b.fx
+			var sw: PackedFloat32Array = b.sw
+			for j in flakes.size():
+				var f: Dictionary = flakes[j]
 				var z: float = f.z                                       # z: 0 far … 1 near
 				var p := fposmod(t * fall * (0.3 + z) + f.ph, 1.0)      # near flakes fall faster
 				var y := p * (H + 20.0) - 10.0
-				var x := fposmod(f.x + p * wind * 0.5 + 10.0, 1.0) * W + sin(t * 0.7 + f.sw) * (3.0 + z * 12.0)
+				var x := fx[j] * W + sw[j]
 				var c := K.fog(K.mix(D.far, D.near, z), (1.0 - z) * 0.6, sky[1])   # far flakes take on the glow-lit air
 				var r := 0.6 + z * 3.2; var a := 0.15 + z * 0.8
 				if z > 0.6: K.soft(n, Vector2(x, y), r * 2.4, c, a * 0.35)   # the nearest are a touch out of focus
@@ -345,9 +405,17 @@ static func defs() -> Array:
 
 	# ---- J · Jellyfish -----------------------------------------------------
 	d.append({ "letter": "J", "name": "Jellyfish",
-		"hint": "three of the same jelly at three depths: a dome is a radial gradient with alpha; the far one is smaller, paler, slower, and its glow dimmer",
+		"hint": "three of the same jelly at three depths: a dome is a radial gradient with alpha; the far one is smaller, paler, slower, and its glow dimmer — every bell snaps shut on a kicked spring and glides, its tentacles trailing and whipping after it; press to call them over",
 		"dials": { "sea": [Color("0A2A50"), Color("041428")], "bell": Color("A8C8F0"), "core": Color("7AF0E0"), "bells": 3, "pulse": 1.0, "seed": 5,
-			"label": "one jelly, three z: size, alpha, water-colour, pulse speed and core glow all follow — far first, near last" },
+			"snap": 60.0,               # the bell's spring: how hard it springs back open after a contraction
+			"relax": 0.5,               # its damping as a fraction of critical — under 1, so it flares a touch past open before it settles
+			"contract": 0.1,            # how much of the radius a full contraction takes in
+			"thrust": 0.12,             # the swim each contraction buys, screens per second, toward where the jelly is headed
+			"drag": 1.6,                # the water's drag on the glide, per second
+			"sink": 0.02,               # how fast a jelly sinks between pulses, screens per second per second
+			"arms": 90.0,               # a tentacle segment's spring toward hanging straight under the one above
+			"armdamp": 0.3,             # its damping as a fraction of critical — low, so the tentacles overshoot and whip
+			"label": "one jelly, three z: size, alpha, water-colour, pulse rate and glow all follow — a kicked spring for the bell, chains for the arms" },
 		"rhyme": { "name": "Alien jellies", "hint": "the same bells in magenta, six of them at six depths, pulsing faster — a deeper, stranger sea",
 			"dials": { "sea": [Color("1A0A30"), Color("08041A")], "bell": Color("F080D0"), "core": Color("FFB0F0"), "bells": 6, "pulse": 1.6,
 				"label": "six depths instead of three and the ladder of size, alpha and speed becomes a staircase you can count" } },
@@ -355,34 +423,131 @@ static func defs() -> Array:
 			var D: Dictionary = b.D
 			var R := K.rng(int(D.seed))
 			var bells: int = D.bells
+			var W: float = b.W; var H: float = b.H
 			b.jellies = []
+			# tentacle segments in px, jelly-major then arm-major: [(j * ARMS + k) * SEGS + s] (sized here: a packed array read back from b is a copy)
+			var px := PackedFloat32Array(); px.resize(bells * ARMS * SEGS)
+			var py := PackedFloat32Array(); py.resize(bells * ARMS * SEGS)
+			var tvx := PackedFloat32Array(); tvx.resize(bells * ARMS * SEGS)
+			var tvy := PackedFloat32Array(); tvy.resize(bells * ARMS * SEGS)
 			for j in bells:                                                 # built far → near
-				b.jellies.append({ "x": 0.15 + R.randf() * 0.7, "y": 0.25 + R.randf() * 0.35, "z": (j + 0.5) / bells, "ph": R.randf() * 9.0 }),
+				var z := (j + 0.5) / bells
+				var J := { "x": 0.15 + R.randf() * 0.7, "y": 0.25 + R.randf() * 0.35, "z": z, "vx": 0.0, "vy": 0.0, "c": 0.0, "cv": 0.0, "clk": R.randf() * 4.0 }   # position and glide in screens; c the contraction (0 open … 1 shut); clk the pulse clock
+				J.hx = J.x; J.hy = J.y                                      # home: where it keeps swimming back to
+				J.r0 = W * (0.05 + z * 0.09)                                # the open radius; a contraction takes it in from here
+				for k in ARMS:                                              # hanging straight down to begin with
+					for s in SEGS:
+						var i := (j * ARMS + k) * SEGS + s
+						px[i] = J.x * W - J.r0 * 0.7 + k * J.r0 * 0.35
+						py[i] = J.y * H + (s + 1) * J.r0 * 0.35
+				b.jellies.append(J)
+			b.px = px; b.py = py; b.tvx = tvx; b.tvy = tvy,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# a jellyfish moves by pulsing. the bell is a spring around OPEN: every
+			# period (2π/sp seconds, the old sine's beat) it takes a kick that snaps it
+			# shut, and the spring relaxes it open again, flaring a touch past open
+			# because the damping is under critical. the same kick is the swim: a shove
+			# toward home (give or take a random heading, so they wander) and a little
+			# lift, dying in the water's drag, while between pulses the jelly sinks.
+			# each tentacle is a chain of eight points, every one a spring toward the
+			# spot straight under the point above it, lightly damped — so when the rim
+			# pulls in and the bell jerks up, the arms lag, trail, and whip through
+			# after it. nothing here is a sine: the rhythm is a clock and everything
+			# that moves is integrated.
+			var D: Dictionary = b.D
+			var R: RandomNumberGenerator = b.rng
+			var W: float = b.W; var H: float = b.H
+			var px: PackedFloat32Array = b.px
+			var py: PackedFloat32Array = b.py
+			var tvx: PackedFloat32Array = b.tvx
+			var tvy: PackedFloat32Array = b.tvy
+			var snap: float = D.snap
+			var contract: float = D.contract
+			var thrust: float = D.thrust
+			var drag: float = D.drag
+			var sink: float = D.sink
+			var arms: float = D.arms
+			var pulse_d: float = D.pulse
+			var bd := float(D.relax) * 2.0 * sqrt(snap)                     # dampings from their fractions of critical
+			var ad := float(D.armdamp) * 2.0 * sqrt(arms)
+			var sub := maxi(1, ceili(dt * 50.0))                           # substeps of ≤ 0.02 s: the arm springs need √k·h small
+			var h := dt / float(sub)
+			var jellies: Array = b.jellies
+			for j in jellies.size():
+				var J: Dictionary = jellies[j]
+				var z: float = J.z
+				var sp := pulse_d * (0.6 + z * 1.2)                        # near ones pulse faster
+				var per := TAU / sp
+				var r0: float = J.r0
+				var seg := r0 * 0.35
+				for _s in sub:
+					J.clk += h
+					if J.clk >= per:                                       # the bell fires
+						J.clk -= per
+						J.cv += 2.0 * sqrt(snap)                           # a kick of 2ω shuts it about all the way
+						var dx: float = J.hx - J.x
+						var dy: float = J.hy - J.y
+						var dist := sqrt(dx * dx + dy * dy)
+						var ang := R.randf() * TAU if dist < 0.03 else atan2(dy, dx) + (R.randf() - 0.5) * 1.2   # headed home, roughly; at home, any way
+						var go := thrust * (0.6 + z * 0.8)                 # the near one swims further per pulse
+						J.vx += cos(ang) * go
+						J.vy += sin(ang) * go - thrust * 0.6               # and every pulse lifts it a little
+					J.cv += (snap * (0.0 - J.c) - bd * J.cv) * h           # the bell: a spring around open
+					J.c = clampf(J.c + J.cv * h, -0.5, 1.5)
+					J.vy += sink * h                                       # between pulses it sinks
+					J.vx -= J.vx * drag * h                                # the glide dies in the water
+					J.vy -= J.vy * drag * h
+					J.x += J.vx * h
+					J.y += J.vy * h
+					if J.x < 0.04:                                         # the tank has walls
+						J.x = 0.04; J.vx = 0.0
+					elif J.x > 0.96:
+						J.x = 0.96; J.vx = 0.0
+					if J.y < 0.08:
+						J.y = 0.08; J.vy = 0.0
+					elif J.y > 0.85:
+						J.y = 0.85; J.vy = 0.0
+					var r: float = r0 * (1.0 - contract * float(J.c))
+					var bx: float = J.x * W
+					var by: float = J.y * H
+					for k in ARMS:                                         # the tentacles: each point chases the spot under the one above
+						var ax := bx - r * 0.7 + k * r * 0.35              # the anchor on the rim — it moves in as the bell shuts
+						var ay := by
+						for q in SEGS:
+							var i := (j * ARMS + k) * SEGS + q
+							tvx[i] += (arms * (ax - px[i]) - ad * tvx[i]) * h
+							tvy[i] += (arms * (ay + seg - py[i]) - ad * tvy[i]) * h
+							px[i] += tvx[i] * h
+							py[i] += tvy[i] * h
+							ax = px[i]
+							ay = py[i],
 		"press": func(b: Dictionary, pos: Vector2) -> void:
-			for J in b.jellies:                                             # the near one swims over most
-				J.x += (pos.x / b.W - J.x) * 0.5 * J.z
-				J.y += (pos.y / b.H - J.y) * 0.5 * J.z,
+			for J in b.jellies:                                             # moves their homes — the near one's most — and they swim over in a few pulses
+				J.hx += (pos.x / b.W - J.hx) * 0.5 * J.z
+				J.hy += (pos.y / b.H - J.hy) * 0.5 * J.z,
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var W: float = b.W; var H: float = b.H
 			var sea: Array = D.sea
 			K.sky(n, b, sea)
-			var pulse_d: float = D.pulse
-			for J in b.jellies:
+			var contract: float = D.contract
+			var px: PackedFloat32Array = b.px
+			var py: PackedFloat32Array = b.py
+			var jellies: Array = b.jellies
+			for j in jellies.size():
+				var J: Dictionary = jellies[j]
 				var z: float = J.z
-				var sp := pulse_d * (0.6 + z * 1.2)                          # near ones pulse faster
-				var pulse := 0.5 + 0.5 * sin(t * sp + J.ph)
-				var r := W * (0.05 + z * 0.09) * (0.94 + 0.08 * pulse)
-				var x: float = J.x * W + sin(t * 0.2 * sp + J.ph) * W * 0.03
-				var y: float = J.y * H + sin(t * 0.35 * sp + J.ph) * H * 0.03 - pulse * 3.0 * z
+				var pulse: float = clampf(J.c, 0.0, 1.0)
+				var r: float = J.r0 * (1.0 - contract * J.c)
+				var x: float = J.x * W
+				var y: float = J.y * H
 				var c := K.fog(D.bell, (1.0 - z) * 0.75, sea[0]); var a := 0.25 + z * 0.45   # far = mostly water-coloured
 				var tcol := K.alpha(c, a * 0.6); var tw := 0.6 + z * 1.2
-				for k in 5:                                                  # tentacles: wavy lines hanging from the rim
-					var tx := x - r * 0.7 + k * r * 0.35
-					var pts := PackedVector2Array([Vector2(tx, y)])
-					for s in range(1, 9):
-						pts.append(Vector2(tx + sin(t * 2.0 * sp + s * 0.7 + k) * r * 0.15 * (s / 8.0), y + s * r * 0.35 * (1.0 + pulse * 0.1)))
+				for k in ARMS:                                               # tentacles: the chains, drawn from the rim down
+					var pts := PackedVector2Array([Vector2(x - r * 0.7 + k * r * 0.35, y)])
+					for s in SEGS:
+						var i := (j * ARMS + k) * SEGS + s
+						pts.append(Vector2(px[i], py[i]))
 					n.draw_polyline(pts, tcol, tw, true)
 				# the dome: the top half-circle closed by a shallow curve, filled with a lit radial
 				var outline := PackedVector2Array()
@@ -393,24 +558,74 @@ static func defs() -> Array:
 					outline.append(_quad(Vector2(x + r, y), Vector2(x, y + r * 0.35), Vector2(x - r, y), s / 8.0))
 				_radial_in(n, outline, Vector2(x, y), r, [[0.0, K.alpha(K.shade(c, 0.5), a)], [0.7, K.alpha(c, a * 0.8)], [1.0, K.alpha(c, a * 0.2)]],
 					Vector2(-r * 0.3, -r * 0.4))
-				# the bioluminescent core adds on the web ("lighter"); a translucent glow stands in
+				# the bioluminescent core adds on the web ("lighter"); a translucent glow stands in — brightest shut
 				K.soft(n, Vector2(x, y - r * 0.2), r * 0.7, D.core, (0.15 + z * 0.5) * (0.6 + 0.4 * pulse))
 			K.label(n, b, D.label) })
 
 	# ---- M · Motes ---------------------------------------------------------
 	d.append({ "letter": "M", "name": "Motes", "drag": true,
-		"hint": "dust in a light shaft: the shaft is one gradient with alpha, a mote is bright only inside it — near motes large and lazy, far ones tiny",
-		"dials": { "room": [Color("141018"), Color("0A080C")], "light": Color("FFE8B0"), "motes": 60, "shaftX": 0.35, "bounce": 0.0, "seed": 29,   # bounce: 0 float, 1 snow-globe hop
+		"hint": "dust in a light shaft: the shaft is one gradient with alpha, a mote is bright only inside it — near motes large and lazy, far ones tiny; with the bounce dial up they hop under real gravity, land with a bounce, and lie still a moment before the next kick",
+		"dials": { "room": [Color("141018"), Color("0A080C")], "light": Color("FFE8B0"), "motes": 60, "shaftX": 0.35, "bounce": 0.0, "seed": 29,   # bounce: 0 float, 1 snow-globe hop (the height of a fresh hop, in units of 8% of H, scaled by depth)
+			"gravity": 2.5,             # the pull on a hopping mote, screen heights per second per second
+			"rebound": 0.5,             # how much of its speed a mote keeps when it lands — each bounce a quarter the height of the last
+			"rest": 0.5,                # the longest a landed mote lies still before its next kick, seconds
 			"label": "the light is a gradient with alpha; a mote is bright where the light is and big only when it is near" },
 		"rhyme": { "name": "Snow globe motes", "hint": "the same shaft of light in cold white, and the motes now hop instead of float — the bounce dial turned to one",
 			"dials": { "room": [Color("0E1420"), Color("060A14")], "light": Color("E8F4FF"), "bounce": 1.0,
-				"label": "near motes hop higher (the bounce scales with z) — even a toy obeys the depth rule" } },
+				"label": "near motes hop higher (the kick scales with z) and every landing bounces — even a toy obeys the depth rule" } },
 		"init": func(b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var R := K.rng(int(D.seed))
+			var nn := int(D.motes)
 			b.motes = []
-			for j in int(D.motes): b.motes.append({ "x": R.randf(), "y": R.randf(), "z": R.randf(), "ph": R.randf() * 9.0 })
-			b.motes.sort_custom(func(p, q): return p.z < q.z),           # far first
+			for j in nn: b.motes.append({ "x": R.randf(), "y": R.randf(), "z": R.randf(), "ph": R.randf() * 9.0 })
+			b.motes.sort_custom(func(p, q): return p.z < q.z)            # far first
+			# the hop, one slot per mote in that order (sized here: a packed array read back from b is a copy):
+			# ha the altitude above the mote's drift line in px, hv its speed, wait the pause before a kick
+			var ha := PackedFloat32Array(); ha.resize(nn)
+			var hv := PackedFloat32Array(); hv.resize(nn)
+			var wait := PackedFloat32Array(); wait.resize(nn)
+			for j in nn: wait[j] = R.randf()
+			b.ha = ha; b.hv = hv; b.wait = wait,
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the drift is the old slow wander; the HOP is simulated. each mote has an
+			# altitude above its own drift line and a vertical speed: gravity pulls the
+			# speed down, the speed moves the altitude, and the drift line is a floor —
+			# land, keep `rebound` of the speed, go up again a quarter as high, and when
+			# the next bounce would be under half a pixel, lie still. a resting mote gets
+			# a random kick after a random pause (the globe being shaken), sized so a
+			# near mote's hop is taller than a far one's. at bounce 0 there are no kicks
+			# and the motes float exactly as before.
+			var D: Dictionary = b.D
+			var R: RandomNumberGenerator = b.rng
+			var H: float = b.H
+			var motes: Array = b.motes
+			var ha: PackedFloat32Array = b.ha
+			var hv: PackedFloat32Array = b.hv
+			var wait: PackedFloat32Array = b.wait
+			var g: float = float(D.gravity) * H
+			var bounce: float = D.bounce
+			var rebound: float = D.rebound
+			var rest: float = D.rest
+			var sub := maxi(1, ceili(dt * 50.0))                           # substeps of ≤ 0.02 s so a coarse frame cannot tunnel through the floor
+			var h := dt / float(sub)
+			for j in motes.size():
+				var z: float = motes[j].z
+				var top := bounce * (0.3 + z) * H * 0.08                   # how high a fresh hop reaches: near motes higher
+				for _s in sub:
+					if ha[j] > 0.0 or hv[j] > 0.0:                         # in the air: gravity, then the floor
+						hv[j] -= g * h
+						ha[j] += hv[j] * h
+						if ha[j] <= 0.0:
+							ha[j] = 0.0
+							hv[j] = -hv[j] * rebound                       # land: a bounce with part of the speed
+							if hv[j] * hv[j] < 2.0 * g * 0.5:              # too small to see — lie still
+								hv[j] = 0.0
+								wait[j] = R.randf() * rest
+					elif top > 0.0:                                        # at rest: the pause, then a kick
+						wait[j] -= h
+						if wait[j] <= 0.0:
+							hv[j] = sqrt(2.0 * g * top) * (0.7 + 0.6 * R.randf()),   # √(2·g·top) reaches top; a little random so they scatter
 		"press": func(b: Dictionary, pos: Vector2) -> void: b.D.shaftX = pos.x / b.W - 0.3 * (pos.y / b.H),   # click = the shaft passes through here
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
@@ -428,12 +643,14 @@ static func defs() -> Array:
 				PackedColorArray([l0, l1, l1, l0]))
 			K.lin_poly(n, PackedVector2Array([Vector2(x0, 0), Vector2(x0 + hw, 0), Vector2(x0 + hw + slope, H), Vector2(x0 + slope, H)]),
 				PackedColorArray([l1, l0, l0, l1]))
-			var bounce: float = D.bounce
-			for m in b.motes:
+			var motes: Array = b.motes
+			var ha: PackedFloat32Array = b.ha
+			for j in motes.size():
+				var m: Dictionary = motes[j]
 				var z: float = m.z
 				var slow := 1.4 - z                                          # near motes drift slower (they are heavier, lazier)
 				var x := fposmod(m.x + t * 0.012 * slow, 1.0) * W + sin(t * 0.4 + m.ph) * (3.0 + z * 6.0)
-				var y := fposmod(m.y + t * 0.008 * slow, 1.0) * H + bounce * absf(sin(t * 3.0 + m.ph)) * 12.0 * (0.3 + z)
+				var y := fposmod(m.y + t * 0.008 * slow, 1.0) * H - ha[j]    # the hop lifts the mote off its drift line
 				var tumble := 0.6 + 0.4 * sin(t * (1.0 + z * 2.0) + m.ph)     # a turning speck catches light on and off
 				var inside := absf(x - (x0 + slope * y / H)) < hw
 				var bright := 1.0 if inside else 0.15                         # outside the shaft a mote is barely there

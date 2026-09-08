@@ -125,11 +125,11 @@ static func _bars(n: CanvasItem, b: Dictionary, D: Dictionary, offset: float, a:
 static func _mirror_obj(n: CanvasItem, b: Dictionary, D: Dictionary, x: float, FY: float) -> void:
 	var W: float = b.W
 	var H: float = b.H
-	var t: float = b.t
 	var s := W * 0.07
-	var bob := sin(t * 1.3) * H * 0.02
+	var sway: float = b.sway                            # the sphere's lag behind the block and its lift, both simulated in tick
+	var bob: float = b.bob
 	K.cube(n, Vector2(x, FY), s, D.block)
-	K.sphere(n, Vector2(x, FY - s - s * 0.9 - bob - H * 0.03), s * 0.8, D.ball, -0.5, -0.6, 0.4, null, Color("8AD9F5"))
+	K.sphere(n, Vector2(x + sway, FY - s - s * 0.9 - bob - H * 0.03), s * 0.8, D.ball, -0.5, -0.6, 0.4, null, Color("8AD9F5"))
 
 ## Vignette's half-scene: sky, sun, two hill lines and an optional wash, inside [x0, x0 + w].
 static func _vig_scene(n: CanvasItem, b: Dictionary, D: Dictionary, x0: float, w: float) -> void:
@@ -229,16 +229,77 @@ static func defs() -> Array:
 
 	# ---- J · Jump ----------------------------------------------------------
 	d.append({ "letter": "J", "name": "Jump", "drag": true,
-		"hint": "two balls hop along; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles",
+		"hint": "two balls hop along under real gravity — a crouch, a push-off, an arc, a landing that squashes and bounces; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles",
 		"dials": { "sky": [Color("1E2A3A"), Color("3A5068")], "floor": Color("3A4A3A"), "grass": Color("5A8A4A"), "ball": Color("F5C169"), "ghost": Color("8AD9F5"),
 			"hop": 0.24, "hops": 1.1, "speed": 0.2,                # hop height (of H), hops per second, path speed (of W per second)
+			"air": 0.7,                 # the share of each hop spent in the air — the rest is the landing, the crouch and the push-off
+			"rebound": 0.25,            # how much of the landing speed comes back as a bounce (a second hop a sixteenth as high)
+			"squash": 0.3,              # how far a landing flattens the ball, as a fraction of its radius; the crouch is half of it
 			"label": "the ball's y says nothing on its own; the gap to its shadow says 'altitude'" },
 		"rhyme": { "name": "Pixel jump", "hint": "the same two hoppers in an arcade palette — a navy sky, neon grass — hopping half again as high and half again as often",
 			"dials": { "sky": [Color("000020"), Color("20206A")], "floor": Color("1A6A1A"), "grass": Color("40C040"), "ball": Color("FFE040"), "ghost": Color("40E0FF"),
 				"hop": 0.38, "hops": 1.6,
 				"label": "every platformer since 1985: the shadow disc under the hero is the whole sense of landing" } },
+		"init": func(b: Dictionary) -> void:
+			b.hgt = 0.0; b.v = 0.0                                   # altitude (px) and its speed
+			b.sq = 0.0; b.sqv = 0.0                                  # the squash (− flat … + tall) and its speed
+			b.stance = 0.0; b.crouched = true,                       # time on the ground (−1 = airborne); whether the crouch has happened this stance
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the hop is ballistics, the same integrator as Contact: the push-off sets a
+			# speed, gravity eats it, the altitude follows, and the ground is a floor
+			# with a little restitution — so a landing gives a small second bounce
+			# before the ball is still. the cadence stays a dial: the period is 1/hops
+			# and `air` of it is flight, so g and the push-off are derived to make an
+			# arch exactly hop·H tall that lands on time (a higher hop under the same
+			# cadence means a stronger gravity — arcade physics). the squash is a
+			# separate spring around round, kicked flat by the landing and by the
+			# crouch just before take-off, under-damped so it wobbles a moment.
+			var D: Dictionary = b.D
+			var P: float = 1.0 / float(D.hops)
+			var flight: float = P * float(D.air)
+			var hp: float = float(D.hop) * b.H
+			var g := 8.0 * hp / (flight * flight)                    # the gravity and push-off that make an arch hp tall land after `flight` seconds
+			var v0 := sqrt(2.0 * g * hp)
+			var squash: float = D.squash
+			var rebound: float = D.rebound
+			var sk := 400.0                                          # the squash spring: ω = 20, a fifth of a second per wobble, 0.3 of critical
+			var sw := sqrt(sk)
+			var sd := 0.3 * 2.0 * sw
+			var sub := maxi(1, ceili(dt * 50.0))                     # substeps of ≤ 0.02 s: the squash spring needs √k·h small
+			var h := dt / float(sub)
+			var hgt: float = b.hgt
+			var v: float = b.v
+			var sq: float = b.sq
+			var sqv: float = b.sqv
+			var stance: float = b.stance
+			var crouched: bool = b.crouched
+			for _s in sub:
+				if hgt > 0.0 or v > 0.0:                             # in the air (the hop, or the little bounce after it)
+					v -= g * h
+					hgt += v * h
+					if hgt <= 0.0:                                   # the floor is a floor
+						hgt = 0.0
+						sqv -= squash * 1.6 * sw * minf(1.0, -v / v0)   # the landing kicks the squash flat (1.6ω peaks at about `squash`), harder the faster it hit
+						v = -v * rebound                             # and keeps a little speed as a bounce
+						if v < 0.15 * v0:                            # too small to see — it is down
+							v = 0.0
+						if stance < 0.0:                             # the ground clock starts at first touch, bounce or no bounce
+							stance = 0.0
+							crouched = false
+				if stance >= 0.0:                                    # on the ground: wait out the stance, crouch, push off
+					stance += h
+					if not crouched and stance > P - flight - 0.12:  # the anticipation dip, a tenth of a second before take-off
+						crouched = true
+						sqv -= squash * 0.8 * sw
+					if stance >= P - flight and hgt == 0.0 and v == 0.0:   # take-off, once it is down: the push-off, and the ball stretches after it
+						stance = -1.0
+						v = v0
+						sqv += squash * 0.6 * sw
+				sqv += (sk * (0.0 - sq) - sd * sqv) * h
+				sq = clampf(sq + sqv * h, -0.6, 0.6)
+			b.hgt = hgt; b.v = v; b.sq = sq; b.sqv = sqv; b.stance = stance; b.crouched = crouched,
 		"press": func(b: Dictionary, pos: Vector2) -> void:
-			b.D.hop = 0.08 + (1.0 - pos.y / b.H) * 0.32,            # click higher = higher hops
+			b.D.hop = 0.08 + (1.0 - pos.y / b.H) * 0.32,            # click higher = higher hops: it moves the push-off and the gravity, never the ball
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t
@@ -246,17 +307,20 @@ static func defs() -> Array:
 			var GY: float = b.H * 0.8
 			var r: float = b.W * 0.05
 			K.lin_rect(n, Rect2(0, GY, b.W, b.H - GY), [D.grass, D.floor])
-			var hops: float = D.hops
 			var speed: float = D.speed
-			var hop: float = D.hop
-			var ph := fmod(t * hops, 1.0)
-			var hgt: float = sin(ph * PI) * hop * b.H                # one sine arch per hop
+			var hgt: float = b.hgt
+			var sq: float = b.sq
 			var x1: float = fmod(t * speed, 1.0) * (b.W + 4.0 * r) - 2.0 * r          # the hero, crossing left → right
 			var x2: float = fmod(t * speed + 0.5, 1.0) * (b.W + 4.0 * r) - 2.0 * r    # the ghost, half a lap behind
 			var k: float = 1.0 / (1.0 + hgt / (r * 1.2))             # shadow factor: 1 touching → small when high
-			K.shadow(n, Vector2(x1, GY), r * (0.4 + 0.9 * k), r * (0.15 + 0.25 * k), 0.55 * k)   # the shadow never leaves the ground
-			K.sphere(n, Vector2(x1, GY - r - hgt), r, D.ball, -0.4, -0.6, 0.4)
-			K.sphere(n, Vector2(x2, GY - r - hgt), r, D.ghost, -0.4, -0.6, 0.4)     # same arc, no shadow: jumping, or just higher up the wall?
+			var sx := 1.0 - sq * 0.6                                 # flat = wider, tall = narrower: the volume roughly keeps
+			var sy := 1.0 + sq
+			K.shadow(n, Vector2(x1, GY), r * (0.4 + 0.9 * k) * sx, r * (0.15 + 0.25 * k), 0.55 * k)   # the shadow never leaves the ground
+			n.draw_set_transform(Vector2(x1, GY - hgt), 0.0, Vector2(sx, sy))   # the squash scales about the point of contact
+			K.sphere(n, Vector2(0, -r), r, D.ball, -0.4, -0.6, 0.4)
+			n.draw_set_transform(Vector2(x2, GY - hgt), 0.0, Vector2(sx, sy))
+			K.sphere(n, Vector2(0, -r), r, D.ghost, -0.4, -0.6, 0.4)   # same arc, same squash, no shadow: jumping, or just higher up the wall?
+			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			_txt(n, "which one is jumping?", b.W / 2.0, b.H * 0.14, K.alpha(K.INK, 0.7), "center")
 			K.label(n, b, D.label) })
 
@@ -463,21 +527,56 @@ static func defs() -> Array:
 
 	# ---- G · Ground --------------------------------------------------------
 	d.append({ "letter": "G", "name": "Ground", "drag": true,
-		"hint": "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks — press moves the vanishing point",
+		"hint": "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks, overruns each end and turns back with its own weight — press moves the vanishing point, and the grid swings over on a spring",
 		"dials": { "sky": [Color("2A3A5A"), Color("8AA0C8")], "floor": Color("3A4A5A"), "lines": Color("C8D8F0"), "ball": Color("F58A8A"),
-			"rows": 12, "cols": 9, "fog_k": 0.9, "speed": 0.3,       # grid density, how much the far floor fades into the air, the ball's speed
+			"rows": 12, "cols": 9, "fog_k": 0.9, "speed": 0.3,       # grid density, how much the far floor fades into the air, the ball's beat (about this many out-and-backs a second)
+			"damp": 0.5,                # the ball's damping as a fraction of critical — under 1, so it overruns each end and rolls back before turning
+			"steer": 40.0,              # the vanishing point's spring toward a press
 			"label": "rows bunch as p², columns meet at one point, colour fades into the air — three cues, one floor" },
 		"rhyme": { "name": "Synthwave grid", "hint": "the same floor in hot pink on black with a cyan ball — 16 rows, half the fog, so the grid stays crisp all the way to the horizon",
 			"dials": { "sky": [Color("0A0018"), Color("2A0040")], "floor": Color.BLACK, "lines": Color("FF2A9A"), "ball": Color("40E0FF"),
 				"rows": 16, "fog_k": 0.5,
 				"label": "less fog, more rows: the same p² floor turns from a foggy street into a poster — the maths is the genre's" } },
 		"init": func(b: Dictionary) -> void:
-			b.vx = b.W * 0.5,
+			b.vx = b.W * 0.5; b.vxT = b.vx; b.vv = 0.0               # the vanishing point, where it is asked to be, its speed
+			b.q = 0.9; b.qv = 0.0; b.tgt = 0.18,                     # the ball's depth (0 = horizon, 1 = here), its speed, the end it is rolling for
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the ball has mass: it is pulled toward the far end by a spring (stiffness
+			# from `speed`, so the beat is the old sine's) and damped under critical, so
+			# it arrives fast, overruns, and comes to rest a little past the end — and
+			# that first moment of rest is when the target flips to the near end, so it
+			# reverses from a standstill, accelerating, instead of turning on a curve
+			# that was always going to turn. the vanishing point is the same spring,
+			# nearly critical, so a press swings the whole grid over and settles it.
+			var D: Dictionary = b.D
+			var W: float = b.W
+			var w := TAU * float(D.speed)                            # the ball's spring: ω = 2π·speed
+			var k := w * w
+			var dd := float(D.damp) * 2.0 * w
+			var steer: float = D.steer
+			var sd := 0.9 * 2.0 * sqrt(steer)                        # the grid's: 0.9 of critical, one small overswing
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var vx: float = b.vx
+			var vxT: float = b.vxT
+			var vv: float = b.vv
+			var q: float = b.q
+			var qv: float = b.qv
+			var tgt: float = b.tgt
+			for _s in sub:
+				vv += (steer * (vxT - vx) - sd * vv) * h
+				vx = clampf(vx + vv * h, -W, 2.0 * W)
+				var was := qv
+				qv += (k * (tgt - q) - dd * qv) * h
+				q = clampf(q + qv * h, 0.0, 1.15)                    # the horizon is as far as it goes
+				var still := (was != 0.0 and (was < 0.0) != (qv < 0.0)) or (absf(q - tgt) < 0.005 and absf(qv) < 0.02)   # it has stopped
+				if still and absf(q - tgt) < 0.3:                    # … past the end it was rolling for: send it back
+					tgt = 0.9 if tgt < 0.5 else 0.18
+			b.vx = vx; b.vv = vv; b.q = q; b.qv = qv; b.tgt = tgt,
 		"press": func(b: Dictionary, pos: Vector2) -> void:
-			b.vx = pos.x,                                               # click = move the vanishing point
+			b.vxT = pos.x,                                              # click = ask the vanishing point over; the spring carries it
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
-			var t: float = b.t
 			var W: float = b.W
 			var H: float = b.H
 			var vx: float = b.vx
@@ -499,29 +598,76 @@ static func defs() -> Array:
 				# the canvas stroked these with a vertical gradient; a two-colour polyline is the same thing
 				n.draw_polyline_colors(PackedVector2Array([Vector2(vx, HY), Vector2(bx, H)]),
 					PackedColorArray([K.alpha(lines, 0.0), K.alpha(lines, 0.55)]), 1.0, true)
-			var speed: float = D.speed
-			var q := 0.5 + 0.5 * sin(t * speed * TAU)                   # the ball rolls away and back: q 0 = horizon, 1 = here
+			var q: float = b.q                                          # the ball's depth: q 0 = horizon, 1 = here (the overrun keeps rolling in size and place)
+			var qd := clampf(q, 0.0, 1.0)
 			var by := HY + q * q * (H - HY)
 			var bx2 := lerpf(vx, W * 0.62, q)
 			var r := W * 0.02 + q * q * W * 0.07                        # size follows the same p² rule
-			K.shadow(n, Vector2(bx2, by), r * 1.15, r * 0.35, 0.5 * (0.3 + q * 0.7))   # the shadow pins the ball to a row
-			K.sphere(n, Vector2(bx2, by - r), r, K.fog(D.ball, (1.0 - q) * fog_k, air), -0.4, -0.6, 0.35)
+			K.shadow(n, Vector2(bx2, by), r * 1.15, r * 0.35, 0.5 * (0.3 + qd * 0.7))   # the shadow pins the ball to a row
+			K.sphere(n, Vector2(bx2, by - r), r, K.fog(D.ball, (1.0 - qd) * fog_k, air), -0.4, -0.6, 0.35)
 			K.label(n, b, D.label) })
 
 	# ---- M · Mirror --------------------------------------------------------
 	d.append({ "letter": "M", "name": "Mirror", "drag": true,
-		"hint": "a floor reflection: the object drawn again upside-down under the floor line, darker and fading with distance from it, with a faint ripple — press moves the object",
+		"hint": "a floor reflection: the object drawn again upside-down under the floor line, darker and fading with distance from it, with a faint ripple — press moves the object: it slides over on a spring and settles, the sphere swinging behind, reflection and all",
 		"dials": { "sky": [Color("1A1030"), Color("3A2A5A")], "floor": Color("141020"), "ball": Color("C9A0F5"), "block": Color("5A7AB8"),
 			"ref_a": 0.55, "fade": 0.8, "ripple": 2.0, "ink": null,     # reflection strength, how fast it fades (of the pool depth), ripple amplitude in px
+			"slide": 30.0,              # the spring that carries the object toward a press (0.6 of critical: one small overrun, settled in a second)
+			"swing": 25.0,              # the sphere's pendulum stiffness over the block — how quickly its lag behind a slide swings back
+			"hover": 1.5,               # seconds between the kicks of the lift that keeps the sphere bobbing
 			"label": "a reflection is the picture flipped, dimmed, and faded out — the fade says 'this floor is a surface'" },
 		"rhyme": { "name": "Ice reflection", "hint": "the same object over a frozen lake — pale blues, a brighter reflection that dies quicker, a fifth of the ripple: glassy and still",
 			"dials": { "sky": [Color("C8DCF0"), Color("E8F0F8")], "floor": Color("A8C8E0"), "ball": Color("5A8AC8"), "block": Color("7AA0C8"),
 				"ref_a": 0.75, "fade": 0.45, "ripple": 0.4, "ink": Color("1A2A4A"),
 				"label": "a sharper, brighter, shorter reflection reads as ice, not water — three dials say what the floor is made of" } },
 		"init": func(b: Dictionary) -> void:
-			b.ox = b.W * 0.5,
+			b.ox = b.W * 0.5; b.tx = b.ox; b.ov = 0.0                # where the object is, where it was asked to be, its speed
+			b.sway = 0.0; b.swv = 0.0                                # the sphere's lag behind the block (px) and its speed
+			b.bob = 0.0; b.bv = 0.0; b.clk = 0.0,                    # its lift above rest (px) and its speed; the lift's clock
+		"tick": func(b: Dictionary, dt: float) -> void:
+			# the object slides on a spring toward the pressed x, damped a little under
+			# critical so it overruns and settles. the sphere is a pendulum hanging over
+			# the block: its sway is a spring around zero DRIVEN BY THE BLOCK'S
+			# ACCELERATION (a cart jerks, the bob swings the other way), so it lags a
+			# slide and swings through after. the bob is a spring around its rest
+			# height, kicked by the lift every `hover` seconds — a hovering thing that
+			# never quite holds still — and dipped by a hard slide. the reflection is
+			# the same drawing flipped, so all of it shows twice for free.
+			var D: Dictionary = b.D
+			var W: float = b.W
+			var H: float = b.H
+			var slide: float = D.slide
+			var swing: float = D.swing
+			var hover: float = D.hover
+			var kd := 0.6 * 2.0 * sqrt(slide)                        # the slide's and the sway's dampings from their fractions of critical (the pendulum rings for a few seconds)
+			var sd := 0.2 * 2.0 * sqrt(swing)
+			var kb := 16.0                                           # the bob: ω = 4 (a swing and a half a second), lightly damped so the kicks carry
+			var bd := 0.12 * 2.0 * sqrt(kb)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var ox: float = b.ox
+			var tx: float = b.tx
+			var ov: float = b.ov
+			var sway: float = b.sway
+			var swv: float = b.swv
+			var bob: float = b.bob
+			var bv: float = b.bv
+			var clk: float = b.clk
+			for _s in sub:
+				var acc := slide * (tx - ox) - kd * ov               # the block's acceleration this step
+				ov += acc * h
+				ox = clampf(ox + ov * h, W * 0.08, W * 0.92)
+				swv += (swing * (0.0 - sway) - sd * swv - acc * 0.4) * h   # the pendulum: thrown the other way by the block's acceleration (0.4 of it — the sphere is the light end)
+				sway = clampf(sway + swv * h, -W * 0.1, W * 0.1)
+				clk += h
+				if clk >= hover:                                     # the lift's kick
+					clk -= hover
+					bv += H * 0.08
+				bv += (kb * (0.0 - bob) - bd * bv - absf(acc) * 0.05) * h   # the bob: a spring around rest, dipped by a jerk
+				bob = clampf(bob + bv * h, -H * 0.1, H * 0.1)
+			b.ox = ox; b.ov = ov; b.sway = sway; b.swv = swv; b.bob = bob; b.bv = bv; b.clk = clk,
 		"press": func(b: Dictionary, pos: Vector2) -> void:
-			b.ox = pos.x,
+			b.tx = clampf(pos.x, b.W * 0.08, b.W * 0.92),               # click = ask the object over; the spring does the moving
 		"draw": func(n: CanvasItem, b: Dictionary) -> void:
 			var D: Dictionary = b.D
 			var t: float = b.t

@@ -4386,12 +4386,22 @@ warnOf("Xenon", "contains flashing light");   // the strobe (and its Camera-flas
    cover instead. The three canonical cards are Plume (smoke), Blaze (flame)
    and Glitter (sparkle) — the other ten are the same rule in other clothes. */
 
-def("A", "Ash", "volume", "flakes falling over a burnt-out night: one z per flake sets size, greyness, speed and a touch of blur — near ones big and fast, far ones tiny and slow", function make(u) {
+def("A", "Ash", "volume", "flakes falling over a burnt-out night: one z per flake sets size, greyness, speed and a touch of blur — near ones big and fast, far ones tiny and slow; press sets a wind, and the light far flakes take it first, the heavy near ones a second or two later", function make(u) {
   var D = { sky: ["#0A0608", "#2A1410"], glow: "#F58A4A", near: "#E8E4E0", far: "#5A5458",   // flake colour up close / far off
-            flakes: 80, fall: 0.35, wind: 0, seed: 31 };
+            flakes: 80, fall: 0.35, wind: 0, seed: 31,
+            gust: 0.25,              // the sideways speed a full wind asks of a flake, screens per second
+            response: 1,             // how quickly the lightest (farthest) flake's drift takes up the wind, per second — a near, heavy flake takes it slower
+            flutter: 1 };            // how wide a flake swings on its own as it tumbles (1 = 3 px far … 15 px near)
   var R = u.rng(D.seed), flakes = [];
-  for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), sw: R() * 9 });
+  for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), vx: 0, s: 0, sv: 0, next: R() * 2 });   // x and vx in screens; s, sv the swing in px
   flakes.sort(function (a, b) { return a.z - b.z; });                    // far first, near last — painter's order
+  // the fall is a steady rate (a flake at terminal velocity), but the DRIFT is
+  // simulated: each flake carries a sideways velocity that the wind drags toward
+  // its own speed — a light far flake takes it up in a quarter of a second, a
+  // heavy near one over a second or two — so a press does not turn the whole
+  // field on one frame: the gust sweeps through it, back to front. the flutter
+  // is a pendulum swing about the flake's path, kicked at random moments as it
+  // tumbles and catches the air, under-damped so it swings past and back.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
@@ -4399,19 +4409,31 @@ def("A", "Ash", "volume", "flakes falling over a burnt-out night: one z per flak
       u.ground(u.H * 0.8, "#050305");
       u.ctx.fillStyle = "#050305";
       for (var k = 0; k < 5; k++) u.ctx.fillRect(u.W * (0.08 + k * 0.2), u.H * (0.62 + (k % 2) * 0.08), u.W * 0.07, u.H * 0.2);   // ruined walls
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, want = D.wind * D.gust;   // substeps of ≤ 0.02 s keep the springs stable at any frame rate
       for (var j = 0; j < flakes.length; j++) {
         var f = flakes[j], z = f.z;                                      // z: 0 far … 1 near
+        var rate = D.response / (0.25 + z * 1.5);                        // heavier = slower to take the wind
+        var ks = 9 / (0.5 + z), w = Math.sqrt(ks), ds = 0.25 * 2 * w;   // the swing: near flakes are wider, slower pendulums, a quarter of critical
+        var amp = D.flutter * (3 + z * 12);
+        f.next -= dt;
+        if (f.next <= 0) { f.next = 0.6 + R() * 1.6; f.sv += (R() < 0.5 ? -1 : 1) * (0.5 + R()) * amp * w; }   // a tumble catches the air: a kick of amp·ω swings it about amp
+        for (var s = 0; s < sub; s++) {
+          f.vx += (want - f.vx) * rate * h;                              // the wind drags the drift toward its own speed
+          f.x += f.vx * h;
+          f.sv += (ks * (0 - f.s) - ds * f.sv) * h; f.s = u.clamp(f.s + f.sv * h, -amp * 3, amp * 3);
+        }
+        f.x -= Math.floor(f.x);                                          // wrap: out one side, in the other
         var p = (t * D.fall * (0.3 + z) + f.ph) % 1;                     // near flakes fall faster
         var y = p * (u.H + 20) - 10;
-        var x = ((f.x + p * D.wind * 0.5 + 10) % 1) * u.W + Math.sin(t * 0.7 + f.sw) * (3 + z * 12);
+        var x = f.x * u.W + f.s;
         var c = u.fog(u.mix(D.far, D.near, z), (1 - z) * 0.6, D.sky[1]);  // far flakes take on the glow-lit air
         var r = 0.6 + z * 3.2, a = 0.15 + z * 0.8;
         if (z > 0.6) u.soft(x, y, r * 2.4, c, a * 0.35);                  // the nearest are a touch out of focus
         u.dot(x, y, r, u.rgba(c, a));
       }
-      u.label("matter covers: near flakes big, pale, fast, slightly blurred — far ones tiny, dim, slow, fogged", u.W / 2, u.H - 8, null, "center");
+      u.label("matter covers: near flakes big, pale, fast, slightly blurred — far ones tiny, dim, slow, fogged, and first to take the wind", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.wind = (x / u.W - 0.5) * 2; }               // click left/right = the wind
+    press: function (x, y) { D.wind = (x / u.W - 0.5) * 2; }               // click left/right = the wind the drifts will chase
   };
 });
 
@@ -4574,43 +4596,113 @@ def("I", "Incense", "volume", "one thin ribbon of smoke: small soft dots along a
   };
 });
 
-def("J", "Jellyfish", "volume", "three of the same jelly at three depths: a dome is a radial gradient with alpha; the far one is smaller, paler, slower, and its glow dimmer", function make(u) {
-  var D = { sea: ["#0A2A50", "#041428"], bell: "#A8C8F0", core: "#7AF0E0", bells: 3, pulse: 1, seed: 5 };
-  var R = u.rng(D.seed), jellies = [];
-  for (var j = 0; j < D.bells; j++) jellies.push({ x: 0.15 + R() * 0.7, y: 0.25 + R() * 0.35, z: (j + 0.5) / D.bells, ph: R() * 9 });   // built far → near
+def("J", "Jellyfish", "volume", "three of the same jelly at three depths: a dome is a radial gradient with alpha; the far one is smaller, paler, slower, and its glow dimmer — every bell snaps shut on a kicked spring and glides, its tentacles trailing and whipping after it; press to call them over", function make(u) {
+  var D = { sea: ["#0A2A50", "#041428"], bell: "#A8C8F0", core: "#7AF0E0", bells: 3, pulse: 1, seed: 5,
+            snap: 60,                // the bell's spring: how hard it springs back open after a contraction
+            relax: 0.5,              // its damping as a fraction of critical — under 1, so it flares a touch past open before it settles
+            contract: 0.1,           // how much of the radius a full contraction takes in
+            thrust: 0.12,            // the swim each contraction buys, screens per second, toward where the jelly is headed
+            drag: 1.6,               // the water's drag on the glide, per second
+            sink: 0.02,              // how fast a jelly sinks between pulses, screens per second per second
+            arms: 90,                // a tentacle segment's spring toward hanging straight under the one above
+            armdamp: 0.3 };          // its damping as a fraction of critical — low, so the tentacles overshoot and whip
+  var R = u.rng(D.seed), jellies = [], ARMS = 5, SEGS = 8;
+  for (var j = 0; j < D.bells; j++) {                                      // built far → near
+    var z = (j + 0.5) / D.bells;
+    var J = { x: 0.15 + R() * 0.7, y: 0.25 + R() * 0.35, z: z, vx: 0, vy: 0, c: 0, cv: 0, clk: R() * 4 };   // position and glide in screens; c the contraction (0 open … 1 shut); clk the pulse clock
+    J.hx = J.x; J.hy = J.y;                                                // home: where it keeps swimming back to
+    J.r0 = u.W * (0.05 + z * 0.09);                                        // the open radius; a contraction takes it in from here
+    J.px = new Float32Array(ARMS * SEGS); J.py = new Float32Array(ARMS * SEGS);     // tentacle segments in px, arm-major [k * SEGS + s]
+    J.tvx = new Float32Array(ARMS * SEGS); J.tvy = new Float32Array(ARMS * SEGS);   // and their velocities
+    for (var k = 0; k < ARMS; k++) for (var s = 0; s < SEGS; s++) {         // hanging straight down to begin with
+      J.px[k * SEGS + s] = J.x * u.W - J.r0 * 0.7 + k * J.r0 * 0.35; J.py[k * SEGS + s] = J.y * u.H + (s + 1) * J.r0 * 0.35;
+    }
+    jellies.push(J);
+  }
+  // a jellyfish moves by pulsing. the bell is a spring around OPEN: every
+  // period (2π/sp seconds, the old sine's beat) it takes a kick that snaps it
+  // shut, and the spring relaxes it open again, flaring a touch past open
+  // because the damping is under critical. the same kick is the swim: a shove
+  // toward home (give or take a random heading, so they wander) and a little
+  // lift, dying in the water's drag, while between pulses the jelly sinks.
+  // each tentacle is a chain of eight points, every one a spring toward the
+  // spot straight under the point above it, lightly damped — so when the rim
+  // pulls in and the bell jerks up, the arms lag, trail, and whip through
+  // after it. nothing here is a sine: the rhythm is a clock and everything
+  // that moves is integrated.
   return {
     frame: function (dt, t) {
       u.sky(D.sea);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;             // substeps of ≤ 0.02 s: the arm springs need √k·h small
+      var bd = D.relax * 2 * Math.sqrt(D.snap), ad = D.armdamp * 2 * Math.sqrt(D.arms);   // dampings from their fractions of critical
       for (var j = 0; j < jellies.length; j++) {
-        var J = jellies[j], z = J.z, sp = D.pulse * (0.6 + z * 1.2);        // near ones pulse faster
-        var pulse = 0.5 + 0.5 * Math.sin(t * sp + J.ph);
-        var r = u.W * (0.05 + z * 0.09) * (0.94 + 0.08 * pulse);
-        var x = J.x * u.W + Math.sin(t * 0.2 * sp + J.ph) * u.W * 0.03, y = J.y * u.H + Math.sin(t * 0.35 * sp + J.ph) * u.H * 0.03 - pulse * 3 * z;
+        var J = jellies[j], z = J.z, sp = D.pulse * (0.6 + z * 1.2), per = u.TAU / sp;   // near ones pulse faster
+        var seg = J.r0 * 0.35;
+        for (var s = 0; s < sub; s++) {
+          J.clk += h;
+          if (J.clk >= per) {                                              // the bell fires
+            J.clk -= per;
+            J.cv += 2 * Math.sqrt(D.snap);                                 // a kick of 2ω shuts it about all the way
+            var dx = J.hx - J.x, dy = J.hy - J.y, dist = Math.sqrt(dx * dx + dy * dy);
+            var ang = dist < 0.03 ? R() * u.TAU : Math.atan2(dy, dx) + (R() - 0.5) * 1.2;   // headed home, roughly; at home, any way
+            var go = D.thrust * (0.6 + z * 0.8);                            // the near one swims further per pulse
+            J.vx += Math.cos(ang) * go; J.vy += Math.sin(ang) * go - D.thrust * 0.6;   // and every pulse lifts it a little
+          }
+          J.cv += (D.snap * (0 - J.c) - bd * J.cv) * h; J.c = u.clamp(J.c + J.cv * h, -0.5, 1.5);   // the bell: a spring around open
+          J.vy += D.sink * h;                                              // between pulses it sinks
+          J.vx -= J.vx * D.drag * h; J.vy -= J.vy * D.drag * h;            // the glide dies in the water
+          J.x += J.vx * h; J.y += J.vy * h;
+          if (J.x < 0.04) { J.x = 0.04; J.vx = 0; } else if (J.x > 0.96) { J.x = 0.96; J.vx = 0; }   // the tank has walls
+          if (J.y < 0.08) { J.y = 0.08; J.vy = 0; } else if (J.y > 0.85) { J.y = 0.85; J.vy = 0; }
+          var r = J.r0 * (1 - D.contract * J.c), bx = J.x * u.W, by = J.y * u.H;
+          for (var k = 0; k < ARMS; k++) {                                 // the tentacles: each point chases the spot under the one above
+            var ax = bx - r * 0.7 + k * r * 0.35, ay = by;                 // the anchor on the rim — it moves in as the bell shuts
+            for (var q = 0; q < SEGS; q++) {
+              var i = k * SEGS + q;
+              J.tvx[i] += (D.arms * (ax - J.px[i]) - ad * J.tvx[i]) * h;
+              J.tvy[i] += (D.arms * (ay + seg - J.py[i]) - ad * J.tvy[i]) * h;
+              J.px[i] += J.tvx[i] * h; J.py[i] += J.tvy[i] * h;
+              ax = J.px[i]; ay = J.py[i];
+            }
+          }
+        }
+        var pulse = u.clamp(J.c, 0, 1), rr = J.r0 * (1 - D.contract * J.c);
+        var x = J.x * u.W, y = J.y * u.H;
         var c = u.fog(D.bell, (1 - z) * 0.75, D.sea[0]), a = 0.25 + z * 0.45;   // far = mostly water-coloured
         u.ctx.strokeStyle = u.rgba(c, a * 0.6); u.ctx.lineWidth = 0.6 + z * 1.2;
-        for (var k = 0; k < 5; k++) {                                      // tentacles: wavy lines hanging from the rim
-          var tx = x - r * 0.7 + k * r * 0.35;
-          u.ctx.beginPath(); u.ctx.moveTo(tx, y);
-          for (var s = 1; s <= 8; s++) u.ctx.lineTo(tx + Math.sin(t * 2 * sp + s * 0.7 + k) * r * 0.15 * (s / 8), y + s * r * 0.35 * (1 + pulse * 0.1));
+        for (var k = 0; k < ARMS; k++) {                                   // tentacles: the chains, drawn from the rim down
+          u.ctx.beginPath(); u.ctx.moveTo(x - rr * 0.7 + k * rr * 0.35, y);
+          for (var q = 0; q < SEGS; q++) u.ctx.lineTo(J.px[k * SEGS + q], J.py[k * SEGS + q]);
           u.ctx.stroke();
         }
-        u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(u.shade(c, 0.5), a)], [0.7, u.rgba(c, a * 0.8)], [1, u.rgba(c, a * 0.2)]], -r * 0.3, -r * 0.4);
-        u.ctx.beginPath(); u.ctx.arc(x, y, r, Math.PI, 0); u.ctx.quadraticCurveTo(x, y + r * 0.35, x - r, y); u.ctx.fill();   // the dome
+        u.ctx.fillStyle = u.rad(x, y, rr, [[0, u.rgba(u.shade(c, 0.5), a)], [0.7, u.rgba(c, a * 0.8)], [1, u.rgba(c, a * 0.2)]], -rr * 0.3, -rr * 0.4);
+        u.ctx.beginPath(); u.ctx.arc(x, y, rr, Math.PI, 0); u.ctx.quadraticCurveTo(x, y + rr * 0.35, x - rr, y); u.ctx.fill();   // the dome
         u.ctx.globalCompositeOperation = "lighter";
-        u.soft(x, y - r * 0.2, r * 0.7, D.core, (0.15 + z * 0.5) * (0.6 + 0.4 * pulse));   // the bioluminescent core adds
+        u.soft(x, y - rr * 0.2, rr * 0.7, D.core, (0.15 + z * 0.5) * (0.6 + 0.4 * pulse));   // the bioluminescent core adds, brightest shut
         u.ctx.globalCompositeOperation = "source-over";
       }
-      u.label("one jelly, three z: size, alpha, water-colour, pulse speed and core glow all follow — far first, near last", u.W / 2, u.H - 8, null, "center");
+      u.label("one jelly, three z: size, alpha, water-colour, pulse rate and glow all follow — a kicked spring for the bell, chains for the arms", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { for (var j = 0; j < jellies.length; j++) { jellies[j].x += (x / u.W - jellies[j].x) * 0.5 * jellies[j].z; jellies[j].y += (y / u.H - jellies[j].y) * 0.5 * jellies[j].z; } }   // the near one swims over most
+    press: function (x, y) { for (var j = 0; j < jellies.length; j++) { jellies[j].hx += (x / u.W - jellies[j].hx) * 0.5 * jellies[j].z; jellies[j].hy += (y / u.H - jellies[j].hy) * 0.5 * jellies[j].z; } }   // moves their homes — the near one's most — and they swim over in a few pulses
   };
 });
 
-def("M", "Motes", "volume", "dust in a light shaft: the shaft is one gradient with alpha, a mote is bright only inside it — near motes large and lazy, far ones tiny", function make(u) {
-  var D = { room: ["#141018", "#0A080C"], light: "#FFE8B0", motes: 60, shaftX: 0.35, bounce: 0, seed: 29 };   // bounce: 0 float, 1 snow-globe hop
+def("M", "Motes", "volume", "dust in a light shaft: the shaft is one gradient with alpha, a mote is bright only inside it — near motes large and lazy, far ones tiny; with the bounce dial up they hop under real gravity, land with a bounce, and lie still a moment before the next kick", function make(u) {
+  var D = { room: ["#141018", "#0A080C"], light: "#FFE8B0", motes: 60, shaftX: 0.35, bounce: 0, seed: 29,   // bounce: 0 float, 1 snow-globe hop (the height of a fresh hop, in units of 8% of H, scaled by depth)
+            gravity: 2.5,            // the pull on a hopping mote, screen heights per second per second
+            rebound: 0.5,            // how much of its speed a mote keeps when it lands — each bounce a quarter the height of the last
+            rest: 0.5 };             // the longest a landed mote lies still before its next kick, seconds
   var R = u.rng(D.seed), motes = [];
-  for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9 });
+  for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9, a: 0, av: 0, wait: R() });   // a: the hop's altitude above the mote's drift line, px; av its speed; wait the pause before a kick
   motes.sort(function (a, b) { return a.z - b.z; });                     // far first
+  // the drift is the old slow wander; the HOP is simulated. each mote has an
+  // altitude above its own drift line and a vertical speed: gravity pulls the
+  // speed down, the speed moves the altitude, and the drift line is a floor —
+  // land, keep `rebound` of the speed, go up again a quarter as high, and when
+  // the next bounce would be under half a pixel, lie still. a resting mote gets
+  // a random kick after a random pause (the globe being shaken), sized so a
+  // near mote's hop is taller than a far one's. at bounce 0 there are no kicks
+  // and the motes float exactly as before.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.room);
@@ -4620,10 +4712,24 @@ def("M", "Motes", "volume", "dust in a light shaft: the shaft is one gradient wi
       u.ctx.fillStyle = u.lin(x0 - hw, 0, x0 + hw, 0, [[0, u.rgba(D.light, 0)], [0.5, u.rgba(D.light, 0.22)], [1, u.rgba(D.light, 0)]]);
       u.ctx.fillRect(x0 - hw, 0, hw * 2, u.H);
       u.ctx.restore();
+      var g = D.gravity * u.H, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps of ≤ 0.02 s so a coarse frame cannot tunnel through the floor
       for (var j = 0; j < motes.length; j++) {
         var m = motes[j], z = m.z, slow = 1.4 - z;                          // near motes drift slower (they are heavier, lazier)
+        var top = D.bounce * (0.3 + z) * u.H * 0.08;                        // how high a fresh hop reaches: near motes higher
+        for (var s = 0; s < sub; s++) {
+          if (m.a > 0 || m.av > 0) {                                        // in the air: gravity, then the floor
+            m.av -= g * h; m.a += m.av * h;
+            if (m.a <= 0) {
+              m.a = 0; m.av = -m.av * D.rebound;                            // land: a bounce with part of the speed
+              if (m.av * m.av < 2 * g * 0.5) { m.av = 0; m.wait = R() * D.rest; }   // too small to see — lie still
+            }
+          } else if (top > 0) {                                             // at rest: the pause, then a kick
+            m.wait -= h;
+            if (m.wait <= 0) m.av = Math.sqrt(2 * g * top) * (0.7 + 0.6 * R());   // √(2·g·top) reaches top; a little random so they scatter
+          }
+        }
         var x = ((m.x + t * 0.012 * slow) % 1) * u.W + Math.sin(t * 0.4 + m.ph) * (3 + z * 6);
-        var y = ((m.y + t * 0.008 * slow) % 1) * u.H + D.bounce * Math.abs(Math.sin(t * 3 + m.ph)) * 12 * (0.3 + z);
+        var y = ((m.y + t * 0.008 * slow) % 1) * u.H - m.a;                  // the hop lifts the mote off its drift line
         var tumble = 0.6 + 0.4 * Math.sin(t * (1 + z * 2) + m.ph);          // a turning speck catches light on and off
         var inside = Math.abs(x - (x0 + slope * y / u.H)) < hw;
         var bright = inside ? 1 : 0.15;                                    // outside the shaft a mote is barely there
@@ -4842,9 +4948,10 @@ def("Y", "Yule", "volume", "a log fire: dark tongues far back, bright tongues ju
 rhymeOf("Ash", "Snowfall", "the same falling flakes in white over a blue night, half the speed — the ash code IS the snow code", function make(u) {
   // rhyme of Ash: dials moved — sky/glow/near/far palette to a cold night, fall 0.35 → 0.18
   var D = { sky: ["#060A1E", "#1A2A50"], glow: "#8AA0D8", near: "#FFFFFF", far: "#8A98B8",
-            flakes: 80, fall: 0.18, wind: 0, seed: 31 };
+            flakes: 80, fall: 0.18, wind: 0, seed: 31,
+            gust: 0.25, response: 1, flutter: 1 };
   var R = u.rng(D.seed), flakes = [];
-  for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), sw: R() * 9 });
+  for (var j = 0; j < D.flakes; j++) flakes.push({ x: R(), ph: R(), z: R(), vx: 0, s: 0, sv: 0, next: R() * 2 });
   flakes.sort(function (a, b) { return a.z - b.z; });
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
@@ -4853,11 +4960,23 @@ rhymeOf("Ash", "Snowfall", "the same falling flakes in white over a blue night, 
       u.ground(u.H * 0.8, "#050305");
       u.ctx.fillStyle = "#050305";
       for (var k = 0; k < 5; k++) u.ctx.fillRect(u.W * (0.08 + k * 0.2), u.H * (0.62 + (k % 2) * 0.08), u.W * 0.07, u.H * 0.2);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, want = D.wind * D.gust;
       for (var j = 0; j < flakes.length; j++) {
         var f = flakes[j], z = f.z;
+        var rate = D.response / (0.25 + z * 1.5);
+        var ks = 9 / (0.5 + z), w = Math.sqrt(ks), ds = 0.25 * 2 * w;
+        var amp = D.flutter * (3 + z * 12);
+        f.next -= dt;
+        if (f.next <= 0) { f.next = 0.6 + R() * 1.6; f.sv += (R() < 0.5 ? -1 : 1) * (0.5 + R()) * amp * w; }
+        for (var s = 0; s < sub; s++) {
+          f.vx += (want - f.vx) * rate * h;
+          f.x += f.vx * h;
+          f.sv += (ks * (0 - f.s) - ds * f.sv) * h; f.s = u.clamp(f.s + f.sv * h, -amp * 3, amp * 3);
+        }
+        f.x -= Math.floor(f.x);
         var p = (t * D.fall * (0.3 + z) + f.ph) % 1;
         var y = p * (u.H + 20) - 10;
-        var x = ((f.x + p * D.wind * 0.5 + 10) % 1) * u.W + Math.sin(t * 0.7 + f.sw) * (3 + z * 12);
+        var x = f.x * u.W + f.s;
         var c = u.fog(u.mix(D.far, D.near, z), (1 - z) * 0.6, D.sky[1]);
         var r = 0.6 + z * 3.2, a = 0.15 + z * 0.8;
         if (z > 0.6) u.soft(x, y, r * 2.4, c, a * 0.35);
@@ -5035,42 +5154,84 @@ rhymeOf("Incense", "Cigarette", "the same ribbon in plain grey, curling twice as
 
 rhymeOf("Jellyfish", "Alien jellies", "the same bells in magenta, six of them at six depths, pulsing faster — a deeper, stranger sea", function make(u) {
   // rhyme of Jellyfish: dials moved — sea/bell/core palette to magenta, bells 3 → 6, pulse 1 → 1.6
-  var D = { sea: ["#1A0A30", "#08041A"], bell: "#F080D0", core: "#FFB0F0", bells: 6, pulse: 1.6, seed: 5 };
-  var R = u.rng(D.seed), jellies = [];
-  for (var j = 0; j < D.bells; j++) jellies.push({ x: 0.15 + R() * 0.7, y: 0.25 + R() * 0.35, z: (j + 0.5) / D.bells, ph: R() * 9 });
+  var D = { sea: ["#1A0A30", "#08041A"], bell: "#F080D0", core: "#FFB0F0", bells: 6, pulse: 1.6, seed: 5,
+            snap: 60, relax: 0.5, contract: 0.1, thrust: 0.12, drag: 1.6, sink: 0.02, arms: 90, armdamp: 0.3 };
+  var R = u.rng(D.seed), jellies = [], ARMS = 5, SEGS = 8;
+  for (var j = 0; j < D.bells; j++) {
+    var z = (j + 0.5) / D.bells;
+    var J = { x: 0.15 + R() * 0.7, y: 0.25 + R() * 0.35, z: z, vx: 0, vy: 0, c: 0, cv: 0, clk: R() * 4 };
+    J.hx = J.x; J.hy = J.y;
+    J.r0 = u.W * (0.05 + z * 0.09);
+    J.px = new Float32Array(ARMS * SEGS); J.py = new Float32Array(ARMS * SEGS);
+    J.tvx = new Float32Array(ARMS * SEGS); J.tvy = new Float32Array(ARMS * SEGS);
+    for (var k = 0; k < ARMS; k++) for (var s = 0; s < SEGS; s++) {
+      J.px[k * SEGS + s] = J.x * u.W - J.r0 * 0.7 + k * J.r0 * 0.35; J.py[k * SEGS + s] = J.y * u.H + (s + 1) * J.r0 * 0.35;
+    }
+    jellies.push(J);
+  }
   return {
     frame: function (dt, t) {
       u.sky(D.sea);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      var bd = D.relax * 2 * Math.sqrt(D.snap), ad = D.armdamp * 2 * Math.sqrt(D.arms);
       for (var j = 0; j < jellies.length; j++) {
-        var J = jellies[j], z = J.z, sp = D.pulse * (0.6 + z * 1.2);
-        var pulse = 0.5 + 0.5 * Math.sin(t * sp + J.ph);
-        var r = u.W * (0.05 + z * 0.09) * (0.94 + 0.08 * pulse);
-        var x = J.x * u.W + Math.sin(t * 0.2 * sp + J.ph) * u.W * 0.03, y = J.y * u.H + Math.sin(t * 0.35 * sp + J.ph) * u.H * 0.03 - pulse * 3 * z;
+        var J = jellies[j], z = J.z, sp = D.pulse * (0.6 + z * 1.2), per = u.TAU / sp;
+        var seg = J.r0 * 0.35;
+        for (var s = 0; s < sub; s++) {
+          J.clk += h;
+          if (J.clk >= per) {
+            J.clk -= per;
+            J.cv += 2 * Math.sqrt(D.snap);
+            var dx = J.hx - J.x, dy = J.hy - J.y, dist = Math.sqrt(dx * dx + dy * dy);
+            var ang = dist < 0.03 ? R() * u.TAU : Math.atan2(dy, dx) + (R() - 0.5) * 1.2;
+            var go = D.thrust * (0.6 + z * 0.8);
+            J.vx += Math.cos(ang) * go; J.vy += Math.sin(ang) * go - D.thrust * 0.6;
+          }
+          J.cv += (D.snap * (0 - J.c) - bd * J.cv) * h; J.c = u.clamp(J.c + J.cv * h, -0.5, 1.5);
+          J.vy += D.sink * h;
+          J.vx -= J.vx * D.drag * h; J.vy -= J.vy * D.drag * h;
+          J.x += J.vx * h; J.y += J.vy * h;
+          if (J.x < 0.04) { J.x = 0.04; J.vx = 0; } else if (J.x > 0.96) { J.x = 0.96; J.vx = 0; }
+          if (J.y < 0.08) { J.y = 0.08; J.vy = 0; } else if (J.y > 0.85) { J.y = 0.85; J.vy = 0; }
+          var r = J.r0 * (1 - D.contract * J.c), bx = J.x * u.W, by = J.y * u.H;
+          for (var k = 0; k < ARMS; k++) {
+            var ax = bx - r * 0.7 + k * r * 0.35, ay = by;
+            for (var q = 0; q < SEGS; q++) {
+              var i = k * SEGS + q;
+              J.tvx[i] += (D.arms * (ax - J.px[i]) - ad * J.tvx[i]) * h;
+              J.tvy[i] += (D.arms * (ay + seg - J.py[i]) - ad * J.tvy[i]) * h;
+              J.px[i] += J.tvx[i] * h; J.py[i] += J.tvy[i] * h;
+              ax = J.px[i]; ay = J.py[i];
+            }
+          }
+        }
+        var pulse = u.clamp(J.c, 0, 1), rr = J.r0 * (1 - D.contract * J.c);
+        var x = J.x * u.W, y = J.y * u.H;
         var c = u.fog(D.bell, (1 - z) * 0.75, D.sea[0]), a = 0.25 + z * 0.45;
         u.ctx.strokeStyle = u.rgba(c, a * 0.6); u.ctx.lineWidth = 0.6 + z * 1.2;
-        for (var k = 0; k < 5; k++) {
-          var tx = x - r * 0.7 + k * r * 0.35;
-          u.ctx.beginPath(); u.ctx.moveTo(tx, y);
-          for (var s = 1; s <= 8; s++) u.ctx.lineTo(tx + Math.sin(t * 2 * sp + s * 0.7 + k) * r * 0.15 * (s / 8), y + s * r * 0.35 * (1 + pulse * 0.1));
+        for (var k = 0; k < ARMS; k++) {
+          u.ctx.beginPath(); u.ctx.moveTo(x - rr * 0.7 + k * rr * 0.35, y);
+          for (var q = 0; q < SEGS; q++) u.ctx.lineTo(J.px[k * SEGS + q], J.py[k * SEGS + q]);
           u.ctx.stroke();
         }
-        u.ctx.fillStyle = u.rad(x, y, r, [[0, u.rgba(u.shade(c, 0.5), a)], [0.7, u.rgba(c, a * 0.8)], [1, u.rgba(c, a * 0.2)]], -r * 0.3, -r * 0.4);
-        u.ctx.beginPath(); u.ctx.arc(x, y, r, Math.PI, 0); u.ctx.quadraticCurveTo(x, y + r * 0.35, x - r, y); u.ctx.fill();
+        u.ctx.fillStyle = u.rad(x, y, rr, [[0, u.rgba(u.shade(c, 0.5), a)], [0.7, u.rgba(c, a * 0.8)], [1, u.rgba(c, a * 0.2)]], -rr * 0.3, -rr * 0.4);
+        u.ctx.beginPath(); u.ctx.arc(x, y, rr, Math.PI, 0); u.ctx.quadraticCurveTo(x, y + rr * 0.35, x - rr, y); u.ctx.fill();
         u.ctx.globalCompositeOperation = "lighter";
-        u.soft(x, y - r * 0.2, r * 0.7, D.core, (0.15 + z * 0.5) * (0.6 + 0.4 * pulse));
+        u.soft(x, y - rr * 0.2, rr * 0.7, D.core, (0.15 + z * 0.5) * (0.6 + 0.4 * pulse));
         u.ctx.globalCompositeOperation = "source-over";
       }
       u.label("six depths instead of three and the ladder of size, alpha and speed becomes a staircase you can count", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { for (var j = 0; j < jellies.length; j++) { jellies[j].x += (x / u.W - jellies[j].x) * 0.5 * jellies[j].z; jellies[j].y += (y / u.H - jellies[j].y) * 0.5 * jellies[j].z; } }
+    press: function (x, y) { for (var j = 0; j < jellies.length; j++) { jellies[j].hx += (x / u.W - jellies[j].hx) * 0.5 * jellies[j].z; jellies[j].hy += (y / u.H - jellies[j].hy) * 0.5 * jellies[j].z; } }
   };
 });
 
 rhymeOf("Motes", "Snow globe motes", "the same shaft of light in cold white, and the motes now hop instead of float — the bounce dial turned to one", function make(u) {
   // rhyme of Motes: dials moved — room/light palette to cold white, bounce 0 → 1
-  var D = { room: ["#0E1420", "#060A14"], light: "#E8F4FF", motes: 60, shaftX: 0.35, bounce: 1, seed: 29 };
+  var D = { room: ["#0E1420", "#060A14"], light: "#E8F4FF", motes: 60, shaftX: 0.35, bounce: 1, seed: 29,
+            gravity: 2.5, rebound: 0.5, rest: 0.5 };
   var R = u.rng(D.seed), motes = [];
-  for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9 });
+  for (var j = 0; j < D.motes; j++) motes.push({ x: R(), y: R(), z: R(), ph: R() * 9, a: 0, av: 0, wait: R() });
   motes.sort(function (a, b) { return a.z - b.z; });
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
@@ -5081,10 +5242,24 @@ rhymeOf("Motes", "Snow globe motes", "the same shaft of light in cold white, and
       u.ctx.fillStyle = u.lin(x0 - hw, 0, x0 + hw, 0, [[0, u.rgba(D.light, 0)], [0.5, u.rgba(D.light, 0.22)], [1, u.rgba(D.light, 0)]]);
       u.ctx.fillRect(x0 - hw, 0, hw * 2, u.H);
       u.ctx.restore();
+      var g = D.gravity * u.H, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (var j = 0; j < motes.length; j++) {
         var m = motes[j], z = m.z, slow = 1.4 - z;
+        var top = D.bounce * (0.3 + z) * u.H * 0.08;
+        for (var s = 0; s < sub; s++) {
+          if (m.a > 0 || m.av > 0) {
+            m.av -= g * h; m.a += m.av * h;
+            if (m.a <= 0) {
+              m.a = 0; m.av = -m.av * D.rebound;
+              if (m.av * m.av < 2 * g * 0.5) { m.av = 0; m.wait = R() * D.rest; }
+            }
+          } else if (top > 0) {
+            m.wait -= h;
+            if (m.wait <= 0) m.av = Math.sqrt(2 * g * top) * (0.7 + 0.6 * R());
+          }
+        }
         var x = ((m.x + t * 0.012 * slow) % 1) * u.W + Math.sin(t * 0.4 + m.ph) * (3 + z * 6);
-        var y = ((m.y + t * 0.008 * slow) % 1) * u.H + D.bounce * Math.abs(Math.sin(t * 3 + m.ph)) * 12 * (0.3 + z);
+        var y = ((m.y + t * 0.008 * slow) % 1) * u.H - m.a;
         var tumble = 0.6 + 0.4 * Math.sin(t * (1 + z * 2) + m.ph);
         var inside = Math.abs(x - (x0 + slope * y / u.H)) < hw;
         var bright = inside ? 1 : 0.15;
@@ -5094,7 +5269,7 @@ rhymeOf("Motes", "Snow globe motes", "the same shaft of light in cold white, and
         u.dot(x, y, r, u.rgba(c, a));
       }
       u.ctx.globalCompositeOperation = "source-over";
-      u.label("near motes hop higher (the bounce scales with z) — even a toy obeys the depth rule", u.W / 2, u.H - 8, null, "center");
+      u.label("near motes hop higher (the kick scales with z) and every landing bounces — even a toy obeys the depth rule", u.W / 2, u.H - 8, null, "center");
     },
     press: function (x, y) { D.shaftX = x / u.W - 0.3 * (y / u.H); }
   };
@@ -6614,25 +6789,64 @@ def("C", "Contact", "shadow", "a ball on the ground with a tight dark shadow —
   };
 });
 
-def("J", "Jump", "shadow", "two balls hop along; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles", function make(u) {
+def("J", "Jump", "shadow", "two balls hop along under real gravity — a crouch, a push-off, an arc, a landing that squashes and bounces; only one has a shadow that stays on the ground and shrinks with altitude — cover it and the other ball just wobbles", function make(u) {
   var D = { sky: ["#1E2A3A", "#3A5068"], floor: "#3A4A3A", grass: "#5A8A4A", ball: "#F5C169", ghost: "#8AD9F5",
-            hop: 0.24, hops: 1.1, speed: 0.2 };                                // hop height (of H), hops per second, path speed (of W per second)
+            hop: 0.24, hops: 1.1, speed: 0.2,                                  // hop height (of H), hops per second, path speed (of W per second)
+            air: 0.7,                // the share of each hop spent in the air — the rest is the landing, the crouch and the push-off
+            rebound: 0.25,           // how much of the landing speed comes back as a bounce (a second hop a sixteenth as high)
+            squash: 0.3 };           // how far a landing flattens the ball, as a fraction of its radius; the crouch is half of it
+  var hgt = 0, v = 0, sq = 0, sqv = 0, stance = 0, crouched = true;            // altitude (px) and its speed; the squash (− flat … + tall) and its speed; time on the ground (−1 = airborne)
+  // the hop is ballistics, the same integrator as Contact: the push-off sets a
+  // speed, gravity eats it, the altitude follows, and the ground is a floor
+  // with a little restitution — so a landing gives a small second bounce
+  // before the ball is still. the cadence stays a dial: the period is 1/hops
+  // and `air` of it is flight, so g and the push-off are derived to make an
+  // arch exactly hop·H tall that lands on time (a higher hop under the same
+  // cadence means a stronger gravity — arcade physics). the squash is a
+  // separate spring around round, kicked flat by the landing and by the
+  // crouch just before take-off, under-damped so it wobbles a moment.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.05;
       u.ctx.fillStyle = u.lin(0, GY, 0, u.H, [D.grass, D.floor]); u.ctx.fillRect(0, GY, u.W, u.H - GY);
-      var ph = (t * D.hops) % 1, hgt = Math.sin(ph * Math.PI) * D.hop * u.H;   // one sine arch per hop
+      var P = 1 / D.hops, flight = P * D.air, hp = D.hop * u.H;
+      var g = 8 * hp / (flight * flight), v0 = Math.sqrt(2 * g * hp);         // the gravity and push-off that make an arch hp tall land after `flight` seconds
+      var sk = 400, sw = Math.sqrt(sk), sd = 0.3 * 2 * sw;                      // the squash spring: ω = 20, a fifth of a second per wobble, 0.3 of critical
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;                 // substeps of ≤ 0.02 s: the squash spring needs √k·h small
+      for (var s = 0; s < sub; s++) {
+        if (hgt > 0 || v > 0) {                                                 // in the air (the hop, or the little bounce after it)
+          v -= g * h; hgt += v * h;
+          if (hgt <= 0) {                                                       // the floor is a floor
+            hgt = 0;
+            sqv -= D.squash * 1.6 * sw * Math.min(1, -v / v0);                  // the landing kicks the squash flat (1.6ω peaks at about `squash`), harder the faster it hit
+            v = -v * D.rebound;                                                 // and keeps a little speed as a bounce
+            if (v < 0.15 * v0) v = 0;                                           // too small to see — it is down
+            if (stance < 0) { stance = 0; crouched = false; }                   // the ground clock starts at first touch, bounce or no bounce
+          }
+        }
+        if (stance >= 0) {                                                      // on the ground: wait out the stance, crouch, push off
+          stance += h;
+          if (!crouched && stance > P - flight - 0.12) { crouched = true; sqv -= D.squash * 0.8 * sw; }   // the anticipation dip, a tenth of a second before take-off
+          if (stance >= P - flight && hgt === 0 && v === 0) { stance = -1; v = v0; sqv += D.squash * 0.6 * sw; }   // take-off, once it is down: the push-off, and the ball stretches after it
+        }
+        sqv += (sk * (0 - sq) - sd * sqv) * h; sq = u.clamp(sq + sqv * h, -0.6, 0.6);
+      }
       var x1 = ((t * D.speed) % 1) * (u.W + 4 * r) - 2 * r;                     // the hero, crossing left → right
       var x2 = ((t * D.speed + 0.5) % 1) * (u.W + 4 * r) - 2 * r;               // the ghost, half a lap behind
       var k = 1 / (1 + hgt / (r * 1.2));                                        // shadow factor: 1 touching → small when high
-      u.shadow(x1, GY, r * (0.4 + 0.9 * k), r * (0.15 + 0.25 * k), 0.55 * k);   // the shadow never leaves the ground
-      u.sphere(x1, GY - r - hgt, r, D.ball, -0.4, -0.6, { spec: 0.4 });
-      u.sphere(x2, GY - r - hgt, r, D.ghost, -0.4, -0.6, { spec: 0.4 });        // same arc, no shadow: is it jumping or just higher up the wall?
+      var sx = 1 - sq * 0.6, sy = 1 + sq;                                       // flat = wider, tall = narrower: the volume roughly keeps
+      u.shadow(x1, GY, r * (0.4 + 0.9 * k) * sx, r * (0.15 + 0.25 * k), 0.55 * k);   // the shadow never leaves the ground
+      u.ctx.save(); u.ctx.translate(x1, GY - hgt); u.ctx.scale(sx, sy);          // the squash scales about the point of contact
+      u.sphere(0, -r, r, D.ball, -0.4, -0.6, { spec: 0.4 });
+      u.ctx.restore();
+      u.ctx.save(); u.ctx.translate(x2, GY - hgt); u.ctx.scale(sx, sy);
+      u.sphere(0, -r, r, D.ghost, -0.4, -0.6, { spec: 0.4 });                    // same arc, same squash, no shadow: is it jumping or just higher up the wall?
+      u.ctx.restore();
       u.label("which one is jumping?", u.W / 2, u.H * 0.14, u.rgba(u.INK, 0.7), "center");
       u.label("the ball's y says nothing on its own; the gap to its shadow says 'altitude'", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { D.hop = 0.08 + (1 - y / u.H) * 0.32; }            // click higher = higher hops
+    press: function (x, y) { D.hop = 0.08 + (1 - y / u.H) * 0.32; }            // click higher = higher hops: it moves the push-off and the gravity, never the ball
   };
 });
 
@@ -6758,12 +6972,32 @@ def("O", "Occlusion", "shadow", "five identical flat discs crossing paths: what 
   };
 });
 
-def("G", "Ground", "shadow", "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks — press moves the vanishing point", function make(u) {
+def("G", "Ground", "shadow", "a perspective floor: rows at horizon + p², columns converging on one vanishing point, fog toward the horizon; a ball rolls away and shrinks, overruns each end and turns back with its own weight — press moves the vanishing point, and the grid swings over on a spring", function make(u) {
   var D = { sky: ["#2A3A5A", "#8AA0C8"], floor: "#3A4A5A", lines: "#C8D8F0", ball: "#F58A8A",
-            rows: 12, cols: 9, fogK: 0.9, speed: 0.3 };                       // grid density, how much the far floor fades into the air, the ball's speed
-  var vx = u.W * 0.5;
+            rows: 12, cols: 9, fogK: 0.9, speed: 0.3,                          // grid density, how much the far floor fades into the air, the ball's beat (about this many out-and-backs a second)
+            damp: 0.5,               // the ball's damping as a fraction of critical — under 1, so it overruns each end and rolls back before turning
+            steer: 40 };             // the vanishing point's spring toward a press
+  var vx = u.W * 0.5, vxT = vx, vv = 0;                                          // the vanishing point, where it is asked to be, its speed
+  var q = 0.9, qv = 0, tgt = 0.18;                                              // the ball's depth (0 = horizon, 1 = here), its speed, the end it is rolling for
+  // the ball has mass: it is pulled toward the far end by a spring (stiffness
+  // from `speed`, so the beat is the old sine's) and damped under critical, so
+  // it arrives fast, overruns, and comes to rest a little past the end — and
+  // that first moment of rest is when the target flips to the near end, so it
+  // reverses from a standstill, accelerating, instead of turning on a curve
+  // that was always going to turn. the vanishing point is the same spring,
+  // nearly critical, so a press swings the whole grid over and settles it.
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var w = u.TAU * D.speed, k = w * w, dd = D.damp * 2 * w;                   // the ball's spring: ω = 2π·speed
+      var sd = 0.9 * 2 * Math.sqrt(D.steer);                                    // the grid's: 0.9 of critical, one small overswing
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        vv += (D.steer * (vxT - vx) - sd * vv) * h; vx = u.clamp(vx + vv * h, -u.W, 2 * u.W);
+        var was = qv;
+        qv += (k * (tgt - q) - dd * qv) * h; q = u.clamp(q + qv * h, 0, 1.15);   // the horizon is as far as it goes
+        var still = (was !== 0 && (was < 0) !== (qv < 0)) || (Math.abs(q - tgt) < 0.005 && Math.abs(qv) < 0.02);   // it has stopped
+        if (still && Math.abs(q - tgt) < 0.3) tgt = tgt < 0.5 ? 0.9 : 0.18;    // … past the end it was rolling for: send it back
+      }
       u.sky(D.sky);
       var HY = u.H * 0.42, air = D.sky[1];
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.floor, air, D.fogK), D.floor]); u.ctx.fillRect(0, HY, u.W, u.H - HY);   // the floor is a fog gradient
@@ -6776,43 +7010,68 @@ def("G", "Ground", "shadow", "a perspective floor: rows at horizon + p², column
         u.ctx.strokeStyle = u.lin(0, HY, 0, u.H, [u.rgba(D.lines, 0), u.rgba(D.lines, 0.55)]);
         u.ctx.lineWidth = 1; u.ctx.beginPath(); u.ctx.moveTo(vx, HY); u.ctx.lineTo(bx, u.H); u.ctx.stroke();
       }
-      var q = 0.5 + 0.5 * Math.sin(t * D.speed * u.TAU);                        // the ball rolls away and back: q 0 = horizon, 1 = here
+      var qd = u.clamp(q, 0, 1);                                                // the ball's depth for the cues: q 0 = horizon, 1 = here (the overrun keeps rolling in size and place)
       var by = HY + q * q * (u.H - HY), bx2 = u.lerp(vx, u.W * 0.62, q), r = u.W * 0.02 + q * q * u.W * 0.07;   // size follows the same p² rule
-      u.shadow(bx2, by, r * 1.15, r * 0.35, 0.5 * (0.3 + q * 0.7));            // the shadow pins the ball to a row
-      u.sphere(bx2, by - r, r, u.fog(D.ball, (1 - q) * D.fogK, air), -0.4, -0.6, { spec: 0.35 });
+      u.shadow(bx2, by, r * 1.15, r * 0.35, 0.5 * (0.3 + qd * 0.7));           // the shadow pins the ball to a row
+      u.sphere(bx2, by - r, r, u.fog(D.ball, (1 - qd) * D.fogK, air), -0.4, -0.6, { spec: 0.35 });
       u.label("rows bunch as p², columns meet at one point, colour fades into the air — three cues, one floor", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { vx = x; }                                          // click = move the vanishing point
+    press: function (x, y) { vxT = x; }                                         // click = ask the vanishing point over; the spring carries it
   };
 });
 
-def("M", "Mirror", "shadow", "a floor reflection: the object drawn again upside-down under the floor line, darker and fading with distance from it, with a faint ripple — press moves the object", function make(u) {
+def("M", "Mirror", "shadow", "a floor reflection: the object drawn again upside-down under the floor line, darker and fading with distance from it, with a faint ripple — press moves the object: it slides over on a spring and settles, the sphere swinging behind, reflection and all", function make(u) {
   var D = { sky: ["#1A1030", "#3A2A5A"], floor: "#141020", ball: "#C9A0F5", block: "#5A7AB8",
-            refA: 0.55, fade: 0.8, ripple: 2.0 };                                // reflection strength, how fast it fades (of the pool depth), ripple amplitude in px
-  var ox = u.W * 0.5;
-  function object(x, FY, t) {                                                   // the thing and its reflection are the same drawing
-    var s = u.W * 0.07, bob = Math.sin(t * 1.3) * u.H * 0.02;
+            refA: 0.55, fade: 0.8, ripple: 2.0,                                  // reflection strength, how fast it fades (of the pool depth), ripple amplitude in px
+            slide: 30,               // the spring that carries the object toward a press (0.6 of critical: one small overrun, settled in a second)
+            swing: 25,               // the sphere's pendulum stiffness over the block — how quickly its lag behind a slide swings back
+            hover: 1.5 };            // seconds between the kicks of the lift that keeps the sphere bobbing
+  var ox = u.W * 0.5, tx = ox, ov = 0;                                          // where the object is, where it was asked to be, its speed
+  var sway = 0, swv = 0, bob = 0, bv = 0, clk = 0;                              // the sphere's lag behind the block (px) and its speed; its lift above rest (px) and its speed; the lift's clock
+  // the object slides on a spring toward the pressed x, damped a little under
+  // critical so it overruns and settles. the sphere is a pendulum hanging over
+  // the block: its sway is a spring around zero DRIVEN BY THE BLOCK'S
+  // ACCELERATION (a cart jerks, the bob swings the other way), so it lags a
+  // slide and swings through after. the bob is a spring around its rest
+  // height, kicked by the lift every `hover` seconds — a hovering thing that
+  // never quite holds still — and dipped by a hard slide. the reflection is
+  // the same drawing flipped, so all of it shows twice for free.
+  function object(x, FY) {                                                      // the thing and its reflection are the same drawing
+    var s = u.W * 0.07;
     u.cube(x, FY, s, D.block);
-    u.sphere(x, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
+    u.sphere(x + sway, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var kd = 0.6 * 2 * Math.sqrt(D.slide), sd = 0.2 * 2 * Math.sqrt(D.swing);    // the slide's and the sway's dampings from their fractions of critical (the pendulum rings for a few seconds)
+      var kb = 16, bd = 0.12 * 2 * Math.sqrt(kb);                                 // the bob: ω = 4 (a swing and a half a second), lightly damped so the kicks carry
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        var acc = D.slide * (tx - ox) - kd * ov;                                  // the block's acceleration this step
+        ov += acc * h; ox = u.clamp(ox + ov * h, u.W * 0.08, u.W * 0.92);
+        swv += (D.swing * (0 - sway) - sd * swv - acc * 0.4) * h;                 // the pendulum: thrown the other way by the block's acceleration (0.4 of it — the sphere is the light end)
+        sway = u.clamp(sway + swv * h, -u.W * 0.1, u.W * 0.1);
+        clk += h;
+        if (clk >= D.hover) { clk -= D.hover; bv += u.H * 0.08; }                 // the lift's kick
+        bv += (kb * (0 - bob) - bd * bv - Math.abs(acc) * 0.05) * h;              // the bob: a spring around rest, dipped by a jerk
+        bob = u.clamp(bob + bv * h, -u.H * 0.1, u.H * 0.1);
+      }
       u.sky(D.sky);
       var FY = u.H * 0.64;
       u.ground(FY, D.floor);
       u.ctx.save(); u.ctx.beginPath(); u.ctx.rect(0, FY, u.W, u.H - FY); u.ctx.clip();
       u.ctx.translate(Math.sin(t * 2.1) * D.ripple, FY * 2); u.ctx.scale(1, -1);   // flip about the floor line, sliding a hair sideways
       u.ctx.globalAlpha = D.refA;
-      object(ox, FY, t);
+      object(ox, FY);
       u.ctx.globalAlpha = 1;
       u.ctx.restore();
       u.ctx.fillStyle = u.lin(0, FY, 0, FY + (u.H - FY) * D.fade, [u.rgba(D.floor, 0.25), u.rgba(D.floor, 1)]);   // the mask: the reflection dies with distance from the floor
       u.ctx.fillRect(0, FY, u.W, u.H - FY);
       for (var i = 0; i < 4; i++) u.line(0, FY + 6 + i * 11 + Math.sin(t + i) * 2, u.W, FY + 6 + i * 11 + Math.sin(t + i) * 2, u.rgba(D.ball, 0.06 + 0.03 * Math.sin(t * 3 + i)), 1);   // a few ripple lines
-      object(ox, FY, t);
+      object(ox, FY);
       u.label("a reflection is the picture flipped, dimmed, and faded out — the fade says 'this floor is a surface'", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { ox = x; }
+    press: function (x, y) { tx = u.clamp(x, u.W * 0.08, u.W * 0.92); }        // click = ask the object over; the spring does the moving
   };
 });
 
@@ -7036,19 +7295,47 @@ rhymeOf("Contact", "Balloon contact", "the same ball filled with helium: the tar
 rhymeOf("Jump", "Pixel jump", "the same two hoppers in an arcade palette — a navy sky, neon grass — hopping half again as high and half again as often", function make(u) {
   // rhyme of Jump: dials moved — palette to arcade, hop 0.24 → 0.38, hops 1.1 → 1.6
   var D = { sky: ["#000020", "#20206A"], floor: "#1A6A1A", grass: "#40C040", ball: "#FFE040", ghost: "#40E0FF",
-            hop: 0.38, hops: 1.6, speed: 0.12 };
+            hop: 0.38, hops: 1.6, speed: 0.12,
+            air: 0.7, rebound: 0.25, squash: 0.3 };
+  var hgt = 0, v = 0, sq = 0, sqv = 0, stance = 0, crouched = true;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
       var GY = u.H * 0.8, r = u.W * 0.05;
       u.ctx.fillStyle = u.lin(0, GY, 0, u.H, [D.grass, D.floor]); u.ctx.fillRect(0, GY, u.W, u.H - GY);
-      var ph = (t * D.hops) % 1, hgt = Math.sin(ph * Math.PI) * D.hop * u.H;
+      var P = 1 / D.hops, flight = P * D.air, hp = D.hop * u.H;
+      var g = 8 * hp / (flight * flight), v0 = Math.sqrt(2 * g * hp);
+      var sk = 400, sw = Math.sqrt(sk), sd = 0.3 * 2 * sw;
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        if (hgt > 0 || v > 0) {
+          v -= g * h; hgt += v * h;
+          if (hgt <= 0) {
+            hgt = 0;
+            sqv -= D.squash * 1.6 * sw * Math.min(1, -v / v0);
+            v = -v * D.rebound;
+            if (v < 0.15 * v0) v = 0;
+            if (stance < 0) { stance = 0; crouched = false; }
+          }
+        }
+        if (stance >= 0) {
+          stance += h;
+          if (!crouched && stance > P - flight - 0.12) { crouched = true; sqv -= D.squash * 0.8 * sw; }
+          if (stance >= P - flight && hgt === 0 && v === 0) { stance = -1; v = v0; sqv += D.squash * 0.6 * sw; }
+        }
+        sqv += (sk * (0 - sq) - sd * sqv) * h; sq = u.clamp(sq + sqv * h, -0.6, 0.6);
+      }
       var x1 = ((t * D.speed) % 1) * (u.W + 4 * r) - 2 * r;
       var x2 = ((t * D.speed + 0.5) % 1) * (u.W + 4 * r) - 2 * r;
       var k = 1 / (1 + hgt / (r * 1.2));
-      u.shadow(x1, GY, r * (0.4 + 0.9 * k), r * (0.15 + 0.25 * k), 0.55 * k);
-      u.sphere(x1, GY - r - hgt, r, D.ball, -0.4, -0.6, { spec: 0.4 });
-      u.sphere(x2, GY - r - hgt, r, D.ghost, -0.4, -0.6, { spec: 0.4 });
+      var sx = 1 - sq * 0.6, sy = 1 + sq;
+      u.shadow(x1, GY, r * (0.4 + 0.9 * k) * sx, r * (0.15 + 0.25 * k), 0.55 * k);
+      u.ctx.save(); u.ctx.translate(x1, GY - hgt); u.ctx.scale(sx, sy);
+      u.sphere(0, -r, r, D.ball, -0.4, -0.6, { spec: 0.4 });
+      u.ctx.restore();
+      u.ctx.save(); u.ctx.translate(x2, GY - hgt); u.ctx.scale(sx, sy);
+      u.sphere(0, -r, r, D.ghost, -0.4, -0.6, { spec: 0.4 });
+      u.ctx.restore();
       u.label("which one is jumping?", u.W / 2, u.H * 0.14, u.rgba(u.INK, 0.7), "center");
       u.label("every platformer since 1985: the shadow disc under the hero is the whole sense of landing", u.W / 2, u.H - 8, null, "center");
     },
@@ -7185,10 +7472,22 @@ rhymeOf("Occlusion", "Card shuffle", "the same five things as playing cards on g
 rhymeOf("Ground", "Synthwave grid", "the same floor in hot pink on black with a cyan ball — 16 rows, half the fog, so the grid stays crisp all the way to the horizon", function make(u) {
   // rhyme of Ground: dials moved — palette to neon on black, rows 12 → 16, fogK 0.9 → 0.5
   var D = { sky: ["#0A0018", "#2A0040"], floor: "#000000", lines: "#FF2A9A", ball: "#40E0FF",
-            rows: 16, cols: 9, fogK: 0.5, speed: 0.15 };
-  var vx = u.W * 0.5;
+            rows: 16, cols: 9, fogK: 0.5, speed: 0.15,
+            damp: 0.5, steer: 40 };
+  var vx = u.W * 0.5, vxT = vx, vv = 0;
+  var q = 0.9, qv = 0, tgt = 0.18;
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var w = u.TAU * D.speed, k = w * w, dd = D.damp * 2 * w;
+      var sd = 0.9 * 2 * Math.sqrt(D.steer);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        vv += (D.steer * (vxT - vx) - sd * vv) * h; vx = u.clamp(vx + vv * h, -u.W, 2 * u.W);
+        var was = qv;
+        qv += (k * (tgt - q) - dd * qv) * h; q = u.clamp(q + qv * h, 0, 1.15);
+        var still = (was !== 0 && (was < 0) !== (qv < 0)) || (Math.abs(q - tgt) < 0.005 && Math.abs(qv) < 0.02);
+        if (still && Math.abs(q - tgt) < 0.3) tgt = tgt < 0.5 ? 0.9 : 0.18;
+      }
       u.sky(D.sky);
       var HY = u.H * 0.42, air = D.sky[1];
       u.ctx.fillStyle = u.lin(0, HY, 0, u.H, [u.mix(D.floor, air, D.fogK), D.floor]); u.ctx.fillRect(0, HY, u.W, u.H - HY);
@@ -7201,44 +7500,59 @@ rhymeOf("Ground", "Synthwave grid", "the same floor in hot pink on black with a 
         u.ctx.strokeStyle = u.lin(0, HY, 0, u.H, [u.rgba(D.lines, 0), u.rgba(D.lines, 0.55)]);
         u.ctx.lineWidth = 1; u.ctx.beginPath(); u.ctx.moveTo(vx, HY); u.ctx.lineTo(bx, u.H); u.ctx.stroke();
       }
-      var q = 0.5 + 0.5 * Math.sin(t * D.speed * u.TAU);
+      var qd = u.clamp(q, 0, 1);
       var by = HY + q * q * (u.H - HY), bx2 = u.lerp(vx, u.W * 0.62, q), r = u.W * 0.02 + q * q * u.W * 0.07;
-      u.shadow(bx2, by, r * 1.15, r * 0.35, 0.5 * (0.3 + q * 0.7));
-      u.sphere(bx2, by - r, r, u.fog(D.ball, (1 - q) * D.fogK, air), -0.4, -0.6, { spec: 0.35 });
+      u.shadow(bx2, by, r * 1.15, r * 0.35, 0.5 * (0.3 + qd * 0.7));
+      u.sphere(bx2, by - r, r, u.fog(D.ball, (1 - qd) * D.fogK, air), -0.4, -0.6, { spec: 0.35 });
       u.label("less fog, more rows: the same p² floor turns from a foggy street into a poster — the maths is the genre's", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { vx = x; }
+    press: function (x, y) { vxT = x; }
   };
 });
 
 rhymeOf("Mirror", "Ice reflection", "the same object over a frozen lake — pale blues, a brighter reflection that dies quicker, a fifth of the ripple: glassy and still", function make(u) {
   // rhyme of Mirror: dials moved — palette to ice, refA 0.55 → 0.75, fade 0.8 → 0.45, ripple 2.0 → 0.4
   var D = { sky: ["#C8DCF0", "#E8F0F8"], floor: "#A8C8E0", ball: "#5A8AC8", block: "#7AA0C8",
-            refA: 0.75, fade: 0.45, ripple: 0.4 };
-  var ox = u.W * 0.5;
-  function object(x, FY, t) {
-    var s = u.W * 0.07, bob = Math.sin(t * 1.3) * u.H * 0.02;
+            refA: 0.75, fade: 0.45, ripple: 0.4,
+            slide: 30, swing: 25, hover: 1.5 };
+  var ox = u.W * 0.5, tx = ox, ov = 0;
+  var sway = 0, swv = 0, bob = 0, bv = 0, clk = 0;
+  function object(x, FY) {
+    var s = u.W * 0.07;
     u.cube(x, FY, s, D.block);
-    u.sphere(x, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
+    u.sphere(x + sway, FY - s - s * 0.9 - bob - u.H * 0.03, s * 0.8, D.ball, -0.5, -0.6, { spec: 0.4, rim: "#8AD9F5" });
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var kd = 0.6 * 2 * Math.sqrt(D.slide), sd = 0.2 * 2 * Math.sqrt(D.swing);
+      var kb = 16, bd = 0.12 * 2 * Math.sqrt(kb);
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (var s = 0; s < sub; s++) {
+        var acc = D.slide * (tx - ox) - kd * ov;
+        ov += acc * h; ox = u.clamp(ox + ov * h, u.W * 0.08, u.W * 0.92);
+        swv += (D.swing * (0 - sway) - sd * swv - acc * 0.4) * h;
+        sway = u.clamp(sway + swv * h, -u.W * 0.1, u.W * 0.1);
+        clk += h;
+        if (clk >= D.hover) { clk -= D.hover; bv += u.H * 0.08; }
+        bv += (kb * (0 - bob) - bd * bv - Math.abs(acc) * 0.05) * h;
+        bob = u.clamp(bob + bv * h, -u.H * 0.1, u.H * 0.1);
+      }
       u.sky(D.sky);
       var FY = u.H * 0.64;
       u.ground(FY, D.floor);
       u.ctx.save(); u.ctx.beginPath(); u.ctx.rect(0, FY, u.W, u.H - FY); u.ctx.clip();
       u.ctx.translate(Math.sin(t * 2.1) * D.ripple, FY * 2); u.ctx.scale(1, -1);
       u.ctx.globalAlpha = D.refA;
-      object(ox, FY, t);
+      object(ox, FY);
       u.ctx.globalAlpha = 1;
       u.ctx.restore();
       u.ctx.fillStyle = u.lin(0, FY, 0, FY + (u.H - FY) * D.fade, [u.rgba(D.floor, 0.25), u.rgba(D.floor, 1)]);
       u.ctx.fillRect(0, FY, u.W, u.H - FY);
       for (var i = 0; i < 4; i++) u.line(0, FY + 6 + i * 11 + Math.sin(t + i) * 2, u.W, FY + 6 + i * 11 + Math.sin(t + i) * 2, u.rgba(D.ball, 0.06 + 0.03 * Math.sin(t * 3 + i)), 1);
-      object(ox, FY, t);
+      object(ox, FY);
       u.label("a sharper, brighter, shorter reflection reads as ice, not water — three dials say what the floor is made of", u.W / 2, u.H - 8, u.rgba("#1A2A4A", 0.7), "center");
     },
-    press: function (x, y) { ox = x; }
+    press: function (x, y) { tx = u.clamp(x, u.W * 0.08, u.W * 0.92); }
   };
 });
 
