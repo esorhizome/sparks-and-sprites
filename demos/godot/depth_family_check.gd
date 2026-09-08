@@ -51,7 +51,8 @@ func _state(def: Dictionary, rhyme: bool) -> Dictionary:
 	if rhyme:
 		D.merge((def.rhyme as Dictionary).dials, true)
 	var b := { "W": DepthScene.STAGE.x, "H": DepthScene.STAGE.y, "t": 0.0, "D": D, "rhyme": rhyme,
-		"rng": RandomNumberGenerator.new() }
+		"pressed": false, "armed": not def.has("warn"), "rng": RandomNumberGenerator.new() }   # the keys the real painter sets (depth.gd _fresh_state)
+	(b.rng as RandomNumberGenerator).seed = 7
 	if def.has("init"):
 		(def.init as Callable).call(b)
 	return b
