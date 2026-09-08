@@ -1367,53 +1367,95 @@ def("Bounce-in", "wave", "letters drop from above and bounce twice before settli
   };
 });
 
-def("Jelly", "wave", "hovers with a wobble — press somewhere and a ripple runs through from there", function (u) {
-  const { ctx, W, INK, BASE, layout, stage } = u;
+def("Jelly", "wave", "hovers with a wobble — press somewhere and a ripple runs through from there, and every letter it passes keeps jiggling until its spring settles", function (u) {
+  const { ctx, W, INK, BASE, PHRASE, rand, layout, stage } = u;
+  // every letter is a mass on an under-damped spring, y'' = −k·y − c·y'. the
+  // ripple is a FRONT that runs outward from the press at a fixed speed, and
+  // when it crosses a letter it does one thing only: it kicks that letter's
+  // velocity. the spring does the rest — the letter dips, overshoots, and rings
+  // down over a second or two instead of going still the instant the front has
+  // passed. the squash is read off the displacement (lifted = wider, dipped =
+  // taller), so the wobble and the jelly-shape are one number. the resting
+  // wobble is a small random poke now and then, ringing on the same spring.
+  const k = 120, zeta = 0.15;            // stiffness (1/s²) and damping as a fraction of critical (2√k)
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n), nudge = new Float32Array(n);
+  for (let i = 0; i < n; i++) nudge[i] = rand(0.2, 1.5);
   let waves = [];
   return {
     press(x) { waves.push({ x: x === undefined ? W / 2 : x, age: 0 }); },
     frame(dt, t) {
       stage();
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;     // ≤ 0.02 s steps: a coarse frame is cut up, not trusted
+      for (const w of waves) {           // the front crosses each letter once, and kicks it once
+        const was = w.age * W * 0.9, now = (w.age + dt) * W * 0.9;
+        for (const l of L) {
+          const d = Math.abs(l.cx - w.x);
+          if (d >= was && d < now) vy[l.i] -= BASE * 3.2 * Math.max(0.25, 1 - w.age * 0.8);   // weaker the further it has run
+        }
+        w.age += dt;
+      }
+      waves = waves.filter(w => w.age < 1.2);
       ctx.fillStyle = INK;
       for (const l of L) {
-        let y = Math.sin(t * 3 + l.i * 1.7) * BASE * 0.03;               // the resting wobble
-        let s = 1;
-        for (const w of waves) {           // every live ripple pushes as it passes
-          const d = Math.abs(l.cx - w.x);
-          const front = w.age * W * 0.9;
-          const k = Math.exp(-Math.pow((d - front) / (BASE * 1.2), 2)) * Math.max(0, 1 - w.age * 1.2);
-          y -= k * BASE * 0.35;
-          s += k * 0.2;
+        const i = l.i;
+        nudge[i] -= dt;
+        if (nudge[i] < 0) { vy[i] += rand(-0.25, 0.25) * BASE; nudge[i] = rand(0.6, 1.8); }   // the resting wobble: a poke, then the spring
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (-k * y[i] - c * vy[i]) * h;
+          y[i] += vy[i] * h;
         }
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
+        const sc = Math.max(0.6, Math.min(1.5, 1 - y[i] / BASE * 0.6));   // lifted = wider, dipped = taller
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.scale(s, 2 - s);               // bulge one way, squeeze the other
+        ctx.translate(l.cx, l.y + y[i]);
+        ctx.scale(sc, 2 - sc);             // bulge one way, squeeze the other
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
-      for (const w of waves) w.age += dt;
-      waves = waves.filter(w => w.age < 1.2);
     }
   };
 });
 
-def("Pendulum", "wave", "each letter hangs from its top corner and swings — never quite in step", function (u) {
-  const { ctx, INK, BASE, layout, stage } = u;
-  let push = 0;
+def("Pendulum", "wave", "each letter hangs from its top corner and swings on its own length — press to shove them all, then watch the row drift out of step", function (u) {
+  const { ctx, INK, BASE, PHRASE, rand, layout, stage } = u;
+  // a real pendulum, integrated: θ'' = −(g/L)·sin θ − c·θ'. every letter hangs
+  // from the same pivot height, but its weight sits at a different depth — 'j'
+  // hangs below the line, 't' and 'h' reach above it — so each has its own
+  // length L and its own period (∝ √L), and neighbours fall out of step on
+  // their own, honestly. gravity is in letter-heights per s², so a big card
+  // swings at the same tempo as a small one. a press is a shove (it adds
+  // angular velocity, never sets the angle), and a breath of air every few
+  // seconds keeps the row from ever going quite still.
+  const g = 8, zeta = 0.03;              // gravity (letter-heights/s²) and damping as a fraction of critical
+  const n = PHRASE.length, th = new Float32Array(n), om = new Float32Array(n), len = new Float32Array(n), nudge = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const ch = PHRASE[i];
+    const com = "bdfhklt".indexOf(ch) >= 0 ? 0.42 : "gjpqy".indexOf(ch) >= 0 ? 0.15 : 0.3;   // the weight's height above the baseline
+    len[i] = 0.75 - com;                 // the pivot sits 0.75 above the baseline
+    th[i] = ((i * 7) % 5 - 2) * 0.06;    // a small, uneven start
+    nudge[i] = rand(1, 3);
+  }
   return {
-    press() { push = 1; },
+    press() { for (let i = 0; i < n; i++) om[i] += 3.5; },        // one shove for the whole row
     frame(dt, t) {
       stage();
-      push = Math.max(0, push - dt * 0.5);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;     // ≤ 0.02 s steps keep the symplectic step honest
       const L = layout();
       ctx.fillStyle = INK;
       for (const l of L) {
-        // period drifts with index — neighbours slowly fall out of phase, like real pendulums
-        const a = Math.sin(t * (2 + l.i * 0.13)) * (0.12 + push * 0.35);
+        const i = l.i, w0 = Math.sqrt(g / len[i]), c = 2 * zeta * w0;
+        nudge[i] -= dt;
+        if (nudge[i] < 0) { om[i] += rand(-0.5, 0.5); nudge[i] = rand(1.5, 3.5); }   // the breath of air
+        for (let s = 0; s < sub; s++) {
+          om[i] += (-w0 * w0 * Math.sin(th[i]) - c * om[i]) * h;
+          th[i] += om[i] * h;
+        }
+        om[i] = Math.max(-1.7 * w0, Math.min(1.7 * w0, om[i]));       // never enough to go over the top: it hangs, it doesn't spin
         ctx.save();
         ctx.translate(l.cx, l.y - BASE * 0.75);            // the pivot, above the letter
-        ctx.rotate(a);
+        ctx.rotate(th[i]);
         ctx.fillText(l.ch, -l.w / 2, BASE * 0.75);
         ctx.restore();
       }
@@ -1421,23 +1463,49 @@ def("Pendulum", "wave", "each letter hangs from its top corner and swings — ne
   };
 });
 
-def("Buoy", "wave", "the letters float on unseen water — bobbing, tilting, drifting a little", function (u) {
-  const { ctx, INK, BASE, layout, stage } = u;
-  let chop = 0;
+def("Buoy", "wave", "the letters float on unseen water — each a buoy on its own spring, bobbing and leaning with the swell; press and a boat's wake runs through and rings down", function (u) {
+  const { ctx, W, INK, BASE, PHRASE, layout, stage } = u;
+  // buoyancy is a spring: push a float below its waterline and the water it
+  // displaces pushes back in proportion, so y'' = −k·(y − water) − c·y'. the
+  // water is a slow, low swell travelling along the phrase; the letter never
+  // sits on it exactly — it lags and overshoots, because the damping is well
+  // under critical. the tilt is its own lazier spring aimed by the vertical
+  // speed (a buoy leans back as it rises), so the lean lags the bob. a press
+  // is a boat going past: a wake front runs left to right and kicks each
+  // letter as it reaches it, and the spring rings that down over a couple of
+  // seconds.
+  const k = 40, zeta = 0.18;             // buoyancy stiffness (1/s²) and damping as a fraction of critical
+  const kt = 30, zt = 0.4;               // the tilt spring: lazier, calmer
+  const c = 2 * zeta * Math.sqrt(k), ct = 2 * zt * Math.sqrt(kt);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n), tilt = new Float32Array(n), vt = new Float32Array(n);
+  let wakes = [];
   return {
-    press() { chop = 1; },                 // a boat went past
+    press() { wakes.push({ x: -BASE }); },                // a boat went past, from the left
     frame(dt, t) {
       stage();
-      chop = Math.max(0, chop - dt * 0.4);
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (const w of wakes) {           // the wake front: one kick per letter as it arrives
+        const was = w.x, now = w.x + dt * W * 1.2;
+        for (const l of L) if (l.cx >= was && l.cx < now) vy[l.i] -= BASE * 1.8;
+        w.x = now;
+      }
+      wakes = wakes.filter(w => w.x < W + BASE);
       ctx.fillStyle = INK;
       for (const l of L) {
-        const k = 1 + chop * 2;
-        const y = (Math.sin(t * 1.3 + l.i * 0.9) * 0.5 + Math.sin(t * 2.7 + l.i * 2.3) * 0.3) * BASE * 0.12 * k;
-        const tilt = Math.sin(t * 1.1 + l.i * 1.4) * 0.09 * k;
+        const i = l.i;
+        const water = Math.sin(t * 1.3 - l.cx / W * 4) * BASE * 0.05;   // the swell: the water's own slow rise and fall, travelling
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (k * (water - y[i]) - c * vy[i]) * h;
+          y[i] += vy[i] * h;
+          const aim = Math.max(-0.4, Math.min(0.4, -vy[i] * 0.12 / BASE));   // 0.12 s of vertical speed becomes the lean
+          vt[i] += (kt * (aim - tilt[i]) - ct * vt[i]) * h;
+          tilt[i] += vt[i] * h;
+        }
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.rotate(tilt);
+        ctx.translate(l.cx, l.y + y[i]);
+        ctx.rotate(tilt[i]);
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
@@ -1445,23 +1513,41 @@ def("Buoy", "wave", "the letters float on unseen water — bobbing, tilting, dri
   };
 });
 
-def("Skip rope", "wave", "the whole line is a turning rope — the middle swings widest", function (u) {
-  const { ctx, INK, BASE, layout, stage } = u;
-  let speed = 1;
+def("Skip rope", "wave", "the whole line is a rope turned from both ends — the turn runs in from the hands and the middle swings widest; press to hurry the turners past the rope's resonance, and the middle swings against them until the turn slows", function (u) {
+  const { ctx, INK, BASE, PHRASE, layout, stage } = u;
+  // the rope is a string of masses, one per letter, each pulled toward the
+  // average of its two neighbours by the tension: y'' = k·(y₋ + y₊ − 2y) − c·y'.
+  // the turners drive only the two END masses round a small circle; the middle
+  // is never told where to be. it swings widest because the turn rate sits
+  // just under the string's first resonance, and it LAGS the hands because the
+  // turn has to travel in along the rope at √k letters per second. a press
+  // hurries the turners — the drive phase is integrated, so the hands never
+  // jump — past that resonance, where the middle swings AGAINST the hands;
+  // as the turn slows back through it the middle swells, then settles.
+  const k = 95, zeta = 0.05;             // tension (letters²/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n);   // y in letter-heights
+  let speed = 1, phase = 0;
   return {
-    press() { speed = 2.2; },
+    press() { speed = 1.6; },            // hurry the turners
     frame(dt, t) {
       stage();
-      speed = Math.max(1, speed - dt * 0.8);
+      speed = Math.max(1, speed - dt * 0.5);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        phase += 3.2 * speed * h;        // the hands' turn, integrated: quicker after a press, never a jump
+        const hand = Math.sin(phase) * 0.12;                 // the small circle the hands make
+        y[0] = hand; y[n - 1] = hand; vy[0] = 0; vy[n - 1] = 0;
+        for (let i = 1; i < n - 1; i++) vy[i] += (k * (y[i - 1] + y[i + 1] - 2 * y[i]) - c * vy[i]) * h;
+        for (let i = 1; i < n - 1; i++) y[i] = Math.max(-1, Math.min(1, y[i] + vy[i] * h));
+      }
       const L = layout();
       ctx.fillStyle = INK;
       for (const l of L) {
-        const arc = Math.sin(l.i / (l.n - 1) * Math.PI);   // pinned at both ends
-        const y = Math.sin(t * 3.2 * speed) * arc * BASE * 0.42;
-        const sx = 1 - Math.abs(Math.sin(t * 3.2 * speed)) * arc * 0.12; // foreshortening as it turns
+        const sy = 1 - Math.min(1, Math.abs(y[l.i]) / 0.42) * 0.12;   // foreshortening as it turns
         ctx.save();
-        ctx.translate(l.cx, l.y + y);
-        ctx.scale(1, Math.max(0.5, sx));
+        ctx.translate(l.cx, l.y + y[l.i] * BASE);
+        ctx.scale(1, Math.max(0.5, sy));
         ctx.fillText(l.ch, -l.w / 2, 0);
         ctx.restore();
       }
@@ -1469,30 +1555,44 @@ def("Skip rope", "wave", "the whole line is a turning rope — the middle swings
   };
 });
 
-def("Ripple press", "wave", "still water — press anywhere and rings of motion radiate through the letters", function (u) {
-  const { ctx, W, INK, DIM, BASE, MID, layout, stage, TAU } = u;
+def("Ripple press", "wave", "still water — press anywhere and a ring runs out through the letters, each one bobbing on after it has passed", function (u) {
+  const { ctx, W, INK, DIM, BASE, MID, PHRASE, layout, stage, TAU } = u;
+  // the ring is a FRONT, and a letter is a float on an under-damped spring,
+  // y'' = −k·y − c·y'. the front does exactly one thing when it reaches a
+  // letter: it kicks the letter's velocity, harder for a young ring than a
+  // spent one. the letter then bobs on its own spring — dips, rises past
+  // rest, dips again, smaller — and rings down over a second, the way a
+  // float keeps bobbing after the ripple is long gone.
+  const k = 90, zeta = 0.15;             // stiffness (1/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length, y = new Float32Array(n), vy = new Float32Array(n);
   let drops = [];
   return {
-    press(x, y) { drops.push({ x: x === undefined ? W / 2 : x, y: y === undefined ? MID : y, age: 0 }); },
+    press(x, y0) { drops.push({ x: x === undefined ? W / 2 : x, y: y0 === undefined ? MID : y0, age: 0 }); },
     frame(dt, t) {
       stage();
       const L = layout();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const d of drops) {             // the visible rings, for honesty
+        const was = d.age * W * 0.6, now = (d.age + dt) * W * 0.6;
+        for (const l of L) {               // the ring reaches a letter: one kick
+          const dist = Math.hypot(l.cx - d.x, l.y - BASE * 0.3 - d.y);
+          if (dist >= was && dist < now) vy[l.i] -= BASE * 2.8 * Math.max(0, 1 - d.age * 0.8);
+        }
         d.age += dt;
-        const r = d.age * W * 0.6;
         ctx.strokeStyle = "rgba(160,190,255," + Math.max(0, 0.4 - d.age * 0.33) + ")";
         ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(d.x, d.y, r, 0, TAU); ctx.stroke();
+        ctx.beginPath(); ctx.arc(d.x, d.y, now, 0, TAU); ctx.stroke();
       }
       ctx.fillStyle = INK;
       for (const l of L) {
-        let y = 0;
-        for (const d of drops) {
-          const dist = Math.hypot(l.cx - d.x, l.y - BASE * 0.3 - d.y);
-          const front = d.age * W * 0.6;
-          y -= Math.exp(-Math.pow((dist - front) / (BASE * 0.9), 2)) * Math.max(0, 1 - d.age * 0.8) * BASE * 0.3;
+        const i = l.i;
+        for (let s = 0; s < sub; s++) {
+          vy[i] += (-k * y[i] - c * vy[i]) * h;
+          y[i] += vy[i] * h;
         }
-        ctx.fillText(l.ch, l.x, l.y + y);
+        y[i] = Math.max(-BASE, Math.min(BASE, y[i]));
+        ctx.fillText(l.ch, l.x, l.y + y[i]);
       }
       drops = drops.filter(d => d.age < 1.4);
       if (drops.length === 0 && Math.floor(t) % 5 === 4 && (t % 1) < dt) // the pond drips on its own when ignored
@@ -1861,26 +1961,49 @@ def("Clock hands", "spin", "every letter starts at its own wrong hour and rotate
   };
 });
 
-def("Tumble dry", "spin", "letters tumble weightless in the drum — press to give them gravity and a baseline", function (u) {
+def("Tumble dry", "spin", "letters tumble weightless in the drum — press to switch gravity on: they drop, bounce on the baseline, and roll into their slots", function (u) {
   const { ctx, W, H, INK, BASE, rand, layout, stage } = u;
+  // weightless, the letters coast and bounce off the drum. gravity ON is real
+  // ballistics: vy += g·dt, a floor at the baseline with restitution (each
+  // bounce keeps `e` of the speed), and then two springs do the tidying — one
+  // pulls x toward the letter's slot, one turns the letter upright — both a
+  // little under critical, so a letter slides past its slot and rocks past
+  // upright before it settles. nothing is teleported: a press only starts the
+  // clock, and when gravity switches off again the drum gives every letter a
+  // fresh shove, so it lifts off from wherever it lies.
+  const g = 10, e = 0.4;                 // gravity (letter-heights/s²) and restitution
+  const kx = 30, zx = 0.5;               // the slot spring and its damping as a fraction of critical
+  const ka = 40, za = 0.4;               // the righting spring: turns the letter upright, and rocks past it
+  const cx = 2 * zx * Math.sqrt(kx), ca = 2 * za * Math.sqrt(ka);
   let bods = null, settle = 0;
+  function shove(b) { b.vx = rand(-30, 30); b.vy = rand(-30, 30); b.va = rand(-3, 3); }   // the drum's tumble: velocities only
   return {
-    press() { settle = 4; },               // gravity, briefly
+    press() {
+      settle = 4;                        // gravity, for four seconds
+      if (bods) for (const b of bods) b.a = Math.atan2(Math.sin(b.a), Math.cos(b.a));   // the same angle, counted the short way round
+    },
     frame(dt, t) {
       stage();
       const L = layout();
-      if (!bods) bods = L.map(l => ({
-        x: rand(W * 0.2, W * 0.8), y: rand(H * 0.2, H * 0.7),
-        vx: rand(-30, 30), vy: rand(-30, 30), a: rand(0, u.TAU), va: rand(-3, 3)
-      }));
+      if (!bods) bods = L.map(l => { const b = { x: rand(W * 0.2, W * 0.8), y: rand(H * 0.2, H * 0.7), a: rand(0, u.TAU) }; shove(b); return b; });
+      const wasOn = settle > 0;
       settle = Math.max(0, settle - dt);
+      if (wasOn && settle <= 0) for (const b of bods) shove(b);   // gravity off: the drum spins up again
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.fillStyle = INK;
       for (const l of L) {
         const b = bods[l.i];
-        if (settle > 0) {                  // ease home, straighten up
-          b.x += (l.cx - b.x) * Math.min(1, dt * 5);
-          b.y += (l.y - b.y) * Math.min(1, dt * 5);
-          b.a += (0 - b.a) * Math.min(1, dt * 5);
+        if (settle > 0) {
+          for (let s = 0; s < sub; s++) {
+            b.vy += g * BASE * h;                                  // fall
+            b.vx += (kx * (l.cx - b.x) - cx * b.vx) * h;           // slide toward the slot
+            b.va += (ka * (0 - b.a) - ca * b.va) * h;              // turn upright
+            b.x += b.vx * h; b.y += b.vy * h; b.a += b.va * h;
+            if (b.y > l.y) {                                       // the floor: bounce, and rest once the bounces are small
+              b.y = l.y; b.vy = -b.vy * e;
+              if (Math.abs(b.vy) < BASE * 0.3) b.vy = 0;
+            }
+          }
         } else {                           // drift and bounce off the drum walls
           b.x += b.vx * dt; b.y += b.vy * dt; b.a += b.va * dt;
           if (b.x < BASE || b.x > W - BASE) b.vx *= -1;
@@ -2518,8 +2641,16 @@ def("Chalk dust", "stroke", "chalk letters with a rough, restless edge — dust 
 
 /* ============================== DUST & PARTICLES ============================== */
 
-def("Star assembly", "particle", "motes stream toward the letter slots; where they gather, letters appear", function (u) {
+def("Star assembly", "particle", "motes stream toward the letter slots, overshoot, swing back and settle; where they gather, letters appear", function (u) {
   const { ctx, W, H, INK, BASE, rand, layout, stage, glow } = u;
+  // a mote is pulled to its slot by a spring, v' = k·(target − p) − c·v, with
+  // the damping under critical: it arrives fast, overshoots the slot, swings
+  // back through it and settles — the arrival has follow-through instead of
+  // the slow creep of a lerp, which is fastest at the start and slowest at
+  // the end. a mote counts as arrived only when it is close AND slow, so the
+  // letter condenses at the settle, not at the first pass.
+  const k = 20, zeta = 0.4;              // the homing spring (1/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
   let motes = [], arrived = null, age = 0;
   return {
     press() { arrived = null; age = 0; motes = []; },
@@ -2529,31 +2660,43 @@ def("Star assembly", "particle", "motes stream toward the letter slots; where th
       const L = layout();
       if (!arrived) arrived = L.map(() => 0);
       if (age > 8) { arrived = L.map(() => 0); age = 0; motes = []; }
-      if (motes.length < 40 && age < 3) {  // recruit from the edges
+      if (motes.length < 40 && age < 3) {  // recruit from the edges, at rest
         const l = L[Math.floor(rand(0, L.length))];
-        if (l.ch !== " ") motes.push({ x: rand(0, 1) < 0.5 ? rand(-10, 0) : rand(W, W + 10), y: rand(0, H), tx: l.cx, ty: l.y - BASE * 0.3, ti: l.i, life: 1 });
+        if (l.ch !== " ") motes.push({ x: rand(0, 1) < 0.5 ? rand(-10, 0) : rand(W, W + 10), y: rand(0, H), vx: 0, vy: 0, tx: l.cx, ty: l.y - BASE * 0.3, ti: l.i, life: 1 });
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.globalCompositeOperation = "lighter";
       for (const m of motes) {
-        m.x += (m.tx - m.x) * Math.min(1, dt * 2.2);
-        m.y += (m.ty - m.y) * Math.min(1, dt * 2.2);
+        for (let s = 0; s < sub; s++) {
+          m.vx += (k * (m.tx - m.x) - c * m.vx) * h;
+          m.vy += (k * (m.ty - m.y) - c * m.vy) * h;
+          m.x += m.vx * h; m.y += m.vy * h;
+        }
         glow(m.x, m.y, 2.5, "rgba(220,220,255,0.8)");
-        if (Math.abs(m.x - m.tx) < 2 && Math.abs(m.y - m.ty) < 2) { arrived[m.ti] += dt * 2; m.life = 0; }
+        if (Math.abs(m.x - m.tx) < 4 && Math.abs(m.y - m.ty) < 4 && Math.hypot(m.vx, m.vy) < 40) { arrived[m.ti] += dt * 2; m.life = 0; }   // close AND slow: settled
       }
       motes = motes.filter(m => m.life > 0);
       ctx.globalCompositeOperation = "source-over";
       for (const l of L) {                 // letters condense out of gathered light
-        const k = Math.min(1, arrived[l.i]);
-        if (k <= 0) continue;
-        ctx.fillStyle = "rgba(232,229,244," + k + ")";
+        const k2 = Math.min(1, arrived[l.i]);
+        if (k2 <= 0) continue;
+        ctx.fillStyle = "rgba(232,229,244," + k2 + ")";
         ctx.fillText(l.ch, l.x, l.y);
       }
     }
   };
 });
 
-def("Dust burst", "particle", "press and the letters explode into dust — which drifts back and reforms them", function (u) {
+def("Dust burst", "particle", "press and the letters explode into dust — which is hauled back, overshoots, and shudders into the letters again", function (u) {
   const { ctx, INK, BASE, rand, layout, stage } = u;
+  // the burst is ballistics: velocity, gravity, air drag. the return is a
+  // spring, not a lerp — each grain keeps whatever momentum it still has and
+  // is pulled at its home by v' = k·(home − p) − c·v, under-damped, so it
+  // overshoots, swings back and shudders into place over a second or so. the
+  // phrase only fades up once that shudder has died, because until then the
+  // grains ARE the letters.
+  const k = 60, zeta = 0.25;             // the homing spring (1/s²) and damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
   let dust = [], gone = 0;
   return {
     press() {
@@ -2571,25 +2714,29 @@ def("Dust burst", "particle", "press and the letters explode into dust — which
       stage();
       const L = layout();
       if (gone > 0) {
-        gone = Math.min(2.4, gone + dt);
+        gone = Math.min(3.2, gone + dt);
         const homing = gone > 1.2;         // first they scatter; then they remember
+        const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
         ctx.fillStyle = "rgba(220,215,240,0.8)";
         for (const d of dust) {
-          if (homing) {
-            d.x += (d.hx - d.x) * Math.min(1, dt * 3);
-            d.y += (d.hy - d.y) * Math.min(1, dt * 3);
+          if (homing) {                    // the spring: momentum kept, hauled home, overshoot and all
+            for (let s = 0; s < sub; s++) {
+              d.vx += (k * (d.hx - d.x) - c * d.vx) * h;
+              d.vy += (k * (d.hy - d.y) - c * d.vy) * h;
+              d.x += d.vx * h; d.y += d.vy * h;
+            }
           } else {
             d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 60 * dt;
             d.vx *= Math.pow(0.4, dt); d.vy *= Math.pow(0.4, dt);
           }
           ctx.fillRect(d.x, d.y, 1.8, 1.8);
         }
-        const k = Math.max(0, (gone - 1.9) * 2);           // the reformed phrase fades up
-        if (k > 0) {
-          ctx.fillStyle = "rgba(232,229,244," + Math.min(1, k) + ")";
+        const up = Math.max(0, (gone - 2.6) * 2);          // the reformed phrase fades up once the shudder has died
+        if (up > 0) {
+          ctx.fillStyle = "rgba(232,229,244," + Math.min(1, up) + ")";
           for (const l of L) ctx.fillText(l.ch, l.x, l.y);
         }
-        if (gone >= 2.4) { gone = 0; dust = []; }
+        if (gone >= 3.2) { gone = 0; dust = []; }
       } else {
         ctx.fillStyle = INK;
         for (const l of L) ctx.fillText(l.ch, l.x, l.y);
@@ -2630,26 +2777,53 @@ def("Sparkle crown", "particle", "little four-point twinkles pop over the letter
   };
 });
 
-def("Electron letters", "particle", "two motes orbit every letter like electrons — press and they all break orbit", function (u) {
-  const { ctx, INK, BASE, rand, layout, stage, glow, TAU } = u;
+def("Electron letters", "particle", "two motes orbit every letter like electrons — press and they are flung outward, swing wide and slow, and get pulled back into orbit", function (u) {
+  const { ctx, INK, BASE, PHRASE, layout, stage, glow, TAU } = u;
+  // an orbit is nothing but velocity plus a central pull. each mote has a
+  // position and a velocity, and every step the letter tugs it toward the
+  // ring radius r0 with a spring in r, F = −k·(r − r0), that damps only the
+  // RADIAL motion — the sideways speed is left alone, so the mote keeps
+  // circling for ever. a press is a radial shove: the mote flies out, slows
+  // (angular momentum is conserved, so wider means slower), and the spring
+  // hauls it back in, the excess ringing down over a couple of seconds. the
+  // orbit is drawn squashed in y for the tilted look, exactly as before.
+  const k = 80, zeta = 0.15;             // the ring spring (1/s²) and radial damping as a fraction of critical
+  const c = 2 * zeta * Math.sqrt(k);
+  const n = PHRASE.length, r0 = BASE * 0.55;
+  const px = new Float32Array(n * 2), py = new Float32Array(n * 2), vx = new Float32Array(n * 2), vy = new Float32Array(n * 2);
+  for (let i = 0; i < n; i++) for (let e = 0; e < 2; e++) {
+    const j = i * 2 + e, a = i * 1.3 + e * Math.PI, w = 2.2 + e * 0.9, r = (r0 + e * 3) * (1 + w * w / k);   // r sits where the spring's pull equals v²/r
+    px[j] = Math.cos(a) * r; py[j] = Math.sin(a) * r;
+    vx[j] = -Math.sin(a) * r * w; vy[j] = Math.cos(a) * r * w;    // sideways speed for a circle at this rate
+  }
   let flung = 0;
   return {
-    press() { flung = 1; },
+    press() {                            // the shove: straight outward, velocity only
+      flung = 1;
+      for (let j = 0; j < n * 2; j++) { const r = Math.hypot(px[j], py[j]) || 1; vx[j] += px[j] / r * r0 * 12; vy[j] += py[j] / r * r0 * 12; }
+    },
     frame(dt, t) {
       stage();
       flung = Math.max(0, flung - dt * 0.7);
       const L = layout();
       ctx.fillStyle = INK;
       for (const l of L) ctx.fillText(l.ch, l.x, l.y);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       ctx.globalCompositeOperation = "lighter";
       for (const l of L) {
         if (l.ch === " ") continue;
         for (let e = 0; e < 2; e++) {
-          const a = t * (2.2 + e * 0.9) + l.i * 1.3 + e * Math.PI;
-          const r = (BASE * 0.55 + e * 3) * (1 + flung * 2.5);           // orbits balloon when flung
-          const x = l.cx + Math.cos(a) * r;
-          const y = l.y - BASE * 0.3 + Math.sin(a) * r * 0.55;
-          glow(x, y, 2.5, "rgba(160,220,255," + (0.8 - flung * 0.3) + ")");
+          const j = l.i * 2 + e, ring = r0 + e * 3;
+          for (let s = 0; s < sub; s++) {
+            const r = Math.hypot(px[j], py[j]) || 1, ux = px[j] / r, uy = py[j] / r;
+            const vr = vx[j] * ux + vy[j] * uy;                   // the radial part of the velocity: the only part damped
+            const f = -k * (r - ring) - c * vr;
+            vx[j] += f * ux * h; vy[j] += f * uy * h;
+            px[j] += vx[j] * h; py[j] += vy[j] * h;
+          }
+          const r = Math.hypot(px[j], py[j]);
+          if (r > ring * 8) { px[j] *= ring * 8 / r; py[j] *= ring * 8 / r; }   // a leash, in case of a run of presses
+          glow(l.cx + px[j], l.y - BASE * 0.3 + py[j] * 0.55, 2.5, "rgba(160,220,255," + (0.8 - flung * 0.3) + ")");
         }
       }
       ctx.globalCompositeOperation = "source-over";
@@ -2657,22 +2831,45 @@ def("Electron letters", "particle", "two motes orbit every letter like electrons
   };
 });
 
-def("Snow fill", "particle", "snow settles on the letters, whitening them from the top down", function (u) {
-  const { ctx, W, DIM, BASE, rand, layout, stage } = u;
-  let flakes = [], depth = 0;
+def("Snow fill", "particle", "snow settles on the letters, whitening them from the top down — gusts sweep across, and the flakes lean into them one after another", function (u) {
+  const { ctx, W, H, DIM, BASE, rand, layout, stage } = u;
+  // a flake is a tiny mass with a lot of drag: gravity pulls it down and the
+  // air drags it toward the air's own speed — vy' = g − drag·vy and
+  // vx' = drag·(wind − vx) — so it never exceeds its terminal speed g/drag,
+  // and it takes about 1/drag seconds to believe a change in the wind. the
+  // wind is a gust: a bump of sideways air that sweeps across the card, so
+  // a flake near the front leans first and one further along leans later —
+  // the gust is SEEN travelling, because the lag is per flake and the gust
+  // is per place.
+  const g = 60;                          // gravity, px/s² — each flake's drag sets its terminal speed
+  let flakes = [], depth = 0, gust = null, calm = rand(2, 5);
+  function blow() {                      // a gust starts upwind and travels downwind
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    gust = { x: dir > 0 ? -W * 0.3 : W * 1.3, dir: dir, k: rand(25, 55) * dir };
+  }
+  function wind(x) {                     // the air's sideways speed at x: a bump riding the gust front
+    if (!gust) return 0;
+    const d = (x - gust.x) / (W * 0.25);
+    return gust.k * Math.exp(-d * d);
+  }
   return {
-    press() { depth = 0; },                // brush the snow off
+    press() { depth = 0; blow(); },      // brush the snow off — and the sweep of the brush is a gust
     frame(dt, t) {
       stage();
       depth = Math.min(1, depth + dt * 0.06);              // the slow accumulation
+      calm -= dt;
+      if (!gust && calm < 0) blow();
+      if (gust) { gust.x += gust.dir * W * 0.35 * dt; if (gust.x < -W * 0.4 || gust.x > W * 1.4) { gust = null; calm = rand(2, 5); } }
       if (flakes.length < 30 && Math.random() < 0.5)
-        flakes.push({ x: rand(0, W), y: -4, v: rand(14, 30), drift: rand(0.5, 2) });
+        flakes.push({ x: rand(0, W), y: -4, vx: 0, vy: 0, drag: rand(2, 4.5) });   // drag 2–4.5 → terminal speeds 30–13 px/s
       ctx.fillStyle = "rgba(240,245,255,0.8)";
       for (const f of flakes) {
-        f.y += f.v * dt; f.x += Math.sin(f.y * 0.08) * f.drift * dt * 10;
+        f.vy += (g - f.drag * f.vy) * dt;                  // toward terminal speed
+        f.vx += f.drag * (wind(f.x) - f.vx) * dt;          // toward the local air, 1/drag seconds behind it
+        f.x += f.vx * dt; f.y += f.vy * dt;
         ctx.fillRect(f.x, f.y, 1.8, 1.8);
       }
-      flakes = flakes.filter(f => f.y < u.H + 4);
+      flakes = flakes.filter(f => f.y < H + 4 && f.x > -8 && f.x < W + 8);
       const L = layout(BASE, 0, 600);
       for (const l of L) {                 // dim letters, snowier from the top
         ctx.fillStyle = DIM;

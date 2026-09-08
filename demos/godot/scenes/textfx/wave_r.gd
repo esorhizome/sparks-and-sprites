@@ -20,8 +20,11 @@ static func init(b: Dictionary) -> void:
 	match b.id:
 		"jelly":
 			b.calm = 0.0
+		"pendulum":
+			b.push_v = 0.0                 # the metronome's push is a strength that fades, not a shove
 		"buoy":
 			b.spray = []
+			b.chop = 0.0                   # the storm's chop: a strength that fades
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -29,6 +32,10 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			# dial: a press wakes the jelly — the calm resets with the ripple
 			b.waves.append({ "x": pos.x, "age": 0.0 })
 			b.calm = 0.0
+		"pendulum":
+			b.push_v = 1.0                 # dial: the push widens the beat instead of shoving the row
+		"buoy":
+			b.chop = 1.0                   # dial: a boat went past — the whole sea roughens at once
 		"ripple_press":
 			# dial: one drop → three, spaced and delayed like a skipping stone
 			var r: Rect2 = b.rect
@@ -51,6 +58,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			for w in b.waves:
 				w.age += dt
 			b.waves = b.waves.filter(func(w): return w.age < 1.2)
+		"pendulum":
+			b.push_v = maxf(0.0, b.push_v - dt * 0.5)
 		"buoy":
 			# dial: spray flecks spawn where a crest breaks, then fall under gravity
 			b.chop = maxf(0.0, b.chop - dt * 0.4)

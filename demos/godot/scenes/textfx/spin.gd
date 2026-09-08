@@ -11,7 +11,7 @@ const DEFS := [
 	{ "id": "cartwheel", "name": "Cartwheel", "hint": "letters roll in from the left like wheels, spinning as they travel" },
 	{ "id": "revolving_door", "name": "Revolving door", "hint": "letters orbit in along an arc, swinging around into their slots" },
 	{ "id": "clock_hands", "name": "Clock hands", "hint": "every letter starts at its own wrong hour and rotates upright" },
-	{ "id": "tumble_dry", "name": "Tumble dry", "hint": "letters tumble weightless in the drum — press to give them gravity and a baseline" },
+	{ "id": "tumble_dry", "name": "Tumble dry", "hint": "letters tumble weightless in the drum — press to switch gravity on: they drop, bounce on the baseline, and roll into their slots" },
 	{ "id": "orbit_assembly", "name": "Orbit assembly", "hint": "the letters circle the centre in a ring, then spiral into their slots" },
 ]
 
@@ -36,7 +36,9 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 			b.clock = 0.0
 			b.angles = scatter()            # new wrong hours
 		"tumble_dry":
-			b.settle = 4.0                  # gravity, briefly
+			b.settle = 4.0                  # gravity, for four seconds
+			for bd in b.bods:               # the same angle, counted the short way round
+				bd.a = atan2(sin(bd.a), cos(bd.a))
 		_:
 			b.clock = 0.0
 
@@ -78,15 +80,46 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.clock = 0.0
 				b.angles = scatter()        # the JS nulled and re-made these next frame
 		"tumble_dry":
+			# weightless, the letters coast and bounce off the drum. gravity ON is
+			# real ballistics: vy += g·dt, a floor at the baseline with restitution
+			# (each bounce keeps `e` of the speed), and then two springs do the
+			# tidying — one pulls x toward the letter's slot, one turns the letter
+			# upright — both a little under critical, so a letter slides past its
+			# slot and rocks past upright before it settles. nothing is teleported:
+			# a press only starts the clock, and when gravity switches off again
+			# the drum gives every letter a fresh shove, so it lifts off from
+			# wherever it lies.
 			var r: Rect2 = b.rect
+			var s: float = b.base_size
+			var was_on: bool = b.settle > 0.0
 			b.settle = maxf(0.0, b.settle - dt)
+			if was_on and b.settle <= 0.0:  # gravity off: the drum spins up again
+				for bd in b.bods:
+					shove(bd)
+			var g := 10.0                   # gravity (letter-heights/s²) and restitution
+			var e := 0.4
+			var kx := 30.0                  # the slot spring and its damping as a fraction of critical
+			var cx := 2.0 * 0.5 * sqrt(kx)
+			var ka := 40.0                  # the righting spring: turns the letter upright, and rocks past it
+			var ca := 2.0 * 0.4 * sqrt(ka)
+			var sub := maxi(1, ceili(dt * 50.0))   # ≤ 0.02 s steps: a coarse frame is cut up, not trusted
+			var h := dt / float(sub)
 			var L := TextKit.layout(b)
 			for l in L:
 				var bd: Dictionary = b.bods[l.i]
-				if b.settle > 0.0:          # ease home, straighten up
-					bd.x += (l.cx - bd.x) * minf(1.0, dt * 5.0)
-					bd.y += (l.y - bd.y) * minf(1.0, dt * 5.0)
-					bd.a += (0.0 - bd.a) * minf(1.0, dt * 5.0)
+				if b.settle > 0.0:
+					for _s in sub:
+						bd.vy += g * s * h                                  # fall
+						bd.vx += (kx * (l.cx - bd.x) - cx * bd.vx) * h      # slide toward the slot
+						bd.va += (ka * (0.0 - bd.a) - ca * bd.va) * h       # turn upright
+						bd.x += bd.vx * h
+						bd.y += bd.vy * h
+						bd.a += bd.va * h
+						if bd.y > l.y:      # the floor: bounce, and rest once the bounces are small
+							bd.y = l.y
+							bd.vy = -bd.vy * e
+							if absf(bd.vy) < s * 0.3:
+								bd.vy = 0.0
 				else:                       # drift and bounce off the drum walls
 					bd.x += bd.vx * dt
 					bd.y += bd.vy * dt
@@ -213,8 +246,15 @@ static func drum(b: Dictionary) -> Array:
 	var r: Rect2 = b.rect
 	var out: Array = []
 	for _i in TextKit.PHRASE.length():
-		out.append({ "x": r.position.x + randf_range(r.size.x * 0.2, r.size.x * 0.8),
+		var bd := { "x": r.position.x + randf_range(r.size.x * 0.2, r.size.x * 0.8),
 			"y": r.position.y + randf_range(r.size.y * 0.2, r.size.y * 0.7),
-			"vx": randf_range(-30.0, 30.0), "vy": randf_range(-30.0, 30.0),
-			"a": randf_range(0.0, TAU), "va": randf_range(-3.0, 3.0) })
+			"a": randf_range(0.0, TAU) }
+		shove(bd)
+		out.append(bd)
 	return out
+
+## The drum's tumble: velocities only — a letter lifts off from where it lies.
+static func shove(bd: Dictionary) -> void:
+	bd.vx = randf_range(-30.0, 30.0)
+	bd.vy = randf_range(-30.0, 30.0)
+	bd.va = randf_range(-3.0, 3.0)
