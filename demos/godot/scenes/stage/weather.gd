@@ -42,16 +42,20 @@ const DEFS := [
 		"rhyme": { "name": "Junkraft", "hint": "eight small floats on a choppy surface — every bob drives the springs, so the raft of junk makes its own weather",
 			"dials": { "count": 8, "size": 0.5, "chop": 2 } } },
 	{ "id": "waterline", "letter": "W", "name": "Waterline",
-		"hint": "where water meets shore: a foam line that advances and retreats on a slow sine, and a wet band behind it that dries as it is left (atlas Tide) — press to push a big wave",
+		"hint": "where water meets shore: the run-up is a body on a spring toward a slow tidal rest, so a pressed wave overshoots up the slope and the backwash undershoots, a foam line that chases the edge on its own lag, and a wet band behind it that dries as it is left (atlas Tide) — press to throw a big wave",
 		"dials": { "shore": 0.62,        # the slope runs from the left edge up to this fraction of W
-			"tide": 0.55,                # radians per second of the in-out sine
-			"reach": 0.3,                # how far the sine carries the edge, of the slope
-			"surge": 0.3,                # what a press adds to the reach
+			"tide": 0.55,                # radians per second of the slow in-out sine the REST level follows
+			"reach": 0.3,                # how far the tide carries the rest level, of the slope
+			"wk": 6,                     # the run-up's stiffness toward the tidal rest: √wk rad/s, a wave every ~2.6 s
+			"wdamp": 0.35,               # its damping as a fraction of critical — under 1, so a wave overshoots up the slope and the backwash undershoots
+			"surge": 1.2,                # the velocity a press adds to the run-up, slopes per second (about 0.3 of the slope at the crest)
+			"foamk": 12,                 # the foam line's own spring toward the water's edge
+			"foamdamp": 0.5,             # its damping, of critical — the froth lags the water going up and is left behind coming down
 			"dry": 6,                    # seconds for wet sand to fade back
 			"cols": 48,                  # wet-memory columns along the slope
 			"sea": "#2E7FB8", "sand": "#D8C08A", "wet": "#6A4A28",
-			"label": "edge = slope⁻¹(level(t)) · wet α = 1 − age ÷ dry" },
-		"rhyme": { "name": "Wintersurf", "hint": "a slow grey sea that takes a long time to dry — the same slope and sine, at a colder pace",
+			"label": "r'' = wk·(tide(t) − r) − wdamp·2√wk·r' · press: r' += surge · foam'' = foamk·(r − foam) − foamdamp·2√foamk·foam' · wet α = 1 − age ÷ dry" },
+		"rhyme": { "name": "Wintersurf", "hint": "a slow grey sea that takes a long time to dry — the same slope and spring, the tide at a colder pace",
 			"dials": { "tide": 0.25, "dry": 14, "sea": "#5A6E80" } } },
 	{ "id": "puddle", "letter": "P", "name": "Puddle",
 		"hint": "flat ellipses that reflect: the flipped sprite (Wetfloor's trick, the atlas's Mirror) clipped to each puddle, sky in the rest, rain rings on top — press to toggle the rain",
@@ -93,18 +97,21 @@ const DEFS := [
 		"rhyme": { "name": "Yellowsand", "hint": "dune sand: the same height field, but the wind pays back a little depth every second, so old trails heal and only the walked one stays",
 			"dials": { "surface": "sand", "refill": 0.12, "fade": 10 } } },
 	{ "id": "quiver", "letter": "Q", "name": "Quiver",
-		"hint": "reeds: every blade is a spring on an angle, leaning on wind noise and parting from whoever walks through, with a rustle meter (Grass) — press to walk through at x",
+		"hint": "reeds: every blade is a chain of angles on springs (Grass) — the root leans on wind noise and parts from whoever walks through, the joints above chase it under-damped so the tips lag and whip through after the body has passed, with a rustle meter that hears every joint — press to walk through at x",
 		"dials": { "blades": 60,         # reeds across the stage
 			"height": 1,                 # blade height, × (of 0.28 H)
-			"k": 40,                     # angle spring stiffness
-			"c": 3.5,                    # angle damping
+			"k": 40,                     # the root spring's stiffness
+			"c": 3.5,                    # the root's damping (2√k would be critical)
+			"joints": 3,                 # segments per reed: the root + the joints that follow it (1 = the old rigid needle)
+			"tip": 1.4,                  # each joint's k as a multiple of the one below: above 1 because the segment above is lighter — the same bend rights it faster
+			"tipdamp": 0.4,              # a joint's damping, as a fraction of ITS OWN critical — well under 1, so the tip overshoots the root and whips through
 			"wind": 0.18,                # radians the wind leans them by
 			"windSpeed": 0.7,            # how fast the noise scrolls
 			"part": 0.9,                 # radians the hero pushes a blade aside
 			"reach": 0.09,               # the hero's push radius, of W
 			"walk": 0.16,                # hero speed, of W per second
-			"label": "θ'' = k·(target − θ) − c·θ' · target = wind·noise + part·(away from hero)" },
-		"rhyme": { "name": "Quillfield", "hint": "tall stiff reeds under a slow wind — a high spring constant snaps them back, so the parting is a clean V that closes behind",
+			"label": "root: θ'' = k·(target − θ) − c·θ' · joint j: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − tipdamp·2√kⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · target = wind·noise + part·(away)" },
+		"rhyme": { "name": "Quillfield", "hint": "tall stiff reeds under a slow wind — a high spring constant snaps them back, so the parting is a clean V that closes behind, the tips a beat late",
 			"dials": { "height": 1.7, "k": 110, "windSpeed": 0.25 } } },
 	{ "id": "updraft", "letter": "U", "name": "Updraft",
 		"hint": "wind zones: regions that carry leaves, dust and the hero, each gust an attack / sustain / release envelope drawn as a graph (lexicon Vectorfield, Conveyor) — press to gust now",
@@ -119,12 +126,14 @@ const DEFS := [
 		"rhyme": { "name": "Upwell", "hint": "one tall column blowing straight up — leaves rise, hang while the envelope holds, and rain back down on the release",
 			"dials": { "zones": [{ "x": 0.36, "y": 0.02, "w": 0.28, "h": 0.78, "dx": 0, "dy": -1 }], "force": 3, "sustain": 2 } } },
 	{ "id": "year", "letter": "Y", "name": "Year",
-		"hint": "seasons on one clock: buds, green, a turn to red and a fall, snow that settles and melts — every leaf reads the same phase (atlas Nightfall) — press to advance the season",
+		"hint": "seasons on one clock: buds, green, a turn to red and a fall that flutters and settles by formula, snow that settles and melts — every leaf reads the same phase and nothing is stored (atlas Nightfall) — press to advance the season",
 		"dials": { "year": 20,           # seconds per year
 			"leaves": 56,                # leaves in the canopy
 			"snow": 1,                   # snowfall density, ×
 			"fallDur": 0.08,             # of the year a leaf spends falling
-			"label": "p = (t ÷ year) mod 1 → colour(p), fallen(p), snow(p): one clock, every state" },
+			"swings": 2,                 # full flutters a leaf makes on the way down (ω = 2π·swings per fall)
+			"settle": 3,                 # the flutter's decay, e^(−settle·q): at 3 a leaf lands with 5% of its sway left
+			"label": "p = (t ÷ year) mod 1 → colour(p), fall(p): y ∝ q², x = e^(−λq)·sin(ωq + φ), snow(p): one clock, no memory" },
 		"rhyme": { "name": "Yearfast", "hint": "a six-second year, thick snow — the same clock spun fast enough to watch the whole cycle in one breath",
 			"dials": { "year": 6, "snow": 2.5, "fallDur": 0.12 } } },
 	{ "id": "unfurl", "letter": "U", "name": "Unfurl",
@@ -168,14 +177,16 @@ const DEFS := [
 		"rhyme": { "name": "Lavatube", "hint": "a deep trench across the field: fast flow, quick crust — the lava runs down the channel and roofs itself over into a tube",
 			"dials": { "channel": 1, "flow": 0.8, "crust": 1.2 } } },
 	{ "id": "cloudshadow", "letter": "C", "name": "Cloudshadow",
-		"hint": "cloud shadows: a scrolling noise mask multiplied over the ground, with clouds drawn overhead from the same field (ch04 noise) — press to send the wind toward your click",
+		"hint": "cloud shadows: a scrolling noise mask multiplied over the ground, with clouds drawn overhead from the same field (ch04 noise) — press to aim the wind at your click: the wind vector swings round on a spring, so the shadows sweep rather than cut",
 		"dials": { "scale": 0.9,         # noise feature size, of W
 			"speed": 0.06,               # scroll speed, of W per second
 			"threshold": 0.15,           # noise above this is cloud
 			"soft": 0.35,                # the width of the mask's edge (0 = hard)
 			"dark": 0.45,                # shadow strength
+			"windk": 4,                  # the wind vector's spring toward the aimed heading: √windk = 2 rad/s
+			"winddamp": 0.45,            # its damping, of critical — under 1, so a turn swings past the new heading and settles over a few seconds
 			"cols": 36, "rows": 7,       # the ground mask grid
-			"label": "shadow α = smoothstep(thr, thr+soft, noise2(x+wind·t, y)) · dark" },
+			"label": "shadow α = smoothstep(thr, thr+soft, noise2(x + ∫wind, y)) · dark · wind'' = windk·(aim − wind) − winddamp·2√windk·wind'" },
 		"rhyme": { "name": "Cumulus", "hint": "big slow clouds with hard-edged shadows — the same field at twice the scale, thresholded with no soft edge",
 			"dials": { "scale": 2.2, "speed": 0.035, "soft": 0 } } },
 ]
@@ -326,27 +337,32 @@ static func _piv(b: Dictionary) -> Vector2:
 ## curves that cross when the reed bends hard (a self-intersecting polygon
 ## the triangulator rejects), so here it is ONE centre curve widened by a
 ## taper — 2 px at the root, a hair at the tip — as a strip.
-static func _blade(n: CanvasItem, bx: float, GY: float, th: float, hgt: float, col: Color) -> void:
-	var s := sin(th)
-	var c := cos(th)
-	var root := Vector2(bx, GY)
-	var tip := Vector2(bx + s * hgt, GY - c * hgt)
-	var ctrl := Vector2(bx + s * hgt * 0.35, GY - hgt * 0.55)
-	var left := PackedVector2Array()
-	var right := PackedVector2Array()
-	for i in 7:
-		var k := i / 6.0
-		var p := root.bezier_interpolate(ctrl, ctrl, tip, k)
-		var d := root.bezier_derivative(ctrl, ctrl, tip, maxf(k, 0.01))
-		if d.length_squared() < 1e-6:
-			d = Vector2(0.0, -1.0)
-		var nrm := Vector2(-d.y, d.x).normalized() * (2.0 * (1.0 - k) + 0.2)
-		left.append(p + nrm)
-		right.append(p - nrm)
-	var pts := PackedVector2Array(left)
-	for i in range(right.size() - 1, -1, -1):
-		pts.append(right[i])
-	n.draw_colored_polygon(pts, col)
+static func _blade(n: CanvasItem, bl: Dictionary, tj: PackedFloat32Array, i: int, J: int, GY: float, hgt: float) -> void:
+	# Quiver's reed: a tapered shape walked up the chain, root to tip — the root
+	# angle from the blade, the joints above it from the packed array. one
+	# outline round the whole chain crosses itself when a joint whips hard and
+	# the triangulator refuses it, so each segment is its own convex quad (a
+	# trapezoid narrowing up the reed) and the last one a triangle to the tip.
+	# the tip's lean picks the shade.
+	var bx: float = bl.x
+	var seg := hgt / float(J)
+	var hw := 2.0
+	var p := Vector2(bx, GY)
+	var tip_s := 0.0
+	if J > 0:
+		tip_s = sin(float(bl.th) if J == 1 else tj[i * (J - 1) + J - 2])
+	var col := Kit.shade(Kit.GOOD, -0.45 + float(bl.hue) * 0.3 + tip_s * 0.2)
+	for j in J:
+		var a: float = float(bl.th) if j == 0 else tj[i * (J - 1) + j - 1]
+		var q := p + Vector2(sin(a), -cos(a)) * seg
+		var off := Vector2(cos(a), sin(a))
+		var w0 := hw * (1.0 - float(j) / float(J))
+		if j == J - 1:
+			n.draw_colored_polygon(PackedVector2Array([p - off * w0, q, p + off * w0]), col)
+		else:
+			var w1 := hw * (1.0 - float(j + 1) / float(J))
+			n.draw_colored_polygon(PackedVector2Array([p - off * w0, q - off * w1, q + off * w1, p + off * w0]), col)
+		p = q
 
 ## Updraft's envelope: attack / sustain / release of a gust aged `age`.
 static func _env(D: Dictionary, age: float) -> float:
@@ -572,21 +588,27 @@ static func init(b: Dictionary) -> void:
 				_add_float(b, "barrel" if c % 2 == 1 else "crate", W * (0.2 + 0.6 * (c + 0.5) / count), H * 0.2)
 			_add_float(b, "hero", W * 0.5, H * 0.3)
 		"waterline":
-			# seen from the side: a beach is a SLOPE and the sea is a flat LEVEL that
-			# rises and falls on a slow sine. the WATERLINE is simply where the level
-			# meets the slope, so it runs up the beach and back. two things make it
-			# read as surf rather than a moving rectangle: FOAM, a bright line at the
-			# edge that is thickest while the water advances, and the WET BAND — every
-			# column of sand remembers when it was last covered and darkens by that age,
-			# drying over D.dry seconds. Tide's trick, turned on its side.
+			# seen from the side: a beach is a SLOPE and the sea is a flat LEVEL. the
+			# WATERLINE is simply where the level meets the slope, so it runs up the
+			# beach and back. the level is not a clock: the run-up r is a BODY on a
+			# spring (the lexicon's Damp) whose rest is the slow tide, so it carries
+			# momentum — a press does not lift the water, it throws it: a velocity
+			# kick that the spring turns into a wave that overshoots up the slope, a
+			# backwash that undershoots below the rest, and a ring-down of a few
+			# seconds. the FOAM is a second body chasing the first on its own slacker
+			# spring, so it trails the edge on the way up and is left on the sand on
+			# the way down. the WET BAND — every column of sand remembers when it was
+			# last covered and darkens by that age, drying over D.dry seconds — is
+			# Tide's trick, turned on its side.
 			b.lastT = []
 			for _c in int(D.cols):
 				b.lastT.append(-99.0)
-			b.surgeAt = -99.0
-			b.surge_pending = false
-			b.prevR = 0.5
+			b.r = 0.5                                    # the run-up, of the slope, and its velocity
+			b.v = 0.0
+			b.fr = 0.5                                   # the foam line, chasing r on its own spring
+			b.fv = 0.0
+			b.rest = 0.5
 			b.foam = 0.0
-			b.r = 0.5
 			b.level = GY
 			b.edge = W * float(D.shore) * 0.5
 		"puddle":
@@ -642,18 +664,30 @@ static func init(b: Dictionary) -> void:
 			b.target = null
 			b.face = 1
 		"quiver":
-			# Grass bent blades away from the body with a damped spring on an angle;
-			# reeds add the WIND: the spring's target is noise(t·speed + x) scaled by
-			# D.wind, so neighbours lean together in slow waves, plus a push AWAY
-			# from the hero that fades with distance. the RUSTLE is the sum of every
-			# blade's angular speed — a meter you can watch, and after the first press
-			# a short filtered noise burst whenever it spikes (rate-limited).
+			# Grass bends every blade as a CHAIN of angles: the root is a damped spring
+			# toward a target, and each joint above is the same spring again, chasing
+			# the segment below on a quicker, much less damped spring, so the tip lags
+			# on the way out and whips through on the way back. reeds add the WIND:
+			# the root's target is noise(t·speed + x) scaled by D.wind, so neighbours
+			# lean together in slow waves, plus a push AWAY from the hero that fades
+			# with distance — and the joints pass all of it up to the tips a beat late.
+			# the RUSTLE is the mean angular speed over every segment of every reed —
+			# a meter you can watch, and after the first press a short filtered noise
+			# burst whenever it spikes (rate-limited).
 			var R := Kit.rng(11)
 			var nb: int = D.blades
 			b.blades = []
 			for i in nb:
 				b.blades.append({ "x": (i + 0.5) / nb * W + (R.randf() - 0.5) * 6.0, "h": 0.7 + R.randf() * 0.6,
 					"th": 0.0, "w": 0.0, "hue": R.randf() })
+			var J := maxi(1, int(D.joints))               # segments per reed; joints above the root: J − 1
+			var tj := PackedFloat32Array()                # joint angles, reed-major: tj[i * (J − 1) + j] — sized here: a packed array read back from b is a copy
+			var oj := PackedFloat32Array()                # and their angular velocities
+			tj.resize(nb * (J - 1))
+			oj.resize(nb * (J - 1))
+			b.J = J
+			b.tj = tj
+			b.oj = oj
 			b.hx = W * 0.2
 			b.dir = 1
 			b.goal = -1.0                                # < 0: no goal, patrol
@@ -687,9 +721,14 @@ static func init(b: Dictionary) -> void:
 			# with more states. the phase p runs 0..1 and every leaf is a pure
 			# function of it: size grows in spring, colour turns from green toward
 			# red as autumn passes the leaf's own turn time, then from its fallAt it
-			# slides to the ground on a sway, and lies there as litter. snow is a
-			# second function of p — settling through winter, melting in the first
-			# weeks of spring. nothing is remembered, so a skip costs nothing.
+			# falls on q² (it accelerates) with a sway that is a damped oscillation
+			# WRITTEN OUT — A·e^(−settle·q)·(sin(2π·swings·q + φ) − sin φ), φ the
+			# leaf's own phase — so it flutters hardest just after letting go and
+			# settles before it lands, instead of swinging like a metronome. no
+			# velocity is stored: that formula IS the solution of the spring, read
+			# off at q. then it lies there as litter. snow is a second function of p —
+			# settling through winter, melting in the first weeks of spring. nothing
+			# is remembered, so a skip costs nothing.
 			var R := Kit.rng(21)
 			var cr: float = H * 0.2
 			var nl: int = D.leaves
@@ -773,16 +812,25 @@ static func init(b: Dictionary) -> void:
 			# clouds above are the same field sampled along a band of the sky, so
 			# their shapes and the shadows drifting under them agree. the mask is a
 			# coarse grid of rectangles — a few hundred alpha fills — and it darkens
-			# the hero and props too, because it is drawn after them. press turns the
-			# wind vector toward the click; both layers turn together.
+			# the hero and props too, because it is drawn after them. the wind is a
+			# BODY, not a setting: a press moves the AIM, and the wind vector chases
+			# it on an under-damped spring (one per axis), so it swings past the new
+			# heading, gusts while it turns, and settles over a few seconds; the
+			# offsets integrate the wind as it swings, so both layers sweep round
+			# together instead of cutting to the new direction in a frame.
 			b.ox = 0.0
 			b.oy = 0.0
-			b.wx = 1.0
+			b.wx = 1.0                                   # the wind vector, its velocity, and the aim it springs toward
 			b.wy = 0.25
+			b.vx = 0.0
+			b.vy = 0.0
+			b.ax = 1.0
+			b.ay = 0.25
 			b.shades = []                                # the mask quantised to 16 alphas, built once
 			var dark: float = D.dark
 			for i in 17:
 				b.shades.append(Color(0.039, 0.039, 0.118, i / 16.0 * dark))
+
 
 # ---------------------------------------------------------------- press
 
@@ -800,7 +848,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			b.nextKind = k + 1
 			_add_float(b, "barrel" if k % 2 == 1 else "crate", clampf(pos.x, 10.0, W - 10.0), minf(pos.y, H * float(D.level) - 10.0))
 		"waterline":
-			b.surge_pending = true                       # set on the next tick's clock
+			b.v = float(b.v) + float(D.surge)            # a velocity kick: the spring does the rest
 		"puddle":
 			b.rain = not bool(b.rain)
 		"lens":
@@ -840,8 +888,8 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			var dx := pos.x - W / 2.0
 			var dy := pos.y - H / 2.0
 			var d := maxf(1e-6, sqrt(dx * dx + dy * dy))
-			b.wx = dx / d
-			b.wy = dy / d * 0.4
+			b.ax = dx / d                                # move the aim; the spring does the turning
+			b.ay = dy / d * 0.4
 
 # ---------------------------------------------------------------- tick
 
@@ -919,18 +967,39 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					f.face = -1 if float(f.vx) < 0.0 else 1
 			_springs(b, dt)
 		"waterline":
-			if bool(b.surge_pending):
-				b.surge_pending = false
-				b.surgeAt = t
 			var sx: float = W * float(D.shore)
 			var low_y: float = H * 0.97
-			var surge_at: float = b.surgeAt
-			var r := clampf(0.5 + float(D.reach) * sin(t * float(D.tide)) + float(D.surge) * exp(-(t - surge_at) * 1.4) * (1.0 if t >= surge_at else 0.0), 0.05, 0.95)
+			var rest := 0.5 + float(D.reach) * sin(t * float(D.tide))   # the tide: where the run-up would sit if it stood still
+			var wk: float = D.wk
+			var fk: float = D.foamk
+			var wc: float = float(D.wdamp) * 2.0 * sqrt(wk)
+			var fc: float = float(D.foamdamp) * 2.0 * sqrt(fk)
+			var r: float = b.r
+			var v: float = b.v
+			var fr: float = b.fr
+			var fv: float = b.fv
+			# two springs, stepped symplectically; a coarse frame is cut into substeps
+			# of at most 0.02 s (the lexicon's Substep) so foamk stays well inside √k·h < 2
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				v += (wk * (rest - r) - wc * v) * h
+				r += v * h
+				if r > 0.95:                             # the top of the beach and the sea floor stop it dead
+					r = 0.95
+					v = minf(v, 0.0)
+				if r < 0.05:
+					r = 0.05
+					v = maxf(v, 0.0)
+				fv += (fk * (r - fr) - fc * fv) * h      # the foam chases the water, late
+				fr = clampf(fr + fv * h, 0.02, 0.98)
 			var edge := sx * r
-			var adv := (r - float(b.prevR)) / maxf(dt, 1e-3)
-			b.prevR = r
-			b.foam = float(b.foam) + (clampf(adv * 6.0, 0.0, 1.0) - float(b.foam)) * clampf(dt * 3.0, 0.0, 1.0)   # foam blooms on the advance, lingers a moment
 			b.r = r
+			b.v = v
+			b.fr = fr
+			b.fv = fv
+			b.rest = rest
+			b.foam = clampf(maxf(v, 0.0) * 5.0 + absf(r - fr) * 6.0, 0.0, 1.0)   # froth: the advance, and the gap the foam has yet to close
 			b.level = low_y + (GY - low_y) * r
 			b.edge = edge
 			var cols: int = D.cols
@@ -1106,20 +1175,46 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			var part: float = D.part
 			var kk: float = D.k
 			var cc: float = D.c
+			var J: int = b.J
+			var tj: PackedFloat32Array = b.tj
+			var oj: PackedFloat32Array = b.oj
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			# the joints up a reed are stiffer than the root (k · tip per joint), and a
+			# symplectic step is only stable while √k·h < 2 — so a coarse frame is cut
+			# into substeps of at most 0.02 s (the lexicon's Substep): one step at 60 fps
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			var sum := 0.0
 			var blades: Array = b.blades
-			for bl: Dictionary in blades:
+			for i in blades.size():
+				var bl: Dictionary = blades[i]
 				var bx: float = bl.x
 				var target := Kit.noise(t * wind_speed + bx / W * 3.0) * wind
 				var d := bx - hx
 				var ad := absf(d)
 				if ad < reach:
 					target += (-1.0 if d < 0.0 else 1.0) * part * (1.0 - ad / reach)   # parting: away from the body
-				var w: float = float(bl.w) + (kk * (target - float(bl.th)) - cc * float(bl.w)) * dt   # the spring, on an angle
+				var w: float = bl.w
+				var th: float = bl.th
+				for _s in sub:
+					w += (kk * (target - th) - cc * w) * h    # the root spring, on an angle
+					th = clampf(th + w * h, -1.4, 1.4)
+					var below: float = th                     # the joints: each chases the segment below
+					var kj: float = kk
+					for j in J - 1:
+						kj *= tip                             # quicker with every joint up the reed
+						var dj := tipdamp * 2.0 * sqrt(kj)    # a fraction of THIS joint's critical damping
+						var idx := i * (J - 1) + j
+						oj[idx] += (kj * (below - tj[idx]) - dj * oj[idx]) * h
+						tj[idx] = clampf(tj[idx] + oj[idx] * h, -1.6, 1.6)
+						below = tj[idx]
 				bl.w = w
-				bl.th = clampf(float(bl.th) + w * dt, -1.4, 1.4)
+				bl.th = th
 				sum += absf(w)
-			b.rustle = float(b.rustle) + (sum / blades.size() - float(b.rustle)) * clampf(dt * 8.0, 0.0, 1.0)
+				for j in J - 1:                               # the joints rustle too
+					sum += absf(oj[i * (J - 1) + j])
+			b.rustle = float(b.rustle) + (sum / float(blades.size() * J) - float(b.rustle)) * clampf(dt * 8.0, 0.0, 1.0)   # the meter's own smoothing, a readout not a motion
 			b.cool = float(b.cool) - dt
 			if bool(b.armed_sound) and float(b.rustle) > 0.9 and float(b.cool) <= 0.0:
 				b.cool = 0.45
@@ -1282,8 +1377,33 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 		"cloudshadow":
 			var sc: float = D.scale
 			var speed: float = D.speed
-			b.ox = float(b.ox) + float(b.wx) * speed * dt / sc
-			b.oy = float(b.oy) + float(b.wy) * speed * dt / sc
+			var wk: float = D.windk
+			var wc: float = float(D.winddamp) * 2.0 * sqrt(wk)
+			var ax: float = b.ax
+			var ay: float = b.ay
+			var wx: float = b.wx
+			var wy: float = b.wy
+			var vx: float = b.vx
+			var vy: float = b.vy
+			var ox: float = b.ox
+			var oy: float = b.oy
+			# two springs toward the aim, symplectic, substepped to ≤ 0.02 s (the
+			# lexicon's Substep); the offsets integrate the wind inside the same loop
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				vx += (wk * (ax - wx) - wc * vx) * h
+				vy += (wk * (ay - wy) - wc * vy) * h
+				wx = clampf(wx + vx * h, -3.0, 3.0)
+				wy = clampf(wy + vy * h, -3.0, 3.0)
+				ox += wx * speed * h / sc
+				oy += wy * speed * h / sc
+			b.wx = wx
+			b.wy = wy
+			b.vx = vx
+			b.vy = vy
+			b.ox = ox
+			b.oy = oy
 
 # ---------------------------------------------------------------- draw
 
@@ -1364,6 +1484,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var level: float = b.level
 			var edge: float = b.edge
 			var foam: float = b.foam
+			var v: float = b.v
+			var fr: float = b.fr
+			var rest: float = b.rest
+			var fx := sx * fr                            # the foam line sits on the sand, wherever it has got to
+			var fy := low_y + (GY - low_y) * fr
 			var dry: float = D.dry
 			n.draw_colored_polygon(PackedVector2Array([Vector2(0.0, low_y), Vector2(sx, GY), Vector2(W, GY), Vector2(W, H), Vector2(0.0, H)]), Color(D.sand))   # the beach: the slope, then the flat
 			var cols: int = D.cols
@@ -1386,12 +1511,13 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			sea.append(Vector2(edge, level))
 			sea.append(Vector2(0.0, low_y))
 			n.draw_colored_polygon(sea, _with_a(Color(D.sea), 0.78))
-			n.draw_line(Vector2(maxf(0.0, edge - W * 0.12 * (0.4 + foam)), level), Vector2(edge, level), _with_a(INK, 0.25 + foam * 0.7), 1.0 + foam * 3.0)   # the foam line at the edge
+			n.draw_line(Vector2(fx, fy), Vector2(edge, level), _with_a(INK, 0.25 + foam * 0.7), 1.0 + foam * 3.0)   # the foam line: from where the froth is to the water's edge
 			for k in 5:
-				Kit.dot(n, Vector2(edge - k * 5.0 - 2.0, level - 1.0 + sin(t * 5.0 + k) * 1.2), 1.2 + foam * 1.5, _with_a(INK, 0.5 + foam * 0.5))
+				Kit.dot(n, Vector2(fx - k * 5.0 - 2.0, fy - 1.0 + sin(t * 5.0 + k) * 1.2), 1.2 + foam * 1.5, _with_a(INK, 0.5 + foam * 0.5))
 			Kit.hero(n, b, Vector2(W * 0.82, GY), { "face": -1, "pose": "stand", "frame": t })
 			n.draw_line(Vector2(edge, level), Vector2(edge, H * 0.3), _with_a(INK, 0.18), 1.0)   # the edge's x, read off the slope
-			Kit.label(n, b, "level %d%% · foam %d%%" % [roundi(r * 100.0), roundi(foam * 100.0)], Vector2(edge, H * 0.28), FAINT, true)
+			n.draw_line(Vector2(sx * rest, low_y + (GY - low_y) * rest), Vector2(sx * rest, H * 0.34), _with_a(INK, 0.1), 1.0)   # and the rest it is springing toward
+			Kit.label(n, b, "level %d%% · r' %s%.2f · foam %d%%" % [roundi(r * 100.0), "+" if v >= 0.0 else "", v, roundi(foam * 100.0)], Vector2(edge, H * 0.28), FAINT, true)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"puddle":
 			Kit.stage(n, b, float(D.night))
@@ -1551,13 +1677,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var height: float = D.height
 			var wind_speed: float = D.windSpeed
 			var blades: Array = b.blades
-			for bl: Dictionary in blades:                # reeds behind the hero first
+			var J: int = b.J
+			var tj: PackedFloat32Array = b.tj
+			for i in blades.size():                      # reeds behind the hero first
+				var bl: Dictionary = blades[i]
 				if float(bl.x) < hx - 4.0:
-					_blade(n, float(bl.x), GY, float(bl.th), H * 0.28 * height * float(bl.h), Kit.shade(Kit.GOOD, -0.45 + float(bl.hue) * 0.3 + sin(float(bl.th)) * 0.2))
+					_blade(n, bl, tj, i, J, GY, H * 0.28 * height * float(bl.h))
 			Kit.hero(n, b, Vector2(hx, GY), { "face": int(b.face), "pose": "run", "frame": t })
-			for bl: Dictionary in blades:                # then the rest, in front
+			for i in blades.size():                      # then the rest, in front
+				var bl: Dictionary = blades[i]
 				if float(bl.x) >= hx - 4.0:
-					_blade(n, float(bl.x), GY, float(bl.th), H * 0.28 * height * float(bl.h), Kit.shade(Kit.GOOD, -0.45 + float(bl.hue) * 0.3 + sin(float(bl.th)) * 0.2))
+					_blade(n, bl, tj, i, J, GY, H * 0.28 * height * float(bl.h))
 			var graph := PackedVector2Array()            # the wind noise, as a graph
 			var x := 0.0
 			while x <= W:
@@ -1569,6 +1699,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_rect(Rect2(W - 66.0, 8.0, 58.0, 6.0), _with_a(INK, 0.15))
 			n.draw_rect(Rect2(W - 66.0, 8.0, 58.0 * m, 6.0), _with_a(Kit.GOOD if m > 0.36 else INK, 0.8))
 			_label_right(n, b, "rustle", Vector2(W - 8.0, 22.0))
+			if J > 1:
+				Kit.label(n, b, "%d segs · joints k ×%s · damp %s of their own critical" % [J, str(D.tip), str(D.tipdamp)], Vector2(8.0, H - 20.0), Kit.DIM)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"updraft":
 			Kit.stage(n, b, 0.1)
@@ -1621,6 +1753,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"year":
 			var year: float = D.year
 			var fall_dur: float = D.fallDur
+			var swings: float = D.swings
+			var settle: float = D.settle
 			var p := fposmod(t / year + float(b.shift), 1.0)
 			var snow := _ease((p - 0.75) / 0.14) if p > 0.75 else (_ease(1.0 - p / 0.09) if p < 0.09 else 0.0)   # settles late, melts early
 			var cold := _ease((p - 0.7) / 0.1) if p > 0.7 else (_ease(1.0 - p / 0.1) if p < 0.1 else 0.0)
@@ -1635,6 +1769,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_line(Vector2(tx, GY - cr * 1.2), Vector2(tx + cr * 0.75, GY - cr * 1.75), bark, 3.0)
 			n.draw_line(Vector2(tx, GY - cr * 1.3), Vector2(tx, GY - cr * 2.1), bark, 3.0)
 			var cy := GY - cr * 1.7
+			var sway_a := 9.0 * S
 			var bud := _mix(Color("9BE28A"), Color("E2F5A0"), 0.4)
 			for L: Dictionary in b.leaves:
 				var size := _ease(p / 0.2) if p < 0.2 else 1.0                          # buds grow through spring
@@ -1643,8 +1778,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var q := clampf((p - float(L.fallAt)) / fall_dur, 0.0, 1.0)              # falling: canopy → ground
 				if p < 0.02 and q > 0.0:
 					continue
-				var sx := tx + float(L.ox) + sin(q * 6.0 + float(L.ph)) * 8.0 * q * (1.0 - q) * 4.0 + float(L.landX) * q
-				var sy := cy + float(L.oy) + (GY - 2.0 - (cy + float(L.oy))) * _ease(q)
+				var ph: float = L.ph
+				var sway := exp(-settle * q) * (sin(TAU * swings * q + ph) - sin(ph))   # the damped oscillation, written out: zero at release, dying by the ground
+				var sx := tx + float(L.ox) + sway * sway_a + float(L.landX) * q
+				var sy := cy + float(L.oy) + (GY - 2.0 - (cy + float(L.oy))) * q * q     # q²: it accelerates
 				var litter := q >= 1.0
 				if litter and p < 0.4:                                                   # last year's litter is gone by mid-spring
 					continue
@@ -1840,7 +1977,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					n.draw_rect(Rect2(x, top + r * ch, cw + 0.5, ch + 0.5), shades[roundi(m * 16.0)])
 			var wx: float = b.wx
 			var wy: float = b.wy
+			var ax: float = b.ax
+			var ay: float = b.ay
+			Kit.arrow(n, Vector2(W - 40.0, 22.0), Vector2(W - 40.0 + ax * 22.0, 22.0 + ay * 22.0 / 0.4 * 0.6), _with_a(INK, 0.3))   # the aim, faint, and the wind where it has swung to
 			Kit.arrow(n, Vector2(W - 40.0, 22.0), Vector2(W - 40.0 + wx * 22.0, 22.0 + wy * 22.0 / 0.4 * 0.6), INK)
-			Kit.label(n, b, "wind", Vector2(W - 40.0, 40.0), FAINT, true)
+			Kit.label(n, b, "wind %.2f" % sqrt(wx * wx + (wy / 0.4) * (wy / 0.4)), Vector2(W - 40.0, 40.0), FAINT, true)
 			Kit.label(n, b, "thr %s · soft %s · dark %s" % [str(D.threshold), str(D.soft), str(D.dark)], Vector2(8.0, 14.0))
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
