@@ -1788,88 +1788,143 @@ rhymeOf("Flicker", "Frostbite", "the cold stack — chilled (a slow pale pulse),
               slowed:  { colour: "#9A7AE0", wave: "saw", rate: 0.5, min: 0.1, max: 0.6, glyph: "◔", slow: 0.45 } },
   night: 0.55 });
 
-def("J", "Jelly", "skin", "a WOBBLE shader: the sprite in strips, each slid by sin(y·k + t·w)·amp — jelly, heat, underwater — the bestiary's heat haze on a body — press to poke", function (u) {
-  var D = { mode: "jelly",           // jelly (a poke's wobble decays) / heat / underwater
-            modes: { jelly:      { amp: 0.22, k: 1.6, w: 16, decay: 3.2, pin: 1 },
-                     heat:       { amp: 0.05, k: 4.0, w: 30, decay: 0,   pin: 0 },
-                     underwater: { amp: 0.12, k: 1.2, w: 4,  decay: 0,   pin: 0 } },
-            ampScale: 1,             // multiplies every mode's amplitude
-            speedScale: 1,           // multiplies every mode's w
+def("J", "Jelly", "skin", "a WOBBLE shader: the sprite in strips, each slid by a chain of lateral springs up the body — the feet driven, every link chasing the one below, so the head lags and overshoots — jelly, heat, underwater — press to poke, and the wobble climbs from where you poked", function (u) {
+  var D = { mode: "jelly",           // jelly (a poke rings up the body) / heat / underwater
+            modes: { jelly:      { amp: 0.02, w: 1.2, k: 600,  zeta: 0.35 },    // amp: the drive at the feet, sprite widths · w: its noise rate · k: a link's stiffness · zeta: its damping, of critical
+                     heat:       { amp: 0.05, w: 30,  k: 3000, zeta: 0.5 },
+                     underwater: { amp: 0.12, w: 4,   k: 300,  zeta: 0.45 } },
+            ampScale: 1,             // multiplies every mode's amp (the sway the feet are driven with)
+            speedScale: 1,           // multiplies every mode's w (how fast that drive's noise runs)
+            links: 6,                // springs up the body: the feet's link and the ones that chase it, hair last
+            poke: 8,                 // a poke's kick, sprite widths per second, into ONE link's velocity
             strip: 0.5,              // strip height in sprite units (0.5 = two strips per pixel row)
             pokeEvery: 2.6,          // seconds between autopilot pokes
-            label: "x' = x + sin(y·k + t·w) · amp · env(y)" };
-  const { ctx, W, H, GY, TAU, stage, heroSprite, label, text, line, rect, glow, dot, rgba, rand, FIRE, WATER, DIM, INK } = u;
+            label: "link j: xⱼ'' = k·(xⱼ₋₁ − xⱼ) − ζ·2√k·xⱼ' · x₋₁ = amp·noise(t·w) · poke: vⱼ += poke · strip: x' = x + lerp(links, y)" };
+  const { ctx, W, H, GY, TAU, stage, heroSprite, label, text, line, rect, glow, dot, rgba, rand, noise, clamp, FIRE, WATER, SUN, DIM, INK } = u;
   // a VERTEX SHADER moves where pixels land, not what they are. in 2D the
   // cheapest version is horizontal STRIPS: draw the sprite one thin row at a
-  // time, each row shifted sideways by a sine of its height and the clock.
-  // JELLY pins the feet (the envelope grows with height) and lets the
-  // amplitude decay after a poke; HEAT is a tiny, fast, everywhere shimmer —
-  // the bestiary's heat haze applied to a body; UNDERWATER is big and slow.
-  // the curve beside the sprite is the offset itself, row by row.
+  // time, each row shifted sideways. the shift is not a sine of the clock —
+  // it is read off a CHAIN of lateral springs up the body (the lexicon's
+  // Damp, stacked the way Grass stacks it): the feet's link chases a DRIVE —
+  // a gentle slow noise for jelly's breathing, a tiny fast one for heat, a
+  // big slow one under water — and every link above chases the one below on
+  // its own under-damped spring, so the head lags the belly and overshoots.
+  // a POKE adds velocity to one link only, so the wobble starts there and
+  // climbs; nothing below the poke feels it. a strip's offset is the chain
+  // interpolated at its height; the curve beside the sprite is that offset,
+  // row by row, with the links marked on it.
   const unit = Math.max(2, Math.round(H / 60)), S = unit * 2;
-  let age = 9, autoT = 0;
+  const L = Math.max(2, Math.floor(D.links));
+  const xs = new Float32Array(L), vs = new Float32Array(L);      // link offsets (px) and velocities, feet first
+  let age = 9, autoT = 0, pokeJ = 0, geo = null;
   const bubbles = [];
   for (let i = 0; i < 10; i++) bubbles.push({ x: rand(0, W), y: rand(0, GY), r: rand(1, 3), v: rand(8, 20) });
+  function poke(yf, dir) {                                         // yf: 0 at the feet, 1 at the hair
+    pokeJ = clamp(Math.round(yf * (L - 1)), 0, L - 1);
+    vs[pokeJ] += dir * D.poke * 14 * S;                            // the sprite is 14 units wide
+    age = 0;
+  }
   return {
-    press() { age = 0; autoT = 0; },
+    press(px, py) {
+      const g = geo || { y0: GY - 18 * S, h: 19 * S, cx: W * 0.42 };
+      poke(clamp((g.y0 + g.h - py) / g.h, 0.05, 0.95), px < g.cx ? 1 : -1);   // pushed away from the finger
+      autoT = 0;
+    },
     frame(dt, t) {
       const m = D.modes[D.mode] || D.modes.jelly;
       stage({ night: D.mode === "underwater" ? 0.4 : 0.1 });
       autoT += dt; age += dt;
-      if (autoT > D.pokeEvery) { autoT = 0; age = 0; }
+      if (autoT > D.pokeEvery) { autoT = 0; poke(0.55, Math.random() < 0.5 ? 1 : -1); }
       if (D.mode === "underwater") {
         rect(0, 0, W, H, rgba(WATER, 0.28));
         for (const b of bubbles) { b.y -= b.v * dt; if (b.y < 0) { b.y = GY; b.x = rand(0, W); } ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, TAU); ctx.stroke(); }
       }
       const spr = heroSprite({ s: S, pose: "stand", frame: 0 });
       const x = W * 0.42, x0 = x - spr.ax, y0 = GY - spr.ay;
+      geo = { y0: y0, h: spr.h, cx: x };
       if (D.mode === "heat") { glow(x, GY + 2, spr.w * 0.9, FIRE, 0.7); for (let i = 0; i < 5; i++) dot(x + rand(-spr.w * 0.4, spr.w * 0.4), GY - rand(0, spr.h * 0.5), 1.2, rgba(FIRE, 0.5)); }
-      // the amplitude: a decaying poke for jelly, a constant plus a decaying poke bonus otherwise
-      const amp = m.amp * D.ampScale * spr.w * (m.decay > 0 ? Math.exp(-m.decay * age) : 1 + 1.5 * Math.exp(-3 * age));
-      const w = m.w * D.speedScale, sh = Math.max(1, S * D.strip), n = Math.ceil(spr.h / sh);
+      // the chain: the feet's link chases the drive, each link above chases the one
+      // below. a symplectic step is only stable while √k·h < 2, so a coarse frame
+      // is cut into substeps of at most 0.02 s (the lexicon's Substep)
+      const k = m.k, d = m.zeta * 2 * Math.sqrt(k), lim = spr.w * 2;
+      const drive = m.amp * D.ampScale * spr.w * noise(t * m.w * D.speedScale + 3.7);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let below = drive;
+        for (let j = 0; j < L; j++) {
+          vs[j] += (k * (below - xs[j]) - d * vs[j]) * h;
+          xs[j] = clamp(xs[j] + vs[j] * h, -lim, lim);
+          below = xs[j];
+        }
+      }
+      const sh = Math.max(1, S * D.strip), n = Math.ceil(spr.h / sh);
       const gx = x0 + spr.w + W * 0.12;
       ctx.strokeStyle = "rgba(232,229,244,0.2)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(gx, y0); ctx.lineTo(gx, y0 + spr.h); ctx.stroke();
       ctx.strokeStyle = INK; ctx.lineWidth = 1.2; ctx.beginPath();
       for (let j = 0; j < n; j++) {
         const sy = j * sh, yf = (sy + sh / 2) / spr.h;      // 0 at the hair, 1 at the feet
-        const env = m.pin ? 1 - yf : 1;                     // pinned feet: the top wobbles, the feet stay
-        const off = Math.sin(yf * m.k * TAU + t * w) * amp * env;
+        const p = (1 - yf) * (L - 1), i0 = Math.min(L - 2, Math.floor(p));   // the strip's place along the chain, feet first
+        const off = xs[i0] + (xs[i0 + 1] - xs[i0]) * (p - i0);
         ctx.drawImage(spr.cv, 0, sy, spr.w, Math.min(sh, spr.h - sy), x0 + off, y0 + sy, spr.w, Math.min(sh, spr.h - sy));
         if (j === 0) ctx.moveTo(gx + off, y0 + sy + sh / 2); else ctx.lineTo(gx + off, y0 + sy + sh / 2);
       }
       ctx.stroke();
+      for (let j = 0; j < L; j++) dot(gx + xs[j], y0 + spr.h - j / (L - 1) * spr.h, 1.7, j === pokeJ && age < 0.4 ? "#F58A8A" : SUN);   // the links themselves
       label("offset(y)", gx, y0 - 6, DIM, "center");
       text(D.mode, 10, 18, 11, INK, "left", true);
-      label("amp " + (amp / spr.w).toFixed(2) + "·w  k " + m.k + "  w " + w.toFixed(1) + (m.decay ? "  decay " + m.decay : ""), 10, 32, DIM);
-      if (age < 0.4) label("poke", x, y0 - 10, "rgba(245,138,138," + (1 - age / 0.4) + ")", "center");
+      label("k " + m.k + " · ζ " + m.zeta + " · " + L + " links · drive " + (drive / spr.w).toFixed(2) + "·w · head " + (xs[L - 1] / spr.w).toFixed(2) + "·w", 10, 32, DIM);
+      if (age < 0.4) label("poke", x, y0 + spr.h - pokeJ / (L - 1) * spr.h - 8, "rgba(245,138,138," + (1 - age / 0.4) + ")", "center");
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
 });
 rhymeOf("Jelly", "Jiggly", "underwater, twice the amplitude and half the speed — the whole body swaying like weed in a slow current", { mode: "underwater", ampScale: 2.2, speedScale: 0.6 });
 
-def("S", "Sway", "skin", "WIND SWAY: strips slide by noise(t + x) · distance-from-pivot^p — a tree, a banner and a hanging sign bend most at the far end — press to gust from that side", function (u) {
-  var D = { amp: 0.06,               // full-wind displacement at the tip, as a fraction of H
+def("S", "Sway", "skin", "WIND SWAY: a tree, a banner and a hanging sign, each a chain of angle springs the wind leans on — the root chases the wind, every joint chases the one below and lags, so a gust bends them late and they ring back past upright after it; the sign a real pendulum under its bracket — press to gust from that side", function (u) {
+  var D = { amp: 0.06,               // the lean a unit wind asks for: the tip's rest displacement, as a fraction of H
             freq: 0.5,               // how fast the noise wind changes
-            power: 1.6,              // displacement ∝ height^power: a bending trunk, not a hinge
+            k: 40,                   // the root spring's stiffness (a trunk rooted in the ground)
+            damp: 5,                 // its damping (2√k = 12.6 would be critical) — under, so it rings back
+            joints: 4,               // segments per tree or banner: the root + the joints that chase it
+            tip: 1.4,                // each joint's k as a multiple of the one below: above 1 because the segment above is lighter
+            tipdamp: 0.4,            // a joint's damping, as a fraction of ITS OWN critical — well under 1, so the top whips past
+            bend: 0.5,               // the wind's extra lean at each joint, as a fraction of the root's: a bending trunk, not a hinge (0 = hinge)
+            gravity: 12,             // the sign's pendulum: g over its hanging length, per second² — the ω² of its swing
+            swing: 1.2,              // the sign's damping (2√gravity = 6.9 would be critical): it swings for a long while
             strips: 14,              // strips per object
-            gust: 2.2,               // a gust's peak strength, in wind units
+            gust: 2.2,               // a gust's peak strength, in wind units — a spike on the rest, never on the object
             gustDecay: 1.1,          // how fast a gust dies, per second
             autoGust: 3.6,           // seconds between autopilot gusts
             broken: false,           // a torn banner instead of a whole one
-            label: "dx = wind(t, x) · (h / H)^p · amp · wind = noise(t·f + x) + gust" };
+            label: "root: θ'' = k·(wind·lean − θ) − damp·θ' · joint: θⱼ'' = kⱼ·(θⱼ₋₁ + wind·lean·bend − θⱼ) − dⱼ·θⱼ' · sign: θ'' = g·(wind·lean − sin θ) − swing·θ'" };
   const { ctx, W, H, GY, stage, layer, label, text, line, arrow, rect, noise, clamp, rand, BONE, HOT, SUN, DIM, INK } = u;
   // everything that stands in the wind is drawn ONCE, upright, into a layer;
   // every frame it is copied back in horizontal STRIPS, each slid sideways by
-  // the wind times how far it is from its PIVOT. a tree and a banner pivot at
-  // the ground, so the top moves most (∝ height^p — a bend, not a hinge); the
-  // sign hangs from its bracket, so its bottom moves most. the wind is one
-  // noise value sampled at the clock plus each object's x, so they never
-  // agree exactly, and a GUST is a spike added on top that decays.
+  // how far the object has BENT at that height. the bend is never the wind's
+  // value: it is a CHAIN of angle springs (Grass, stood up to tree height).
+  // the root chases the lean the wind asks for on an under-damped spring, and
+  // every joint above chases the one below — quicker, since the segment above
+  // is lighter, and much less damped — plus a little extra lean of its own
+  // from the wind, so the trunk curves instead of hinging. the top lags the
+  // gust, and when the gust dies it whips back past upright. the sign hangs
+  // from its bracket, so it is a PENDULUM: gravity pulls it back to hanging,
+  // the wind pushes it aside, and it keeps swinging long after — the tree has
+  // stopped before the sign has. the wind is one noise value at the clock
+  // plus each object's x, and a GUST is a spike on that rest which decays; a
+  // strip's dx is the chain walked up (or down) to the strip's height.
+  const J = Math.max(1, Math.floor(D.joints));
   const objs = [
     { kind: "base", x: W * 0.2,  x0: W * 0.07, w: W * 0.26, top: GY - H * 0.56, bot: GY },
     { kind: "base", x: W * 0.5,  x0: W * 0.47, w: W * 0.19, top: GY - H * 0.58, bot: GY },
     { kind: "hang", x: W * 0.83, x0: W * 0.78, w: W * 0.2,  top: GY - H * 0.5,  bot: GY - H * 0.5 + H * 0.24 } ];
+  for (const o of objs) {
+    o.span = o.bot - o.top; o.th = 0; o.om = 0;                    // the root angle (the sign: its whole angle) and its velocity
+    o.tj = new Float32Array(Math.max(0, J - 1)); o.oj = new Float32Array(Math.max(0, J - 1));   // the joints above the root
+    // the lean per unit wind, so that at rest the tip sits amp·H aside: a chain of J
+    // segments with the extra bend adds up to span·(1 + bend·(J − 1)/2) per radian
+    o.lean = o.kind === "base" ? D.amp * H / (o.span * (1 + D.bend * (J - 1) / 2)) : 0.6 * D.amp * H / o.span;
+    o.cum = new Float32Array(J + 1);                                // the chain walked: sideways displacement at each segment's end
+  }
   let srcW = 0, gustA = 0, gustDir = 1, autoT = 0;
   function build() {
     const L = layer("sway-src");
@@ -1909,15 +1964,42 @@ def("S", "Sway", "skin", "WIND SWAY: strips slide by noise(t + x) · distance-fr
       const gust = gustDir * D.gust * gustA * gustA;      // the spike: peaks at once, dies as a square
       const s = objs[2];                                   // the bracket: post + arm, rigid
       rect(s.x - W * 0.09, s.top - 2, W * 0.012, GY - s.top + 2, "#4A4470"); rect(s.x - W * 0.09, s.top - 3, W * 0.14, 3, "#4A4470");
+      // the joints up a trunk are stiffer than the root (k · tip per joint), and a
+      // symplectic step is only stable while √k·h < 2 — so a coarse frame is cut
+      // into substeps of at most 0.02 s (the lexicon's Substep)
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       let windC = 0;
       for (const o of objs) {
         const wind = clamp(noise(t * D.freq + o.x / W * 1.7) + gust, -2.5, 2.5);
         if (o === objs[1]) windC = wind;
-        const n = Math.max(2, Math.round(D.strips)), span = o.bot - o.top, sh = span / n;
+        const rest = wind * o.lean;                        // what the wind asks for — the spring decides what it gets
+        for (let q = 0; q < sub; q++) {
+          if (o.kind === "hang") {                         // the sign: a pendulum, gravity's pull toward hanging, the wind's push aside
+            o.om += (D.gravity * (rest - Math.sin(o.th)) - D.swing * o.om) * h;
+            o.th = clamp(o.th + o.om * h, -1.5, 1.5);
+            continue;
+          }
+          o.om += (D.k * (rest - o.th) - D.damp * o.om) * h;
+          o.th = clamp(o.th + o.om * h, -1.3, 1.3);
+          let below = o.th, kj = D.k;                      // the joints: each chases the segment below, leaning a little more of its own
+          for (let j = 0; j < J - 1; j++) {
+            kj *= D.tip;
+            const dj = D.tipdamp * 2 * Math.sqrt(kj);      // a fraction of THIS joint's critical damping
+            o.oj[j] += (kj * (below + rest * D.bend - o.tj[j]) - dj * o.oj[j]) * h;
+            o.tj[j] = clamp(o.tj[j] + o.oj[j] * h, -1.4, 1.4);
+            below = o.tj[j];
+          }
+        }
+        // walk the chain: the sideways displacement at the end of each segment, from the pivot
+        const segs = o.kind === "base" ? J : 1, seg = o.span / segs;
+        o.cum[0] = 0;
+        for (let j = 0; j < segs; j++) o.cum[j + 1] = o.cum[j] + Math.sin(j === 0 ? o.th : o.tj[j - 1]) * seg;
+        const n = Math.max(2, Math.round(D.strips)), sh = o.span / n;
         for (let j = 0; j < n; j++) {
           const sy = o.top + j * sh;
           const f = o.kind === "base" ? 1 - (j + 0.5) / n : (j + 0.5) / n;     // distance from the pivot, 0..1
-          const dx = wind * (o.kind === "base" ? Math.pow(f, D.power) : f * 0.6) * D.amp * H;
+          const p = f * segs, i0 = Math.min(segs - 1, Math.floor(p));         // the segment this strip sits on, and how far along it
+          const dx = o.cum[i0] + (o.cum[i0 + 1] - o.cum[i0]) * (p - i0);
           ctx.drawImage(L.cv, o.x0, sy, o.w, sh + 0.6, o.x0 + dx, sy, o.w, sh + 0.6);
         }
         line(o.x, o.kind === "base" ? o.bot : o.top, o.x, o.kind === "base" ? o.top : o.bot, "rgba(232,229,244,0.12)", 1);   // the rest line
@@ -1925,8 +2007,9 @@ def("S", "Sway", "skin", "WIND SWAY: strips slide by noise(t + x) · distance-fr
       const ax = W * 0.5, ay = H * 0.1;                    // the wind, as an arrow
       arrow(ax - windC * W * 0.08, ay, ax + windC * W * 0.08, ay, gustA > 0.05 ? HOT : INK);
       label("wind " + windC.toFixed(2) + (gustA > 0.05 ? " (gust)" : ""), ax, ay - 6, DIM, "center");
-      label("pivot: base — dx ∝ h^" + D.power, objs[0].x, GY + 14, DIM, "center");
-      label("pivot: top — dx ∝ depth", objs[2].x, objs[2].bot + 12, DIM, "center");
+      const tree = objs[0], tipA = J === 1 ? tree.th : tree.tj[J - 2];
+      label("pivot: base — θ₀ " + tree.th.toFixed(2) + " · θtip " + tipA.toFixed(2), tree.x, GY + 14, DIM, "center");
+      label("pivot: top — a pendulum, θ " + s.th.toFixed(2), s.x, s.bot + 12, DIM, "center");
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
@@ -2114,65 +2197,106 @@ def("X", "Xray", "skin", "SILHOUETTE THROUGH WALLS: the hero, then the wall, the
 });
 rhymeOf("Xray", "Xspectral", "a magic-purple flat silhouette that pulses and glows — the hero's soul seen through stone", { mode: "flat", colour: "#C9A0F5", pulse: 1.4 });
 
-def("W", "Wetfloor", "skin", "2D REFLECTION: the scene above the line copied, drawn flipped in strips below it, faded by depth and wobbled by a sine — the atlas's Mirror, wet — press to splash", function (u) {
-  var D = { wobble: 3,               // sideways wobble at full depth, px
-            k: 0.25,                 // wobble waves per px of depth
-            w: 5,                    // wobble speed, radians per second
+def("W", "Wetfloor", "skin", "2D REFLECTION: the scene above the line copied, drawn flipped in strips below it, faded by depth and wobbled by a row of springs along the line — the atlas's Mirror, wet — the runner's steps stir it — press to splash, and the ripple travels out from there", function (u) {
+  var D = { wobble: 2,               // a footstep's kick to the springs under it, px of crest (0 = the runner leaves the water still)
+            springs: 28,             // springs along the line: the surface the reflection reads
+            tension: 10,             // k: the pull back to the rest level, per second²
+            spread: 100,             // s: the pull toward each neighbour, per second² — a ripple's front travels at (W/springs)·√s
+            damping: 1.6,            // c: velocity bleed, per second
             alpha: 0.55,             // the reflection's strength at the line
             depth: 1,                // where the fade reaches zero, as a fraction of the floor's height
             strip: 2,                // strip height, px
             splashEvery: 3.2,        // seconds between autopilot splashes
-            splash: 5,               // extra wobble a splash adds, px
-            label: "y' = 2·GY − y · α = alpha·(1 − depth) · x' = x + sin(y·k + t·w)·wobble" };
-  const { ctx, W, H, GY, TAU, stage, hero, lamp, crate, layer, label, text, line, rect, clamp, DIM, INK, NIGHT } = u;
+            splash: 5,               // a splash's kick to the springs under it, px of first crest (0 = a splash leaves the mirror still)
+            label: "y' = 2·GY − y · α = alpha·(1 − depth) · x' = x + row(x)·(0.3 + depth) · row: a = −k·y − c·v + s·(yL + yR − 2y)" };
+  const { ctx, W, H, GY, TAU, stage, hero, lamp, crate, layer, label, text, line, rect, clamp, rgba, SUN, DIM, INK, NIGHT } = u;
   // a reflection in 2D is the scene drawn TWICE: once upright, once mirrored
   // about the ground line — the atlas's Mirror. here the upright pass is
   // copied out of the canvas into a layer, then copied back one thin STRIP at
   // a time from the mirrored row, so each strip can (1) fade with depth — the
-  // gradient mask — and (2) slide sideways by a sine of its depth and the
-  // clock, more the deeper it is: a wet floor. a splash raises the wobble for
-  // a moment and rings spread on the line. no wobble and a short fade = polish.
-  let x = W * 0.35, dir = 1, autoT = 0, boost = 0;
+  // gradient mask — and (2) slide sideways, more the deeper it is: a wet
+  // floor. the slide is not a sine of the clock: it is read off a ROW of
+  // springs along the line (Wavesprings' water, laid on the floor) — each
+  // pulled back to rest and toward its two neighbours, so a kick at one
+  // spring becomes a ripple that travels outward, spreads and dies. the
+  // runner's feet kick the row where they land; a splash kicks it harder
+  // where you pressed, and the rings spread at the same speed the ripple
+  // does. every strip is drawn in COLUMNS, one per spring, each column slid by
+  // the row's height there. no kicks and a short fade = polish.
+  const n = Math.max(4, Math.floor(D.springs)), colW = W / (n - 1);
+  const ys = new Float32Array(n), vs = new Float32Array(n);      // the row: heights and velocities, px
+  const front = colW * Math.sqrt(Math.max(0, D.spread));         // how fast a ripple's front travels, px per second
+  let x = W * 0.35, dir = 1, autoT = 0, lastF = -1, splashed = 9;
   const rings = [];
   for (let i = 0; i < 5; i++) rings.push({ on: false, x: 0, age: 0 });
   function frameOf(clock) { return (Math.floor(clock * 12) % 7) / 10; }
-  function splash(px) { boost = 1; const r = rings.find(q => !q.on) || rings[0]; r.on = true; r.x = px; r.age = 0; }
+  function kick(px, crest) {                                     // a crest of about `crest` px: given as velocity, so the row decides the shape
+    const i = clamp(Math.round(px / W * (n - 1)), 0, n - 1), v = crest * Math.sqrt(D.tension + D.spread);
+    vs[i] += v;
+    if (i > 0) vs[i - 1] += v * 0.5;
+    if (i < n - 1) vs[i + 1] += v * 0.5;
+  }
+  function rowAt(px) {                                           // the row's height at any x, between its springs
+    const p = clamp(px / colW, 0, n - 1), i0 = Math.min(n - 2, Math.floor(p));
+    return ys[i0] + (ys[i0 + 1] - ys[i0]) * (p - i0);
+  }
+  function splash(px) { kick(px, D.splash); splashed = 0; const r = rings.find(q => !q.on) || rings[0]; r.on = true; r.x = px; r.age = 0; }
   return {
     press(px) { splash(clamp(px, 10, W - 10)); autoT = 0; },
     frame(dt, t) {
       stage({ night: 0.45 });
-      autoT += dt; boost = Math.max(0, boost - dt * 0.9);
+      autoT += dt; splashed += dt;
       if (autoT > D.splashEvery) { autoT = 0; splash(x); }
       x += dir * W * 0.2 * dt;
       if (x > W * 0.8) { x = W * 0.8; dir = -1; }
       if (x < W * 0.15) { x = W * 0.15; dir = 1; }
+      const fr = frameOf(t), fi = Math.round(fr * 10);
+      if (fi !== lastF && (fi === 0 || fi === 3)) kick(x, D.wobble);              // a footfall: the run cycle's two plants stir the row
+      lastF = fi;
+      // the row: one acceleration per spring, substepped so a coarse frame stays stable (√(k + 4s)·h < 2)
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, lim = H * 0.2;
+      for (let q = 0; q < sub; q++) {
+        for (let i = 0; i < n; i++) {
+          const yl = ys[i > 0 ? i - 1 : i], yr = ys[i < n - 1 ? i + 1 : i];
+          vs[i] += (-D.tension * ys[i] - D.damping * vs[i] + D.spread * (yl + yr - 2 * ys[i])) * h;
+        }
+        for (let i = 0; i < n; i++) ys[i] = clamp(ys[i] + vs[i] * h, -lim, lim);
+      }
       lamp(W * 0.22, GY, true); crate(W * 0.72, GY, H * 0.14);
-      hero(x, GY, { pose: "run", frame: frameOf(t), face: dir });
+      hero(x, GY, { pose: "run", frame: fr, face: dir });
       const cv = ctx.canvas, L = layer("wet-scene");                              // the upright pass, copied out
       L.ctx.drawImage(cv, 0, 0, cv.width, cv.height * GY / H, 0, 0, W, GY);
       rect(0, GY + 1, W, H - GY, "rgba(19,16,32,0.55)");                          // the floor itself, dark and wet
-      const floor = H - GY, wob = D.wobble + D.splash * boost, fade = Math.max(0.05, D.depth) * floor;
-      for (let dy = 0; dy < floor; dy += D.strip) {                               // the mirrored pass, strip by strip
+      const floor = H - GY, fade = Math.max(0.05, D.depth) * floor;
+      let peak = 0;
+      for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(ys[i]));
+      for (let dy = 0; dy < floor; dy += D.strip) {                               // the mirrored pass, strip by strip, column by column
         const sy = GY - dy - D.strip;
         if (sy < 0) break;
         const a = D.alpha * Math.max(0, 1 - dy / fade);
         if (a <= 0.005) break;
-        const dx = Math.sin(dy * D.k + t * D.w) * wob * (0.3 + dy / floor);
         ctx.globalAlpha = a;
-        ctx.drawImage(L.cv, 0, sy, W, D.strip, dx, GY + 1 + dy, W, D.strip);
+        const grow = 0.3 + dy / floor;                                            // the deeper the strip, the more the ripple moves it
+        for (let c = 0; c < n - 1; c++) {
+          const dx = (ys[c] + ys[c + 1]) * 0.5 * grow, xa = c * colW;
+          ctx.drawImage(L.cv, xa, sy, colW + 0.6, D.strip, xa + dx, GY + 1 + dy, colW + 0.6, D.strip);
+        }
       }
       ctx.globalAlpha = 1;
-      for (const r of rings) {                                                    // splash rings on the line
+      ctx.strokeStyle = "rgba(232,229,244,0.28)"; ctx.lineWidth = 1; ctx.beginPath();   // the row itself: the puddle's skin, riding its springs
+      for (let i = 0; i < n; i++) { const yy = GY + 1 + ys[i] * 0.35; if (i === 0) ctx.moveTo(0, yy); else ctx.lineTo(i * colW, yy); }
+      ctx.stroke();
+      for (const r of rings) {                                                    // splash rings on the line, at the ripple's own speed
         if (!r.on) continue;
         r.age += dt; if (r.age > 1.2) { r.on = false; continue; }
-        const rr = 4 + r.age * W * 0.12;
+        const rr = 4 + r.age * front;
         ctx.strokeStyle = "rgba(232,229,244," + (0.7 * (1 - r.age / 1.2)) + ")"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.ellipse(r.x, GY + 1, rr, rr * 0.22, 0, 0, TAU); ctx.stroke();
       }
       const bx = W - 14, bh = floor - 6;                                          // the mask: α against depth, at the right edge
       for (let i = 0; i < 12; i++) rect(bx, GY + 3 + i / 12 * bh, 6, bh / 12 - 1, "rgba(232,229,244," + (D.alpha * Math.max(0, 1 - (i + 0.5) / 12 * floor / fade)) + ")");
       label("α", bx - 3, GY + 12, DIM, "right");
-      label("wobble " + wob.toFixed(1) + " px" + (boost > 0.05 ? " · splash" : ""), 10, GY + 14, DIM);
+      label("row " + n + " springs · crest " + peak.toFixed(1) + " px" + (splashed < 1 ? " · splash" : ""), 10, GY + 14, DIM);
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
@@ -2512,11 +2636,18 @@ def("O", "Outline", "skin", "TOON SHADING: n·l quantised into bands, a specular
 });
 rhymeOf("Outline", "Origami", "two bands and a thick line on cream — the paper look, where light is either on or off", { bands: 2, hull: 5, colour: "#F0D8A0" });
 
-def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, redrawn in strips pushed by scrolling noise; CAUSTICS = two noise fields multiplied, thresholded — press to drop a pebble", function (u) {
+def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, redrawn in strips pushed by scrolling noise, then in columns sheared by the slope of the surface above them — a row of springs the wader stirs; CAUSTICS = two noise fields multiplied, thresholded — press to drop a pebble, and the wobble spreads from where it lands", function (u) {
   var D = { level: 0.5,              // the water's surface, as a fraction of H
-            amp: 0.02,               // refraction push at full noise, as a fraction of H
+            amp: 0.02,               // the current's push at full noise, as a fraction of H
             k: 0.06,                 // noise waves per px of depth
             speed: 0.7,              // how fast the noise field scrolls
+            springs: 32,             // springs along the surface: the row the refraction reads
+            tension: 10,             // the row's pull back to rest, per second²
+            spread: 100,             // its pull toward each neighbour, per second² — a ring's front travels at (W/springs)·√spread
+            damping: 1.6,            // its velocity bleed, per second
+            refract: 0.6,            // px of sideways shift per px of depth per unit of surface slope
+            pebble: 6,               // a pebble's kick to the springs under it, px of first crest
+            stir: 1.5,               // a wader's footfall, the same, px
             tint: "#4FA3D8",         // the water's colour
             tintA: 0.32,             // how much of it
             thr: 0.5,                // caustic threshold: n₁·n₂ above this is bright
@@ -2524,17 +2655,25 @@ def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, red
             cSpeed: 0.4,             // caustic drift speed
             strip: 2,                // refraction strip height, px
             pebbleEvery: 3,          // seconds between autopilot pebbles
-            label: "x' = x + noise(y·k, t)·amp · caustic = (n₁·n₂ > thr) added on the floor" };
+            label: "x' = x + noise(y·k, t)·amp + slope(x)·(y − surface)·refract · surface: a = −k·y − c·v + s·(yL + yR − 2y) · caustic = (n₁·n₂ > thr)" };
   const { ctx, W, H, GY, TAU, stage, hero, crate, layer, label, text, line, rect, clamp, noise2, rgba, rand, DIM, INK } = u;
   // water bends what is behind it. copy the part of the scene below the
   // surface out of the canvas, then draw it back in horizontal STRIPS, each
-  // slid sideways by a noise field that scrolls with the clock — the same
-  // strip trick as Jelly, driven by noise instead of a sine (the atlas's
-  // Undertow, live). CAUSTICS are the light the surface focuses on the
-  // floor: two noise fields at different scales, multiplied, and everything
-  // above a threshold painted bright and added. a pebble rings the surface
-  // and, for a moment, pushes the strips harder.
-  let x = W * 0.3, dir = 1, autoT = 0, boost = 0, cimg = null;
+  // slid sideways by a noise field that scrolls with the clock — the current
+  // (the atlas's Undertow, live). then once more in vertical COLUMNS, each
+  // SHEARED by the slope of the surface above it: a tilted surface bends the
+  // light through it, so what lies under a wave's flank is pushed aside, more
+  // the deeper it is, and nothing under a crest or a trough moves at all.
+  // the surface is a ROW of springs (Wavesprings' water): each pulled back to
+  // rest and toward its neighbours, so a pebble's kick becomes a ring that
+  // travels out from where it fell, and the wader's steps stir it. the line
+  // is the row itself; the rings spread at the row's own speed. CAUSTICS are
+  // the light the surface focuses on the floor: two noise fields at different
+  // scales, multiplied, and everything above a threshold painted bright.
+  const n = Math.max(4, Math.floor(D.springs)), colW = W / (n - 1);
+  const ys = new Float32Array(n), vs = new Float32Array(n);      // the surface: heights and velocities, px
+  const front = colW * Math.sqrt(Math.max(0, D.spread));         // a ring's front, px per second
+  let x = W * 0.3, dir = 1, autoT = 0, dropped = 9, lastF = -1, cimg = null;
   const CW = 64, CH = 24, FW = CW * 2, FH = CH * 2, rings = [];
   const F1 = new Float32Array(FW * FH), F2 = new Float32Array(FW * FH);      // the two noise fields, sampled once, twice the buffer's size
   for (let j = 0; j < FH; j++) for (let i = 0; i < FW; i++) {
@@ -2545,30 +2684,60 @@ def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, red
   const bubbles = [];
   for (let i = 0; i < 8; i++) bubbles.push({ x: 0, y: 0, r: 1, v: 10, on: false });
   function frameOf(clock) { return (Math.floor(clock * 12) % 7) / 10; }
-  function pebble(px) { boost = 1; const r = rings.find(q => !q.on) || rings[0]; r.on = true; r.x = px; r.age = 0; }
+  function kick(px, crest) {                                     // a crest of about `crest` px, given as velocity: the row decides the shape
+    const i = clamp(Math.round(px / W * (n - 1)), 0, n - 1), v = crest * Math.sqrt(D.tension + D.spread);
+    vs[i] += v;
+    if (i > 0) vs[i - 1] += v * 0.5;
+    if (i < n - 1) vs[i + 1] += v * 0.5;
+  }
+  function pebble(px) { kick(px, D.pebble); dropped = 0; const r = rings.find(q => !q.on) || rings[0]; r.on = true; r.x = px; r.age = 0; }
   return {
     press(px) { pebble(clamp(px, 8, W - 8)); autoT = 0; },
     frame(dt, t) {
       stage({ night: 0.1 });
-      autoT += dt; boost = Math.max(0, boost - dt * 1.2);
+      autoT += dt; dropped += dt;
       if (autoT > D.pebbleEvery) { autoT = 0; pebble(rand(W * 0.1, W * 0.9)); }
       x += dir * W * 0.14 * dt;
       if (x > W * 0.8) { x = W * 0.8; dir = -1; }
       if (x < W * 0.2) { x = W * 0.2; dir = 1; }
-      const wy = Math.round(H * D.level);
+      const wy = Math.round(H * D.level), fr = frameOf(t), fi = Math.round(fr * 10);
+      if (fi !== lastF && (fi === 0 || fi === 3)) kick(x, D.stir);                // the wader's two plants per cycle stir the surface
+      lastF = fi;
+      // the surface: one acceleration per spring, substepped so a coarse frame stays stable (√(k + 4s)·h < 2)
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, lim = H * 0.15;
+      for (let q = 0; q < sub; q++) {
+        for (let i = 0; i < n; i++) {
+          const yl = ys[i > 0 ? i - 1 : i], yr = ys[i < n - 1 ? i + 1 : i];
+          vs[i] += (-D.tension * ys[i] - D.damping * vs[i] + D.spread * (yl + yr - 2 * ys[i])) * h;
+        }
+        for (let i = 0; i < n; i++) ys[i] = clamp(ys[i] + vs[i] * h, -lim, lim);
+      }
       crate(W * 0.75, GY, H * 0.15);
-      hero(x, GY, { pose: "run", frame: frameOf(t), face: dir });
-      // the refraction: copy everything below the surface, draw it back in pushed strips
-      const cv = ctx.canvas, L = layer("sea-back");
+      hero(x, GY, { pose: "run", frame: fr, face: dir });
+      line(8, wy, 8, H, "rgba(232,229,244,0.5)", 1);                             // a straight line at x = 8 — the two passes bend it into the push curve
+      // the refraction, pass one: copy everything below the surface, draw it back in
+      // strips pushed by the current's noise — into a second layer, not the canvas
+      const cv = ctx.canvas, L = layer("sea-back"), L2 = layer("sea-strip");
       L.ctx.drawImage(cv, 0, cv.height * wy / H, cv.width, cv.height * (H - wy) / H, 0, wy, W, H - wy);
-      const amp = D.amp * H * (1 + 2.5 * boost);
-      ctx.strokeStyle = "rgba(232,229,244,0.5)"; ctx.lineWidth = 1; ctx.beginPath();
+      const amp = D.amp * H;
+      L2.ctx.clearRect(0, wy, W, H - wy);
       for (let y = wy; y < H; y += D.strip) {
         const dx = noise2(y * D.k, t * D.speed + y * 0.003) * amp;
-        ctx.drawImage(L.cv, 0, y, W, D.strip, dx, y, W, D.strip);
-        if (y === wy) ctx.moveTo(8 + dx, y); else ctx.lineTo(8 + dx, y);        // the push, drawn as a curve at the left edge
+        L2.ctx.drawImage(L.cv, 0, y, W, D.strip, dx, y, W, D.strip);
       }
-      ctx.stroke();
+      // pass two: back to the canvas in columns, one per spring, each drawn through a
+      // SHEAR of the surface's slope there — x' = x + slope·(y − surface)·refract. a
+      // column is one affine draw, so where the slope jumps between neighbours the
+      // columns part a little: the seam of a steep wave
+      let steep = 0;
+      for (let c = 0; c < n - 1; c++) {
+        const slope = (ys[c + 1] - ys[c]) / colW, skew = clamp(slope * D.refract, -0.5, 0.5), xa = c * colW;
+        steep = Math.max(steep, Math.abs(slope));
+        ctx.save();
+        ctx.transform(1, 0, skew, 1, -skew * wy, 0);
+        ctx.drawImage(L2.cv, xa, wy, colW + 0.6, H - wy, xa, wy, colW + 0.6, H - wy);
+        ctx.restore();
+      }
       rect(0, wy, W, H - wy, rgba(D.tint, D.tintA));
       // the caustics: a small buffer of n₁·n₂, thresholded, added on the floor band
       const C = layer("sea-caustic"), cc = C.ctx;
@@ -2590,14 +2759,14 @@ def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, red
       ctx.globalCompositeOperation = "lighter"; ctx.globalAlpha = 0.7;
       ctx.drawImage(C.cv, 0, 0, CW, CH, 0, GY, W, H - GY);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
-      // the surface line and the rings
+      // the surface line — the row itself — and the rings, at the row's own speed
       ctx.strokeStyle = "rgba(232,229,244,0.75)"; ctx.lineWidth = 1.5; ctx.beginPath();
-      for (let sx = 0; sx <= W; sx += 6) { const sy = wy + Math.sin(sx * 0.05 + t * 2) * 1.2; if (sx === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy); }
+      for (let i = 0; i < n; i++) { const sy = wy + ys[i]; if (i === 0) ctx.moveTo(0, sy); else ctx.lineTo(i * colW, sy); }
       ctx.stroke();
       for (const r of rings) {
         if (!r.on) continue;
         r.age += dt; if (r.age > 1.4) { r.on = false; continue; }
-        const rr = 3 + r.age * W * 0.1;
+        const rr = 3 + r.age * front;
         ctx.strokeStyle = "rgba(232,229,244," + (0.8 * (1 - r.age / 1.4)) + ")"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.ellipse(r.x, wy, rr, rr * 0.25, 0, 0, TAU); ctx.stroke();
       }
@@ -2609,7 +2778,7 @@ def("U", "Undersea", "skin", "WATER REFRACTION: what lies below the surface, red
       }
       label("push(y)", 8, wy - 5, DIM);
       label("caustics: n₁·n₂ > " + D.thr, W / 2, GY + 12, DIM, "center");
-      text("amp " + amp.toFixed(1) + " px" + (boost > 0.05 ? " · pebble" : ""), 10, 18, 10, INK);
+      text("current " + amp.toFixed(1) + " px · slope " + steep.toFixed(2) + " · " + n + " springs" + (dropped < 1 ? " · pebble" : ""), 10, 18, 10, INK);
       label(D.label, W / 2, H - 8, null, "center");
     }
   };

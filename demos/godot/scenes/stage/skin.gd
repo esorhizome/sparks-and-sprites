@@ -53,29 +53,38 @@ const DEFS := [
 					"slowed":  { "colour": "#9A7AE0", "wave": "saw", "rate": 0.5, "min": 0.1, "max": 0.6, "glyph": "◔", "slow": 0.45 } },
 				"night": 0.55 } } },
 	{ "id": "jelly", "letter": "J", "name": "Jelly",
-		"hint": "a WOBBLE shader: the sprite in strips, each slid by sin(y·k + t·w)·amp — jelly, heat, underwater — the bestiary's heat haze on a body — press to poke",
-		"dials": { "mode": "jelly",       # jelly (a poke's wobble decays) / heat / underwater
-			"modes": { "jelly":      { "amp": 0.22, "k": 1.6, "w": 16, "decay": 3.2, "pin": 1 },
-				"heat":       { "amp": 0.05, "k": 4.0, "w": 30, "decay": 0,   "pin": 0 },
-				"underwater": { "amp": 0.12, "k": 1.2, "w": 4,  "decay": 0,   "pin": 0 } },
-			"ampScale": 1,              # multiplies every mode's amplitude
-			"speedScale": 1,            # multiplies every mode's w
+		"hint": "a WOBBLE shader: the sprite in strips, each slid by a chain of lateral springs up the body — the feet driven, every link chasing the one below, so the head lags and overshoots — jelly, heat, underwater — press to poke, and the wobble climbs from where you poked",
+		"dials": { "mode": "jelly",       # jelly (a poke rings up the body) / heat / underwater
+			"modes": { "jelly":      { "amp": 0.02, "w": 1.2, "k": 600,  "zeta": 0.35 },   # amp: the drive at the feet, sprite widths · w: its noise rate · k: a link's stiffness · zeta: its damping, of critical
+				"heat":       { "amp": 0.05, "w": 30,  "k": 3000, "zeta": 0.5 },
+				"underwater": { "amp": 0.12, "w": 4,   "k": 300,  "zeta": 0.45 } },
+			"ampScale": 1,              # multiplies every mode's amp (the sway the feet are driven with)
+			"speedScale": 1,            # multiplies every mode's w (how fast that drive's noise runs)
+			"links": 6,                 # springs up the body: the feet's link and the ones that chase it, hair last
+			"poke": 8,                  # a poke's kick, sprite widths per second, into ONE link's velocity
 			"strip": 0.5,               # strip height in sprite units (0.5 = two strips per pixel row)
 			"pokeEvery": 2.6,           # seconds between autopilot pokes
-			"label": "x' = x + sin(y·k + t·w) · amp · env(y)" },
+			"label": "link j: xⱼ'' = k·(xⱼ₋₁ − xⱼ) − ζ·2√k·xⱼ' · x₋₁ = amp·noise(t·w) · poke: vⱼ += poke · strip: x' = x + lerp(links, y)" },
 		"rhyme": { "name": "Jiggly", "hint": "underwater, twice the amplitude and half the speed — the whole body swaying like weed in a slow current",
 			"dials": { "mode": "underwater", "ampScale": 2.2, "speedScale": 0.6 } } },
 	{ "id": "sway", "letter": "S", "name": "Sway",
-		"hint": "WIND SWAY: strips slide by noise(t + x) · distance-from-pivot^p — a tree, a banner and a hanging sign bend most at the far end — press to gust from that side",
-		"dials": { "amp": 0.06,           # full-wind displacement at the tip, as a fraction of H
+		"hint": "WIND SWAY: a tree, a banner and a hanging sign, each a chain of angle springs the wind leans on — the root chases the wind, every joint chases the one below and lags, so a gust bends them late and they ring back past upright after it; the sign a real pendulum under its bracket — press to gust from that side",
+		"dials": { "amp": 0.06,           # the lean a unit wind asks for: the tip's rest displacement, as a fraction of H
 			"freq": 0.5,                # how fast the noise wind changes
-			"power": 1.6,               # displacement ∝ height^power: a bending trunk, not a hinge
+			"k": 40,                    # the root spring's stiffness (a trunk rooted in the ground)
+			"damp": 5,                  # its damping (2√k = 12.6 would be critical) — under, so it rings back
+			"joints": 4,                # segments per tree or banner: the root + the joints that chase it
+			"tip": 1.4,                 # each joint's k as a multiple of the one below: above 1 because the segment above is lighter
+			"tipdamp": 0.4,             # a joint's damping, as a fraction of ITS OWN critical — well under 1, so the top whips past
+			"bend": 0.5,                # the wind's extra lean at each joint, as a fraction of the root's: a bending trunk, not a hinge (0 = hinge)
+			"gravity": 12,              # the sign's pendulum: g over its hanging length, per second² — the ω² of its swing
+			"swing": 1.2,               # the sign's damping (2√gravity = 6.9 would be critical): it swings for a long while
 			"strips": 14,               # strips per object
-			"gust": 2.2,                # a gust's peak strength, in wind units
+			"gust": 2.2,                # a gust's peak strength, in wind units — a spike on the rest, never on the object
 			"gustDecay": 1.1,           # how fast a gust dies, per second
 			"autoGust": 3.6,            # seconds between autopilot gusts
 			"broken": false,            # a torn banner instead of a whole one
-			"label": "dx = wind(t, x) · (h / H)^p · amp · wind = noise(t·f + x) + gust" },
+			"label": "root: θ'' = k·(wind·lean − θ) − damp·θ' · joint: θⱼ'' = kⱼ·(θⱼ₋₁ + wind·lean·bend − θⱼ) − dⱼ·θⱼ' · sign: θ'' = g·(wind·lean − sin θ) − swing·θ'" },
 		"rhyme": { "name": "Storm", "hint": "more than twice the amplitude, a wind that changes three times as fast, and the banner torn — the night the sign came down",
 			"dials": { "amp": 0.14, "freq": 1.5, "broken": true } } },
 	{ "id": "grass", "letter": "G", "name": "Grass", "drag": true,
@@ -106,16 +115,18 @@ const DEFS := [
 		"rhyme": { "name": "Xspectral", "hint": "a magic-purple flat silhouette that pulses and glows — the hero's soul seen through stone",
 			"dials": { "mode": "flat", "colour": "#C9A0F5", "pulse": 1.4 } } },
 	{ "id": "wetfloor", "letter": "W", "name": "Wetfloor",
-		"hint": "2D REFLECTION: the scene above the line copied, drawn flipped in strips below it, faded by depth and wobbled by a sine — the atlas's Mirror, wet — press to splash",
-		"dials": { "wobble": 3,           # sideways wobble at full depth, px
-			"k": 0.25,                  # wobble waves per px of depth
-			"w": 5,                     # wobble speed, radians per second
+		"hint": "2D REFLECTION: the scene above the line copied, drawn flipped in strips below it, faded by depth and wobbled by a row of springs along the line — the atlas's Mirror, wet — the runner's steps stir it — press to splash, and the ripple travels out from there",
+		"dials": { "wobble": 2,           # a footstep's kick to the springs under it, px of crest (0 = the runner leaves the water still)
+			"springs": 28,              # springs along the line: the surface the reflection reads
+			"tension": 10,              # k: the pull back to the rest level, per second²
+			"spread": 100,              # s: the pull toward each neighbour, per second² — a ripple's front travels at (W/springs)·√s
+			"damping": 1.6,             # c: velocity bleed, per second
 			"alpha": 0.55,              # the reflection's strength at the line
 			"depth": 1,                 # where the fade reaches zero, as a fraction of the floor's height
 			"strip": 2,                 # strip height, px
 			"splashEvery": 3.2,         # seconds between autopilot splashes
-			"splash": 5,                # extra wobble a splash adds, px
-			"label": "y' = 2·GY − y · α = alpha·(1 − depth) · x' = x + sin(y·k + t·w)·wobble" },
+			"splash": 5,                # a splash's kick to the springs under it, px of first crest (0 = a splash leaves the mirror still)
+			"label": "y' = 2·GY − y · α = alpha·(1 − depth) · x' = x + row(x)·(0.3 + depth) · row: a = −k·y − c·v + s·(yL + yR − 2y)" },
 		"rhyme": { "name": "Waxfloor", "hint": "no wobble at all and a fade that ends a third of the way down — the sharp, short mirror of a polished hall",
 			"dials": { "wobble": 0, "depth": 0.4, "splash": 0 } } },
 	{ "id": "skewshadow", "letter": "S", "name": "Skewshadow",
@@ -165,11 +176,18 @@ const DEFS := [
 		"rhyme": { "name": "Origami", "hint": "two bands and a thick line on cream — the paper look, where light is either on or off",
 			"dials": { "bands": 2, "hull": 5, "colour": "#F0D8A0" } } },
 	{ "id": "undersea", "letter": "U", "name": "Undersea", "shader": "res://shaders/stage/undersea.gdshader",
-		"hint": "WATER REFRACTION: what lies below the surface, redrawn in strips pushed by scrolling noise; CAUSTICS = two noise fields multiplied, thresholded — press to drop a pebble",
+		"hint": "WATER REFRACTION: what lies below the surface, redrawn in strips pushed by scrolling noise, then in columns sheared by the slope of the surface above them — a row of springs the wader stirs; CAUSTICS = two noise fields multiplied, thresholded — press to drop a pebble, and the wobble spreads from where it lands",
 		"dials": { "level": 0.5,          # the water's surface, as a fraction of H
-			"amp": 0.02,                # refraction push at full noise, as a fraction of H
+			"amp": 0.02,                # the current's push at full noise, as a fraction of H
 			"k": 0.06,                  # noise waves per px of depth
 			"speed": 0.7,               # how fast the noise field scrolls
+			"springs": 32,              # springs along the surface: the row the refraction reads (the shader holds 64 at most)
+			"tension": 10,              # the row's pull back to rest, per second²
+			"spread": 100,              # its pull toward each neighbour, per second² — a ring's front travels at (W/springs)·√spread
+			"damping": 1.6,             # its velocity bleed, per second
+			"refract": 0.6,             # px of sideways shift per px of depth per unit of surface slope
+			"pebble": 6,                # a pebble's kick to the springs under it, px of first crest
+			"stir": 1.5,                # a wader's footfall, the same, px
 			"tint": "#4FA3D8",          # the water's colour
 			"tintA": 0.32,              # how much of it
 			"thr": 0.5,                 # caustic threshold: n₁·n₂ above this is bright
@@ -177,7 +195,7 @@ const DEFS := [
 			"cSpeed": 0.4,              # caustic drift speed
 			"strip": 2,                 # refraction strip height, px
 			"pebbleEvery": 3,           # seconds between autopilot pebbles
-			"label": "x' = x + noise(y·k, t)·amp · caustic = (n₁·n₂ > thr) added on the floor" },
+			"label": "x' = x + noise(y·k, t)·amp + slope(x)·(y − surface)·refract · surface: a = −k·y − c·v + s·(yL + yR − 2y) · caustic = (n₁·n₂ > thr)" },
 		"rhyme": { "name": "Ultramarine", "hint": "the water up to the hero's chin, a deep blue tint and caustics that drift at a third of the speed — the bottom of the lake",
 			"dials": { "level": 0.32, "tint": "#1C3BA8", "cSpeed": 0.14 } } },
 	{ "id": "hologram", "letter": "H", "name": "Hologram",
@@ -202,6 +220,7 @@ const SHADOW_INK := Color("0A0812")                # the skew shadow's black
 const LINE_INK := Color(22.0 / 255.0, 14.0 / 255.0, 30.0 / 255.0)   # the toon line
 const FLOOR_WET := Color(19.0 / 255.0, 16.0 / 255.0, 32.0 / 255.0, 0.55)
 const FOUR := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+const ROW_MAX := 64                                   # the undersea shader's row: uniform float row[64]
 
 # ---------------------------------------------------------------- small helpers
 
@@ -408,6 +427,19 @@ static func _wave(st: Dictionary, clock: float) -> float:
 		return 1.0 - fmod(ph, 1.0)
 	return 0.5 + 0.5 * sin(ph * TAU)
 
+# ---------------------------------------------------------------- jelly
+
+## A poke: velocity into ONE link of the chain — yf 0 at the feet, 1 at the
+## hair — so the wobble starts there and climbs.
+static func _jelly_poke(b: Dictionary, yf: float, dir: int) -> void:
+	var D: Dictionary = b.D
+	var L: int = b.L
+	var vs: PackedFloat32Array = b.vs
+	var j := clampi(roundi(yf * (L - 1)), 0, L - 1)
+	vs[j] += dir * float(D.poke) * 14.0 * float(b.S)   # the sprite is 14 units wide
+	b.pokeJ = j
+	b.age = 0.0
+
 # ---------------------------------------------------------------- sway
 
 ## One object of the wind scene — its primitives, cut to the band y0..y1 and
@@ -460,20 +492,102 @@ static func _sway_piece(n: CanvasItem, o: Dictionary, y0: float, y1: float, dx: 
 		if mid >= y0 and mid < y1:
 			Kit.text(n, "INN", Vector2(ox + dx, top + H * 0.16), size, Kit.SUN, true)
 
+# ---------------------------------------------------------------- the wave row
+
+## A ROW of springs along a water line — Wavesprings' surface, shared by the
+## wet floor and the undersea: heights b.ys and velocities b.vs (px), each
+## spring pulled back to rest (tension), toward its two neighbours (spread)
+## and bled (damping), so one kick becomes a ripple that travels outward.
+static func _row_init(b: Dictionary) -> void:
+	var D: Dictionary = b.D
+	var nn := maxi(4, int(D.springs))
+	var ys := PackedFloat32Array()                    # sized here: a packed array read back from b is the same array
+	var vs := PackedFloat32Array()
+	ys.resize(nn)
+	vs.resize(nn)
+	b.n = nn
+	b.ys = ys
+	b.vs = vs
+	b.col_w = b.w / float(nn - 1)
+	b.front = float(b.col_w) * sqrt(maxf(0.0, float(D.spread)))   # how fast a ripple's front travels, px per second
+
+## A crest of about `crest` px at x — given as velocity, so the row decides the shape.
+static func _row_kick(b: Dictionary, px: float, crest: float) -> void:
+	var D: Dictionary = b.D
+	var nn: int = b.n
+	var vs: PackedFloat32Array = b.vs
+	var i := clampi(roundi(px / b.w * float(nn - 1)), 0, nn - 1)
+	var v := crest * sqrt(float(D.tension) + float(D.spread))
+	vs[i] += v
+	if i > 0:
+		vs[i - 1] += v * 0.5
+	if i < nn - 1:
+		vs[i + 1] += v * 0.5
+
+## One frame of the row: one acceleration per spring, substepped so a coarse
+## frame stays stable (√(k + 4s)·h < 2 — the lexicon's Substep).
+static func _row_step(b: Dictionary, dt: float, lim: float) -> void:
+	var D: Dictionary = b.D
+	var nn: int = b.n
+	var ys: PackedFloat32Array = b.ys
+	var vs: PackedFloat32Array = b.vs
+	var tension: float = D.tension
+	var damping: float = D.damping
+	var spread: float = D.spread
+	var sub := maxi(1, ceili(dt * 50.0))
+	var h := dt / float(sub)
+	for _s in sub:
+		for i in nn:
+			var yl := ys[i - 1 if i > 0 else i]
+			var yr := ys[i + 1 if i < nn - 1 else i]
+			vs[i] += (-tension * ys[i] - damping * vs[i] + spread * (yl + yr - 2.0 * ys[i])) * h
+		for i in nn:
+			ys[i] = clampf(ys[i] + vs[i] * h, -lim, lim)
+
+## The row's height at any x, between its springs.
+static func _row_at(b: Dictionary, x: float) -> float:
+	var nn: int = b.n
+	var ys: PackedFloat32Array = b.ys
+	var p := clampf(x / float(b.col_w), 0.0, float(nn - 1))
+	var i0 := mini(nn - 2, int(p))
+	return ys[i0] + (ys[i0 + 1] - ys[i0]) * (p - i0)
+
+## The tallest crest on the row, px — for the readouts.
+static func _row_peak(b: Dictionary) -> float:
+	var ys: PackedFloat32Array = b.ys
+	var peak := 0.0
+	for y in ys:
+		peak = maxf(peak, absf(y))
+	return peak
+
 # ---------------------------------------------------------------- wet floor
 
-## The reflection's alpha and sideways wobble at a depth below the line.
+## The reflection's alpha at a depth below the line, and its sideways slide
+## at (x, depth): the row's height under that x, growing with depth.
 static func _wet_a(dy: float, alpha: float, fade: float) -> float:
 	return alpha * maxf(0.0, 1.0 - dy / fade)
 
-static func _wet_dx(dy: float, D: Dictionary, t: float, wob: float, floor_h: float) -> float:
-	var k: float = D.k
-	var w: float = D.w
-	return sin(dy * k + t * w) * wob * (0.3 + dy / floor_h)
+static func _wet_dx(b: Dictionary, x: float, dy: float, floor_h: float) -> float:
+	return _row_at(b, x) * (0.3 + dy / floor_h)
+
+## A splash: a kick to the row where it lands, and a ring that spreads from there.
+static func _wet_splash(b: Dictionary, px: float) -> void:
+	_row_kick(b, px, float(b.D.splash))
+	b.splashed = 0.0
+	var pick: Dictionary = b.rings[0]
+	for r in b.rings:
+		if not r.on:
+			pick = r
+			break
+	pick.on = true
+	pick.x = px
+	pick.age = 0.0
 
 ## The rows GY−(i+1)·strip .. GY−i·strip of some upright rectangles, drawn
-## mirrored (y' = 2·GY + 1 − y) strip by strip, faded and wobbled by depth.
-static func _wet_rects(n: CanvasItem, rects: Array, cols: Array, b: Dictionary, t: float, wob: float, fade: float) -> void:
+## mirrored (y' = 2·GY + 1 − y) strip by strip, faded by depth and slid by
+## the row under the rectangle's middle (the lamp and the crate are a few
+## springs wide, so one slide per strip is close enough).
+static func _wet_rects(n: CanvasItem, rects: Array, cols: Array, b: Dictionary, fade: float) -> void:
 	var D: Dictionary = b.D
 	var GY: float = b.gy
 	var floor_h: float = b.h - GY
@@ -485,7 +599,6 @@ static func _wet_rects(n: CanvasItem, rects: Array, cols: Array, b: Dictionary, 
 		var a := _wet_a(dy, alpha, fade)
 		if a <= 0.005:
 			break
-		var dx := _wet_dx(dy, D, t, wob, floor_h)
 		var sy0 := GY - dy - strip
 		var sy1 := GY - dy
 		for ri in rects.size():
@@ -495,12 +608,13 @@ static func _wet_rects(n: CanvasItem, rects: Array, cols: Array, b: Dictionary, 
 			if ib > ia:
 				var col: Color = cols[ri]
 				col.a *= a
+				var dx := _wet_dx(b, r.get_center().x, dy, floor_h)
 				n.draw_rect(Rect2(r.position.x + dx, 2.0 * GY + 1.0 - ib, r.size.x, ib - ia), col)
 		i += 1
 
 ## The same for upright line segments (the crate's X): the part of each
 ## segment inside the strip, mirrored.
-static func _wet_lines(n: CanvasItem, segs: Array, col: Color, w: float, b: Dictionary, t: float, wob: float, fade: float) -> void:
+static func _wet_lines(n: CanvasItem, segs: Array, col: Color, w: float, b: Dictionary, fade: float) -> void:
 	var D: Dictionary = b.D
 	var GY: float = b.gy
 	var floor_h: float = b.h - GY
@@ -512,13 +626,13 @@ static func _wet_lines(n: CanvasItem, segs: Array, col: Color, w: float, b: Dict
 		var a := _wet_a(dy, alpha, fade)
 		if a <= 0.005:
 			break
-		var dx := _wet_dx(dy, D, t, wob, floor_h)
 		var band := Rect2(-1.0e5, GY - dy - strip, 2.0e5, strip)
 		for sg in segs:
 			var cut := _clip_seg(sg[0], sg[1], band)
 			if cut.size() == 2:
 				var c2 := col
 				c2.a *= a
+				var dx := _wet_dx(b, (cut[0].x + cut[1].x) * 0.5, dy, floor_h)
 				n.draw_line(Vector2(cut[0].x + dx, 2.0 * GY + 1.0 - cut[0].y), Vector2(cut[1].x + dx, 2.0 * GY + 1.0 - cut[1].y), c2, w)
 		i += 1
 
@@ -691,8 +805,10 @@ static func _rim(n: CanvasItem, map: Dictionary, x_of: Callable, y0: float, s: f
 
 # ---------------------------------------------------------------- undersea
 
+## A pebble: a kick to the row where it lands, and a ring that spreads from there.
 static func _sea_pebble(b: Dictionary, px: float) -> void:
-	b.boost = 1.0
+	_row_kick(b, px, float(b.D.pebble))
+	b.dropped = 0.0
 	var pick: Dictionary = b.rings[0]
 	for r in b.rings:
 		if not r.on:
@@ -705,10 +821,17 @@ static func _sea_pebble(b: Dictionary, px: float) -> void:
 static func _sea_uniforms(b: Dictionary) -> void:
 	var D: Dictionary = b.D
 	var wy := roundf(b.h * float(D.level))
+	var nn: int = b.n
+	var ys: PackedFloat32Array = b.ys
+	var row := PackedFloat32Array()                   # the row, padded to the shader's array
+	row.resize(ROW_MAX)
+	for i in mini(nn, ROW_MAX):
+		row[i] = ys[i]
 	b.shader_rect = Rect2(0.0, wy, b.w, b.h - wy)
 	b.uniforms = { "rect_size": Vector2(b.w, b.h - wy), "card_size": Vector2(b.w, b.h), "y0": wy, "gy": b.gy,
-		"t": b.t, "amp": float(D.amp) * b.h * (1.0 + 2.5 * float(b.boost)), "k": float(D.k), "speed": float(D.speed),
-		"strip": float(D.strip), "thr": float(D.thr), "c_scale": float(D.cScale), "c_speed": float(D.cSpeed) }
+		"t": b.t, "amp": float(D.amp) * b.h, "k": float(D.k), "speed": float(D.speed),
+		"strip": float(D.strip), "thr": float(D.thr), "c_scale": float(D.cScale), "c_speed": float(D.cSpeed),
+		"row": row, "n_row": mini(nn, ROW_MAX), "refract": float(D.refract) }
 
 # ---------------------------------------------------------------- the quartet
 
@@ -766,12 +889,28 @@ static func init(b: Dictionary) -> void:
 		"jelly":
 			# a VERTEX SHADER moves where pixels land, not what they are. in 2D the
 			# cheapest version is horizontal STRIPS: draw the sprite one thin row at a
-			# time, each row shifted sideways by a sine of its height and the clock.
-			# JELLY pins the feet (the envelope grows with height) and lets the
-			# amplitude decay after a poke; HEAT is a tiny, fast, everywhere shimmer —
-			# the bestiary's heat haze applied to a body; UNDERWATER is big and slow.
-			# the curve beside the sprite is the offset itself, row by row.
+			# time, each row shifted sideways. the shift is not a sine of the clock —
+			# it is read off a CHAIN of lateral springs up the body (the lexicon's
+			# Damp, stacked the way Grass stacks it): the feet's link chases a DRIVE —
+			# a gentle slow noise for jelly's breathing, a tiny fast one for heat, a
+			# big slow one under water — and every link above chases the one below on
+			# its own under-damped spring, so the head lags the belly and overshoots.
+			# a POKE adds velocity to one link only, so the wobble starts there and
+			# climbs; nothing below the poke feels it. a strip's offset is the chain
+			# interpolated at its height; the curve beside the sprite is that offset,
+			# row by row, with the links marked on it.
+			var L := maxi(2, int(D.links))
+			var xs := PackedFloat32Array()                # link offsets (px) and velocities, feet first
+			var vs := PackedFloat32Array()
+			xs.resize(L)
+			vs.resize(L)
+			b.L = L
+			b.xs = xs
+			b.vs = vs
+			b.S = maxf(2.0, roundf(H / 60.0)) * 2.0        # the sprite's unit here (its own, not the kit's)
 			b.age = 9.0
+			b.pokeJ = 0
+			b.drive = 0.0
 			b.autoT = 0.0
 			b.bubbles = []
 			for _i in 10:
@@ -779,18 +918,47 @@ static func init(b: Dictionary) -> void:
 		"sway":
 			# everything that stands in the wind is drawn ONCE, upright, into a layer;
 			# every frame it is copied back in horizontal STRIPS, each slid sideways by
-			# the wind times how far it is from its PIVOT. a tree and a banner pivot at
-			# the ground, so the top moves most (∝ height^p — a bend, not a hinge); the
-			# sign hangs from its bracket, so its bottom moves most. the wind is one
-			# noise value sampled at the clock plus each object's x, so they never
-			# agree exactly, and a GUST is a spike added on top that decays.
+			# how far the object has BENT at that height. the bend is never the wind's
+			# value: it is a CHAIN of angle springs (Grass, stood up to tree height).
+			# the root chases the lean the wind asks for on an under-damped spring, and
+			# every joint above chases the one below — quicker, since the segment above
+			# is lighter, and much less damped — plus a little extra lean of its own
+			# from the wind, so the trunk curves instead of hinging. the top lags the
+			# gust, and when the gust dies it whips back past upright. the sign hangs
+			# from its bracket, so it is a PENDULUM: gravity pulls it back to hanging,
+			# the wind pushes it aside, and it keeps swinging long after — the tree has
+			# stopped before the sign has. the wind is one noise value at the clock
+			# plus each object's x, and a GUST is a spike on that rest which decays; a
+			# strip's dx is the chain walked up (or down) to the strip's height.
 			# (here the upright drawing is cut to each strip with Clipper, then slid.)
+			var J := maxi(1, int(D.joints))
+			var amp: float = D.amp
+			var bend: float = D.bend
+			b.J = J
 			b.objs = [
 				{ "kind": "tree", "pivot": "base", "x": W * 0.2, "x0": W * 0.07, "w": W * 0.26, "top": GY - H * 0.56, "bot": GY },
 				{ "kind": "banner", "pivot": "base", "x": W * 0.5, "x0": W * 0.47, "w": W * 0.19, "top": GY - H * 0.58, "bot": GY },
 				{ "kind": "sign", "pivot": "hang", "x": W * 0.83, "x0": W * 0.78, "w": W * 0.2, "top": GY - H * 0.5, "bot": GY - H * 0.5 + H * 0.24 } ]
+			for o in b.objs:
+				var span: float = float(o.bot) - float(o.top)
+				o.span = span
+				o.th = 0.0                                # the root angle (the sign: its whole angle) and its velocity
+				o.om = 0.0
+				var tj := PackedFloat32Array()            # the joints above the root: angles and velocities
+				var oj := PackedFloat32Array()
+				tj.resize(maxi(0, J - 1))
+				oj.resize(maxi(0, J - 1))
+				o.tj = tj
+				o.oj = oj
+				# the lean per unit wind, so that at rest the tip sits amp·H aside: a chain of J
+				# segments with the extra bend adds up to span·(1 + bend·(J − 1)/2) per radian
+				o.lean = amp * H / (span * (1.0 + bend * (J - 1) / 2.0)) if o.pivot == "base" else 0.6 * amp * H / span
+				var cum := PackedFloat32Array()           # the chain walked: sideways displacement at each segment's end
+				cum.resize(J + 1)
+				o.cum = cum
 			b.gustA = 0.0
 			b.gustDir = 1
+			b.windC = 0.0
 			b.autoT = 0.0
 		"grass":
 			# each blade of grass is a short CHAIN of angles from vertical. the root is
@@ -861,17 +1029,25 @@ static func init(b: Dictionary) -> void:
 			# about the ground line — the atlas's Mirror. here the upright pass is
 			# copied out of the canvas into a layer, then copied back one thin STRIP at
 			# a time from the mirrored row, so each strip can (1) fade with depth — the
-			# gradient mask — and (2) slide sideways by a sine of its depth and the
-			# clock, more the deeper it is: a wet floor. a splash raises the wobble for
-			# a moment and rings spread on the line. no wobble and a short fade = polish.
+			# gradient mask — and (2) slide sideways, more the deeper it is: a wet
+			# floor. the slide is not a sine of the clock: it is read off a ROW of
+			# springs along the line (Wavesprings' water, laid on the floor) — each
+			# pulled back to rest and toward its two neighbours, so a kick at one
+			# spring becomes a ripple that travels outward, spreads and dies. the
+			# runner's feet kick the row where they land; a splash kicks it harder
+			# where you pressed, and the rings spread at the same speed the ripple
+			# does. no kicks and a short fade = polish.
 			# (the painter has no canvas to copy: the hero's cells, the lamp's and the
-			# crate's rectangles are mirrored strip by strip with the same α and dx;
-			# the sky and hills are mirrored as polygons whose vertices carry the fade
-			# and the wobble of their own depth — smooth where the web's is stepped.)
+			# crate's rectangles are mirrored strip by strip with the α of their depth
+			# and the slide of the row under them; the sky and hills are mirrored as
+			# polygons whose vertices carry the fade and the slide of their own place
+			# — smooth where the web's columns are stepped.)
+			_row_init(b)
 			b.x = W * 0.35
 			b.dir = 1
 			b.autoT = 0.0
-			b.boost = 0.0
+			b.lastF = -1
+			b.splashed = 9.0
 			b.rings = []
 			for _i in 5:
 				b.rings.append({ "on": false, "x": 0.0, "age": 0.0 })
@@ -938,20 +1114,28 @@ static func init(b: Dictionary) -> void:
 		"undersea":
 			# water bends what is behind it. copy the part of the scene below the
 			# surface out of the canvas, then draw it back in horizontal STRIPS, each
-			# slid sideways by a noise field that scrolls with the clock — the same
-			# strip trick as Jelly, driven by noise instead of a sine (the atlas's
-			# Undertow, live). CAUSTICS are the light the surface focuses on the
-			# floor: two noise fields at different scales, multiplied, and everything
-			# above a threshold painted bright and added. a pebble rings the surface
-			# and, for a moment, pushes the strips harder.
+			# slid sideways by a noise field that scrolls with the clock — the current
+			# (the atlas's Undertow, live). then once more in vertical COLUMNS, each
+			# SHEARED by the slope of the surface above it: a tilted surface bends the
+			# light through it, so what lies under a wave's flank is pushed aside, more
+			# the deeper it is, and nothing under a crest or a trough moves at all.
+			# the surface is a ROW of springs (Wavesprings' water): each pulled back to
+			# rest and toward its neighbours, so a pebble's kick becomes a ring that
+			# travels out from where it fell, and the wader's steps stir it. the line
+			# is the row itself; the rings spread at the row's own speed. CAUSTICS are
+			# the light the surface focuses on the floor: two noise fields at different
+			# scales, multiplied, and everything above a threshold painted bright.
 			# (this is the family's one screen read: shaders/stage/undersea.gdshader,
-			# confined to the water via b.shader_rect, does the strips and the caustics
-			# over what the painter drew; the painter draws a straight line at x = 8
-			# and the pass bends it into the push curve.)
+			# confined to the water via b.shader_rect, does the strips, the shear from
+			# the row it is handed as a uniform, and the caustics over what the painter
+			# drew; the painter draws a straight line at x = 8 and the pass bends it
+			# into the push curve.)
+			_row_init(b)
 			b.x = W * 0.3
 			b.dir = 1
 			b.autoT = 0.0
-			b.boost = 0.0
+			b.lastF = -1
+			b.dropped = 9.0
 			b.rings = []
 			for _i in 6:
 				b.rings.append({ "on": false, "x": 0.0, "age": 0.0 })
@@ -997,7 +1181,10 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			b.combo = (b.combo + 1) % (b.combos as Array).size()
 			b.autoT = -3.0
 		"jelly":
-			b.age = 0.0
+			var S: float = b.S                            # the sprite, as the painter places it: feet on GY, 19 units tall
+			var y0 := GY - 18.0 * S
+			var yf := clampf((y0 + 19.0 * S - pos.y) / (19.0 * S), 0.05, 0.95)   # 0 at the feet, 1 at the hair
+			_jelly_poke(b, yf, 1 if pos.x < W * 0.42 else -1)   # pushed away from the finger
 			b.autoT = 0.0
 		"sway":
 			b.gustDir = 1 if pos.x < W / 2.0 else -1
@@ -1009,15 +1196,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 		"xray":
 			D.mode = "flat" if D.mode == "outline" else "outline"
 		"wetfloor":
-			b.boost = 1.0
-			var pick: Dictionary = b.rings[0]
-			for r in b.rings:
-				if not r.on:
-					pick = r
-					break
-			pick.on = true
-			pick.x = clampf(pos.x, 10.0, W - 10.0)
-			pick.age = 0.0
+			_wet_splash(b, clampf(pos.x, 10.0, W - 10.0))
 			b.autoT = 0.0
 		"skewshadow":
 			if D.source == "lamp":
@@ -1177,13 +1356,36 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.age += dt
 			if b.autoT > float(D.pokeEvery):
 				b.autoT = 0.0
-				b.age = 0.0
+				_jelly_poke(b, 0.55, 1 if randf() < 0.5 else -1)
 			if D.mode == "underwater":
 				for bu in b.bubbles:
 					bu.y -= bu.v * dt
 					if bu.y < 0.0:
 						bu.y = GY
 						bu.x = randf_range(0.0, W)
+			# the chain: the feet's link chases the drive, each link above chases the one
+			# below. a symplectic step is only stable while √k·h < 2, so a coarse frame
+			# is cut into substeps of at most 0.02 s (the lexicon's Substep)
+			var modes: Dictionary = D.modes
+			var m: Dictionary = modes.get(D.mode, modes.jelly)
+			var L: int = b.L
+			var xs: PackedFloat32Array = b.xs
+			var vs: PackedFloat32Array = b.vs
+			var S: float = b.S
+			var sw := 14.0 * S
+			var k: float = m.k
+			var d := float(m.zeta) * 2.0 * sqrt(k)
+			var lim := sw * 2.0
+			var drive := float(m.amp) * float(D.ampScale) * sw * Kit.noise(t * float(m.w) * float(D.speedScale) + 3.7)
+			b.drive = drive
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				var below := drive
+				for j in L:
+					vs[j] += (k * (below - xs[j]) - d * vs[j]) * h
+					xs[j] = clampf(xs[j] + vs[j] * h, -lim, lim)
+					below = xs[j]
 		"sway":
 			b.autoT += dt
 			if b.autoT > float(D.autoGust):
@@ -1191,6 +1393,59 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.gustA = 1.0
 				b.gustDir = 1 if randf() < 0.5 else -1
 			b.gustA = maxf(0.0, b.gustA - dt * float(D.gustDecay))
+			var gust_a: float = b.gustA
+			var gust_dir: int = b.gustDir
+			var gust := gust_dir * float(D.gust) * gust_a * gust_a   # the spike: peaks at once, dies as a square
+			var freq: float = D.freq
+			var kk: float = D.k
+			var damp: float = D.damp
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			var bend: float = D.bend
+			var gravity: float = D.gravity
+			var swing: float = D.swing
+			var J: int = b.J
+			# the joints up a trunk are stiffer than the root (k · tip per joint), and a
+			# symplectic step is only stable while √k·h < 2 — so a coarse frame is cut
+			# into substeps of at most 0.02 s (the lexicon's Substep)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var objs: Array = b.objs
+			for oi in objs.size():
+				var o: Dictionary = objs[oi]
+				var wind := clampf(Kit.noise(t * freq + float(o.x) / W * 1.7) + gust, -2.5, 2.5)
+				if oi == 1:
+					b.windC = wind
+				var rest := wind * float(o.lean)          # what the wind asks for — the spring decides what it gets
+				var th: float = o.th
+				var om: float = o.om
+				var tj: PackedFloat32Array = o.tj
+				var oj: PackedFloat32Array = o.oj
+				var base: bool = o.pivot == "base"
+				for _s in sub:
+					if not base:                          # the sign: a pendulum, gravity's pull toward hanging, the wind's push aside
+						om += (gravity * (rest - sin(th)) - swing * om) * h
+						th = clampf(th + om * h, -1.5, 1.5)
+						continue
+					om += (kk * (rest - th) - damp * om) * h
+					th = clampf(th + om * h, -1.3, 1.3)
+					var below := th                       # the joints: each chases the segment below, leaning a little more of its own
+					var kj := kk
+					for j in J - 1:
+						kj *= tip
+						var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+						oj[j] += (kj * (below + rest * bend - tj[j]) - dj * oj[j]) * h
+						tj[j] = clampf(tj[j] + oj[j] * h, -1.4, 1.4)
+						below = tj[j]
+				o.th = th
+				o.om = om
+				# walk the chain: the sideways displacement at the end of each segment, from the pivot
+				var segs := J if base else 1
+				var seg := float(o.span) / segs
+				var cum: PackedFloat32Array = o.cum
+				cum[0] = 0.0
+				for j in segs:
+					cum[j + 1] = cum[j] + sin(th if j == 0 else tj[j - 1]) * seg
 		"grass":
 			var nn: int = b.n
 			var bx: PackedFloat32Array = b.bx
@@ -1263,18 +1518,10 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.dir = 1
 		"wetfloor":
 			b.autoT += dt
-			b.boost = maxf(0.0, b.boost - dt * 0.9)
+			b.splashed += dt
 			if b.autoT > float(D.splashEvery):
 				b.autoT = 0.0
-				b.boost = 1.0
-				var pick: Dictionary = b.rings[0]
-				for r in b.rings:
-					if not r.on:
-						pick = r
-						break
-				pick.on = true
-				pick.x = b.x
-				pick.age = 0.0
+				_wet_splash(b, b.x)
 			var dir: int = b.dir
 			b.x += dir * W * 0.2 * dt
 			if b.x > W * 0.8:
@@ -1283,6 +1530,11 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.x < W * 0.15:
 				b.x = W * 0.15
 				b.dir = 1
+			var fi := roundi(_frame_of(t) * 10.0)        # a footfall: the run cycle's two plants stir the row
+			if fi != int(b.lastF) and (fi == 0 or fi == 3):
+				_row_kick(b, b.x, float(D.wobble))
+			b.lastF = fi
+			_row_step(b, dt, H * 0.2)
 			for r in b.rings:
 				if r.on:
 					r.age += dt
@@ -1323,7 +1575,7 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.ly = sin(a) * 0.75 - 0.15
 		"undersea":
 			b.autoT += dt
-			b.boost = maxf(0.0, b.boost - dt * 1.2)
+			b.dropped += dt
 			if b.autoT > float(D.pebbleEvery):
 				b.autoT = 0.0
 				_sea_pebble(b, randf_range(W * 0.1, W * 0.9))
@@ -1335,6 +1587,11 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.x < W * 0.2:
 				b.x = W * 0.2
 				b.dir = 1
+			var fi := roundi(_frame_of(t) * 10.0)        # the wader's two plants per cycle stir the surface
+			if fi != int(b.lastF) and (fi == 0 or fi == 3):
+				_row_kick(b, b.x, float(D.stir))
+			b.lastF = fi
+			_row_step(b, dt, H * 0.15)
 			var wy := roundf(H * float(D.level))
 			for r in b.rings:
 				if r.on:
@@ -1498,20 +1755,19 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				for _i in 5:
 					Kit.dot(n, Vector2(x + randf_range(-sw * 0.4, sw * 0.4), GY - randf_range(0.0, sh * 0.5)), 1.2, Color(Kit.FIRE, 0.5))
 			var age: float = b.age
-			var decay: float = m.decay
-			var amp_scale: float = D.ampScale
-			var amp: float = float(m.amp) * amp_scale * sw * (exp(-decay * age) if decay > 0.0 else 1.0 + 1.5 * exp(-3.0 * age))   # a decaying poke, or a constant plus a poke bonus
-			var wv: float = float(m.w) * float(D.speedScale)
+			var L: int = b.L
+			var xs: PackedFloat32Array = b.xs
+			var poke_j: int = b.pokeJ
+			var drive: float = b.drive
 			var strip_h := maxf(1.0, S * float(D.strip))
 			var nn := ceili(sh / strip_h)
-			var pin: bool = float(m.pin) > 0.5
-			var mk: float = m.k
 			var offs := PackedFloat32Array()
 			for j in nn:
 				var sy := j * strip_h
 				var yf := (sy + strip_h / 2.0) / sh          # 0 at the hair, 1 at the feet
-				var env := 1.0 - yf if pin else 1.0           # pinned feet: the top wobbles, the feet stay
-				offs.append(sin(yf * mk * TAU + t * wv) * amp * env)
+				var p := (1.0 - yf) * (L - 1)                 # the strip's place along the chain, feet first
+				var i0 := mini(L - 2, int(p))
+				offs.append(xs[i0] + (xs[i0 + 1] - xs[i0]) * (p - i0))
 			for c: Vector2i in map:                                     # each cell, in strips, each strip slid by its offset
 				var col: Color = map[c]
 				var ry0 := c.y * S
@@ -1528,49 +1784,52 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for j in nn:
 				pts.append(Vector2(gx + offs[j], y0 + j * strip_h + strip_h / 2.0))
 			n.draw_polyline(pts, Kit.INK, 1.2)
+			for j in L:                                   # the links themselves
+				var hot := j == poke_j and age < 0.4
+				Kit.dot(n, Vector2(gx + xs[j], y0 + sh - float(j) / (L - 1) * sh), 1.7, Color(0.961, 0.541, 0.541) if hot else Kit.SUN)
 			Kit.label(n, b, "offset(y)", Vector2(gx, y0 - 6), Kit.DIM, true)
 			Kit.text(n, D.mode, Vector2(10, 18), 11, Kit.INK)
-			Kit.label(n, b, "amp %.2f·w  k %s  w %.1f%s" % [amp / sw, _num(mk), wv, ("  decay %s" % _num(decay)) if decay > 0.0 else ""], Vector2(10, 32), Kit.DIM)
+			Kit.label(n, b, "k %s · ζ %s · %d links · drive %.2f·w · head %.2f·w" % [_num(float(m.k)), _num(float(m.zeta)), L, drive / sw, xs[L - 1] / sw], Vector2(10, 32), Kit.DIM)
 			if age < 0.4:
-				Kit.label(n, b, "poke", Vector2(x, y0 - 10), Color(0.961, 0.541, 0.541, 1.0 - age / 0.4), true)
+				Kit.label(n, b, "poke", Vector2(x, y0 + sh - float(poke_j) / (L - 1) * sh - 8.0), Color(0.961, 0.541, 0.541, 1.0 - age / 0.4), true)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"sway":
 			Kit.stage(n, b, 0.1)
 			var gust_a: float = b.gustA
-			var gust_dir: int = b.gustDir
-			var gust := gust_dir * float(D.gust) * gust_a * gust_a   # the spike: peaks at once, dies as a square
 			var objs: Array = b.objs
 			var sgn: Dictionary = objs[2]                 # the bracket: post + arm, rigid
 			var stop: float = sgn.top
 			Kit.rect(n, Rect2(sgn.x - W * 0.09, stop - 2, W * 0.012, GY - stop + 2), Color("4A4470"))
 			Kit.rect(n, Rect2(sgn.x - W * 0.09, stop - 3, W * 0.14, 3), Color("4A4470"))
-			var wind_c := 0.0
+			var wind_c: float = b.windC
 			var broken: bool = D.broken
-			var freq: float = D.freq
-			var power: float = D.power
-			var amp: float = D.amp
+			var J: int = b.J
 			var nn := maxi(2, roundi(float(D.strips)))
 			for oi in objs.size():
 				var o: Dictionary = objs[oi]
-				var wind := clampf(Kit.noise(t * freq + float(o.x) / W * 1.7) + gust, -2.5, 2.5)
-				if oi == 1:
-					wind_c = wind
 				var base: bool = o.pivot == "base"
 				var top: float = o.top
 				var bot: float = o.bot
+				var cum: PackedFloat32Array = o.cum
+				var segs := J if base else 1
 				var sh := (bot - top) / nn
 				for j in nn:
 					var sy := top + j * sh
 					var f := 1.0 - (j + 0.5) / nn if base else (j + 0.5) / nn   # distance from the pivot, 0..1
-					var dx := wind * (pow(f, power) if base else f * 0.6) * amp * H
+					var p := f * segs                     # the segment this strip sits on, and how far along it
+					var i0 := mini(segs - 1, int(p))
+					var dx := cum[i0] + (cum[i0 + 1] - cum[i0]) * (p - i0)
 					_sway_piece(n, o, sy, sy + sh + 0.6, dx, W, H, GY, broken)
 				Kit.line(n, Vector2(o.x, bot if base else top), Vector2(o.x, top if base else bot), Color(0.91, 0.898, 0.957, 0.12), 1.0)   # the rest line
 			var ax := W * 0.5                             # the wind, as an arrow
 			var ay := H * 0.1
 			Kit.arrow(n, Vector2(ax - wind_c * W * 0.08, ay), Vector2(ax + wind_c * W * 0.08, ay), Kit.HOT if gust_a > 0.05 else Kit.INK)
 			Kit.label(n, b, "wind %.2f%s" % [wind_c, " (gust)" if gust_a > 0.05 else ""], Vector2(ax, ay - 6), Kit.DIM, true)
-			Kit.label(n, b, "pivot: base — dx ∝ h^%s" % _num(power), Vector2(objs[0].x, GY + 14), Kit.DIM, true)
-			Kit.label(n, b, "pivot: top — dx ∝ depth", Vector2(sgn.x, float(sgn.bot) + 12), Kit.DIM, true)
+			var tree: Dictionary = objs[0]
+			var tree_tj: PackedFloat32Array = tree.tj
+			var tip_a: float = float(tree.th) if J == 1 else tree_tj[J - 2]
+			Kit.label(n, b, "pivot: base — θ₀ %.2f · θtip %.2f" % [float(tree.th), tip_a], Vector2(tree.x, GY + 14), Kit.DIM, true)
+			Kit.label(n, b, "pivot: top — a pendulum, θ %.2f" % float(sgn.th), Vector2(sgn.x, float(sgn.bot) + 12), Kit.DIM, true)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"grass":
 			Kit.stage(n, b, 0.1)
@@ -1704,7 +1963,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			Kit.stage(n, b, 0.45)
 			var x: float = b.x
 			var dir: int = b.dir
-			var boost: float = b.boost
+			var splashed: float = b.splashed
+			var nr: int = b.n
+			var ys: PackedFloat32Array = b.ys
+			var col_w: float = b.col_w
+			var front: float = b.front
 			var lx := W * 0.22
 			var cxp := W * 0.72
 			var cs := H * 0.14
@@ -1714,10 +1977,9 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			Kit.hero(n, b, Vector2(x, GY), { "pose": "run", "frame": fr, "face": dir })
 			Kit.rect(n, Rect2(0, GY + 1, W, H - GY), FLOOR_WET)   # the floor itself, dark and wet
 			var floor_h := H - GY
-			var wob := float(D.wobble) + float(D.splash) * boost
 			var fade := maxf(0.05, float(D.depth)) * floor_h
 			var alpha: float = D.alpha
-			var night := 0.45                             # the sky, mirrored: bands whose vertices carry α and dx of their depth
+			var night := 0.45                             # the sky, mirrored: bands whose vertices carry α of their depth and the slide of the row under them
 			var sky_top := Kit.SKY_TOP_DAY.lerp(Kit.SKY_TOP_NIGHT, night)
 			var sky_bot := Kit.SKY_BOT_DAY.lerp(Kit.SKY_BOT_NIGHT, night)
 			var nb := 6
@@ -1730,30 +1992,35 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					break
 				var c0 := Color(sky_top.lerp(sky_bot, (GY - d0) / GY), a0)
 				var c1 := Color(sky_top.lerp(sky_bot, (GY - d1) / GY), a1)
-				var dx0 := _wet_dx(d0, D, t, wob, floor_h)
-				var dx1 := _wet_dx(d1, D, t, wob, floor_h)
-				n.draw_polygon(PackedVector2Array([Vector2(dx0, GY + 1 + d0), Vector2(W + dx0, GY + 1 + d0), Vector2(W + dx1, GY + 1 + d1), Vector2(dx1, GY + 1 + d1)]),
-					PackedColorArray([c0, c0, c1, c1]))
+				var band := PackedVector2Array()          # the band's top edge left to right, its bottom edge back — one vertex per spring
+				var bcol := PackedColorArray()
+				for c in nr:
+					band.append(Vector2(c * col_w + _wet_dx(b, c * col_w, d0, floor_h), GY + 1 + d0))
+					bcol.append(c0)
+				for c in range(nr - 1, -1, -1):
+					band.append(Vector2(c * col_w + _wet_dx(b, c * col_w, d1, floor_h), GY + 1 + d1))
+					bcol.append(c1)
+				n.draw_polygon(band, bcol)
 			for hill in [[0.08, 0.07, 3.0, 7.0, Color("6E8FB8").lerp(Color("15132A"), night)], [0.02, 0.05, 5.0, 21.0, Color("4B7A5A").lerp(Color("12111F"), night)]]:
 				var tops := _hill_tops(b, hill[0], hill[1], hill[2], hill[3])
 				var hc: Color = hill[4]
-				var pts := PackedVector2Array([Vector2(_wet_dx(0.0, D, t, wob, floor_h), GY + 1)])
+				var pts := PackedVector2Array([Vector2(_wet_dx(b, 0.0, 0.0, floor_h), GY + 1)])
 				var pcs := PackedColorArray([Color(hc, alpha)])
 				for tp in tops:
 					var dep := GY - tp.y
-					pts.append(Vector2(tp.x + _wet_dx(dep, D, t, wob, floor_h), GY + 1 + dep))
+					pts.append(Vector2(tp.x + _wet_dx(b, tp.x, dep, floor_h), GY + 1 + dep))
 					pcs.append(Color(hc, _wet_a(dep, alpha, fade)))
-				pts.append(Vector2(W + _wet_dx(0.0, D, t, wob, floor_h), GY + 1))
+				pts.append(Vector2(W + _wet_dx(b, W, 0.0, floor_h), GY + 1))
 				pcs.append(Color(hc, alpha))
 				n.draw_polygon(pts, pcs)
 			var lh := H * 0.3                             # the lamp and the crate, mirrored strip by strip
-			_wet_rects(n, [Rect2(lx - 2, GY - lh, 4, lh), Rect2(lx - 8, GY - lh - 3, 16, 4)], [Color("3A3355"), Color("3A3355")], b, t, wob, fade)
+			_wet_rects(n, [Rect2(lx - 2, GY - lh, 4, lh), Rect2(lx - 8, GY - lh - 3, 16, 4)], [Color("3A3355"), Color("3A3355")], b, fade)
 			var lw := maxf(1.0, cs * 0.08)
 			_wet_rects(n, [Rect2(cxp - cs / 2.0, GY - cs, cs, cs),
 				Rect2(cxp - cs / 2.0 + 1 - lw / 2.0, GY - cs + 1 - lw / 2.0, cs - 2 + lw, lw), Rect2(cxp - cs / 2.0 + 1 - lw / 2.0, GY - 1 - lw / 2.0, cs - 2 + lw, lw),
 				Rect2(cxp - cs / 2.0 + 1 - lw / 2.0, GY - cs + 1, lw, cs - 2), Rect2(cxp + cs / 2.0 - 1 - lw / 2.0, GY - cs + 1, lw, cs - 2)],
-				[Color("8A6A3E"), Color("5A3E2B"), Color("5A3E2B"), Color("5A3E2B"), Color("5A3E2B")], b, t, wob, fade)
-			_wet_lines(n, [[Vector2(cxp - cs / 2.0, GY - cs), Vector2(cxp + cs / 2.0, GY)], [Vector2(cxp + cs / 2.0, GY - cs), Vector2(cxp - cs / 2.0, GY)]], Color("5A3E2B"), lw, b, t, wob, fade)
+				[Color("8A6A3E"), Color("5A3E2B"), Color("5A3E2B"), Color("5A3E2B"), Color("5A3E2B")], b, fade)
+			_wet_lines(n, [[Vector2(cxp - cs / 2.0, GY - cs), Vector2(cxp + cs / 2.0, GY)], [Vector2(cxp + cs / 2.0, GY - cs), Vector2(cxp - cs / 2.0, GY)]], Color("5A3E2B"), lw, b, fade)
 			var s: float = Kit.hero_unit(b)                # the hero's cells, each row cut into the floor's strips
 			var strip: float = maxf(1.0, D.strip)
 			var map := _cell_map({ "pose": "run", "frame": fr, "face": dir })
@@ -1775,19 +2042,24 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					var ib := minf(cy1, GY - dy)
 					if ib > ia:
 						var cc := Color(col, col.a * a)
-						n.draw_rect(Rect2(_cell_x(c.x, x, s, dir) + _wet_dx(dy, D, t, wob, floor_h), 2.0 * GY + 1.0 - ib, s, ib - ia), cc)
-			for r in b.rings:                             # splash rings on the line
+						var cx := _cell_x(c.x, x, s, dir)
+						n.draw_rect(Rect2(cx + _wet_dx(b, cx + s * 0.5, dy, floor_h), 2.0 * GY + 1.0 - ib, s, ib - ia), cc)
+			var skin := PackedVector2Array()              # the row itself: the puddle's skin, riding its springs
+			for i in nr:
+				skin.append(Vector2(i * col_w, GY + 1 + ys[i] * 0.35))
+			n.draw_polyline(skin, Color(0.91, 0.898, 0.957, 0.28), 1.0)
+			for r in b.rings:                             # splash rings on the line, at the ripple's own speed
 				if not r.on:
 					continue
 				var age: float = r.age
-				var rr := 4.0 + age * W * 0.12
+				var rr := 4.0 + age * front
 				_ellipse_ring(n, Vector2(r.x, GY + 1), rr, rr * 0.22, Color(0.91, 0.898, 0.957, 0.7 * (1.0 - age / 1.2)), 1.0)
 			var mbx := W - 14.0                           # the mask: α against depth, at the right edge
 			var mbh := floor_h - 6.0
 			for i in 12:
 				Kit.rect(n, Rect2(mbx, GY + 3 + i / 12.0 * mbh, 6, mbh / 12.0 - 1), Color(0.91, 0.898, 0.957, alpha * maxf(0.0, 1.0 - (i + 0.5) / 12.0 * floor_h / fade)))
 			_label_right(n, b, "α", Vector2(mbx - 3, GY + 12), Kit.DIM)
-			Kit.label(n, b, "wobble %.1f px%s" % [wob, " · splash" if boost > 0.05 else ""], Vector2(10, GY + 14), Kit.DIM)
+			Kit.label(n, b, "row %d springs · crest %.1f px%s" % [nr, _row_peak(b), " · splash" if splashed < 1.0 else ""], Vector2(10, GY + 14), Kit.DIM)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"skewshadow":
 			var lamp_mode: bool = D.source == "lamp"
@@ -1994,33 +2266,38 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			Kit.stage(n, b, 0.1)
 			var x: float = b.x
 			var dir: int = b.dir
-			var boost: float = b.boost
+			var dropped: float = b.dropped
+			var nr: int = b.n
+			var ys: PackedFloat32Array = b.ys
+			var col_w: float = b.col_w
+			var front: float = b.front
 			var wy := roundf(H * float(D.level))
 			Kit.crate(n, Vector2(W * 0.75, GY), H * 0.15)
 			Kit.hero(n, b, Vector2(x, GY), { "pose": "run", "frame": _frame_of(t), "face": dir })
 			# the push, drawn: a straight line at x = 8 that the refraction pass bends
-			# into the curve (the strips slide it exactly as they slide the scene)
+			# into the curve (the strips and the shear slide it exactly as they slide the scene)
 			Kit.line(n, Vector2(8, wy), Vector2(8, H), Color(0.91, 0.898, 0.957, 0.5), 1.0)
 			Kit.rect(n, Rect2(0, wy, W, H - wy), Color(Color(D.tint), float(D.tintA)))
-			var pts := PackedVector2Array()               # the surface line
-			var sx := 0.0
-			while sx <= W:
-				pts.append(Vector2(sx, wy + sin(sx * 0.05 + t * 2.0) * 1.2))
-				sx += 6.0
+			var pts := PackedVector2Array()               # the surface line — the row itself
+			var steep := 0.0
+			for i in nr:
+				pts.append(Vector2(i * col_w, wy + ys[i]))
+				if i > 0:
+					steep = maxf(steep, absf(ys[i] - ys[i - 1]) / col_w)
 			n.draw_polyline(pts, Color(0.91, 0.898, 0.957, 0.75), 1.5)
-			for r in b.rings:
+			for r in b.rings:                             # the rings, at the row's own speed
 				if not r.on:
 					continue
 				var age: float = r.age
-				var rr := 3.0 + age * W * 0.1
+				var rr := 3.0 + age * front
 				_ellipse_ring(n, Vector2(r.x, wy), rr, rr * 0.25, Color(0.91, 0.898, 0.957, 0.8 * (1.0 - age / 1.4)), 1.0)
 			for bu in b.bubbles:
 				if bu.on:
 					Kit.ring(n, Vector2(bu.x, bu.y), bu.r, Color(1, 1, 1, 0.5), 1.0)
-			var amp := float(D.amp) * H * (1.0 + 2.5 * boost)
+			var amp := float(D.amp) * H
 			Kit.label(n, b, "push(y)", Vector2(8, wy - 5), Kit.DIM)
 			Kit.label(n, b, "caustics: n₁·n₂ > %s" % _num(float(D.thr)), Vector2(W / 2.0, GY + 12), Kit.DIM, true)
-			Kit.text(n, "amp %.1f px%s" % [amp, " · pebble" if boost > 0.05 else ""], Vector2(10, 18), 10, Kit.INK)
+			Kit.text(n, "current %.1f px · slope %.2f · %d springs%s" % [amp, steep, nr, " · pebble" if dropped < 1.0 else ""], Vector2(10, 18), 10, Kit.INK)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"hologram":
 			Kit.stage(n, b, 0.75)

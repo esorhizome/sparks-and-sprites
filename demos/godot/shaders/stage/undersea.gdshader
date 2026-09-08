@@ -1,12 +1,16 @@
 // UNDERSEA — the almanac's water refraction + caustics (scenes/stage/skin.gd,
-// card U), the web card's strip loop spelled as a fragment. The runner lays
+// card U), the web card's two passes spelled as a fragment. The runner lays
 // this over b.shader_rect = the water (the card from the surface y0 down),
 // reading what the painter drew through the screen texture:
-//   x' = x + noise2(y·k, t·speed + y·0.003) · amp      (per strip of `strip` px)
+//   x' = x + noise2(y·k, t·speed + y·0.003) · amp      (per strip of `strip` px: the current)
+//      + slope(x) · (y − y0) · refract                  (the surface's tilt, per column of the row)
 //   caustic = (n₁·n₂ > thr) · gain, added on the floor band (y ≥ gy)
 // noise2 is the kit's 2-D value noise, hash and all, so the painter's copy
-// of the push curve and this pass agree. The strip's push is a copy of the
-// source row shifted by dx, so the pixel at x shows the source at x − dx.
+// of the push curve and this pass agree. The surface is the card's ROW of
+// springs (b.ys), handed over as `row` every frame: its slope between two
+// springs shears everything under them, more the deeper it is. The push is
+// a copy of the source shifted by dx, so the pixel at x shows the source at
+// x − dx.
 shader_type canvas_item;
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_nearest;
@@ -15,13 +19,16 @@ uniform vec2 card_size = vec2(220.0, 150.0);  // the whole card, card px
 uniform float y0 = 75.0;       // the surface: the rect's top, card-local px
 uniform float gy = 120.0;      // the ground line, card-local px (caustics below it)
 uniform float t = 0.0;         // the card's clock (tempo-aware, not TIME)
-uniform float amp = 3.0;       // refraction push at full noise, px (× (1 + 2.5·boost) already)
+uniform float amp = 3.0;       // the current's push at full noise, px
 uniform float k = 0.06;        // noise waves per px of depth
 uniform float speed = 0.7;     // how fast the noise field scrolls
 uniform float strip = 2.0;     // strip height, px
 uniform float thr = 0.5;       // caustic threshold
 uniform float c_scale = 0.09;  // caustic cell size (bigger = smaller cells)
 uniform float c_speed = 0.4;   // caustic drift speed
+uniform float row[64];         // the surface row: spring heights, px, left to right (n_row of them used)
+uniform int n_row = 32;        // springs in the row
+uniform float refract = 0.6;   // px of sideways shift per px of depth per unit of surface slope
 
 const float CW = 64.0;         // the web's caustic buffer: 64 × 24, stretched over the floor band
 const float CH = 24.0;
@@ -53,6 +60,12 @@ void fragment() {
 	vec2 px = vec2(UV.x * rect_size.x, y0 + UV.y * rect_size.y);
 	float ys = y0 + floor((px.y - y0) / max(strip, 1.0)) * max(strip, 1.0);
 	float dx = noise2(ys * k, t * speed + ys * 0.003) * amp;
+	// the surface's slope over this column: the two springs either side of x
+	int nr = clamp(n_row, 2, 64);
+	float col_w = rect_size.x / float(nr - 1);
+	int c = clamp(int(floor(px.x / col_w)), 0, nr - 2);
+	float slope = (row[c + 1] - row[c]) / col_w;
+	dx += clamp(slope * refract, -0.5, 0.5) * (px.y - y0);
 	// card px → screen uv: the rect's extent in screen uv, from the derivatives
 	// (the window may scale the canvas, so SCREEN_PIXEL_SIZE alone is not a card px)
 	float dux = dFdx(UV.x);
