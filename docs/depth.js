@@ -2524,12 +2524,20 @@ def("B", "Block", "facet", "one cube, three flat shades: top lit, left the colou
   };
 });
 
-def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it", function make(u) {
+def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set by how squarely it faces the light — the stone turns and the shades walk round it; press to nudge it and it spins up, then coasts back down", function make(u) {
   var D = { sky: ["#0E0C1E", "#1E1A36"], col: "#5AC8E8", spin: 0.7,
-            sides: 6, crown: 0.45, pav: 1.1 };                              // crown/pav = the point above / below the rim, in radii
+            sides: 6, crown: 0.45, pav: 1.1,                                // crown/pav = the point above / below the rim, in radii
+            kick: 3, drag: 1.2,                                             // kick = angular velocity a full-width press adds, rad/s; drag = how fast that nudge coasts down, per second
+            bob: 8, bobdamp: 0.08 };                                        // bob = the float's spring stiffness; bobdamp = its damping as a fraction of critical (tiny: it keeps bobbing)
   var Lt = [-0.5, 0.75, 0.45], ln = Math.sqrt(Lt[0] * Lt[0] + Lt[1] * Lt[1] + Lt[2] * Lt[2]);
   Lt = [Lt[0] / ln, Lt[1] / ln, Lt[2] / ln];                                // the light: upper-left, a little toward us
-  var spin = 0;
+  // the stone turns at its idle rate (spin) plus whatever a nudge left it:
+  // a press adds angular VELOCITY, not an angle, and drag eats a share of
+  // it every step, so the stone spins up and coasts back down to its idle
+  // turn instead of jumping. the float is a spring around a rest height,
+  // damped far under critical, so it bobs for a long while and a press
+  // bumps it — nothing here is a sine of the clock.
+  var ang = 0, angv = 0, bob = 0, bobv = 0.5;                                // the turn, the nudge's leftover rate, the float (in radii) and its rate
   function facets(a) {                                                       // rebuild the triangles for rotation a
     var n = D.sides, rim = [], out = [];
     for (var i = 0; i < n; i++) { var q = a + i / n * u.TAU; rim.push([Math.cos(q), 0, Math.sin(q)]); }
@@ -2541,9 +2549,16 @@ def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set b
   }
   return {
     frame: function (dt, t) {
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var bd = D.bobdamp * 2 * Math.sqrt(D.bob);                             // the float's damping, from its fraction of critical
+      for (var s = 0; s < sub; s++) {
+        angv -= angv * D.drag * h; ang += (D.spin + angv) * h;              // idle rate + the nudge, which drag wears away
+        bobv += (-D.bob * bob - bd * bobv) * h; bob = u.clamp(bob + bobv * h, -0.3, 0.3);
+      }
+      ang = ang % u.TAU;
       u.sky(D.sky);
-      var r = Math.min(u.W, u.H) * 0.26, cx = u.W / 2, cy = u.H * 0.46 + Math.sin(t * 1.3) * r * 0.06;
-      var F = facets(t * D.spin + spin), cz = (D.crown - D.pav) / 2, best = null;
+      var r = Math.min(u.W, u.H) * 0.26, cx = u.W / 2, cy = u.H * 0.46 + bob * r * 0.4;
+      var F = facets(ang), cz = (D.crown - D.pav) / 2, best = null;
       for (var i = 0; i < F.length; i++) {
         var p = F[i], e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]], e2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
         var nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0];
@@ -2562,49 +2577,66 @@ def("G", "Gem", "facet", "a faceted stone: each triangle is one flat shade set b
         u.poly(pts, u.shade(D.col, q.k * 0.5));
       }
       if (best.k > 0.8) u.soft(cx + (best[0][0] + best[1][0] + best[2][0]) / 3 * r, cy - (best[0][1] + best[1][1] + best[2][1]) / 3 * r * 0.8 + best.z * r * 0.35, r * 0.4, "#FFFFFF", (best.k - 0.8) * 3);   // the facet squarest to the light sparkles
-      u.label("shade = how squarely the face meets the light — turning changes nothing but that, and the stone reads solid", u.W / 2, u.H - 8, null, "center");
+      u.label("shade = how squarely the face meets the light — turning changes nothing but that; the turn is a rate a nudge adds to and drag wears down", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { spin += (x / u.W - 0.5) * 2; }                // nudge the stone round by hand
+    press: function (x, y) { angv += (x / u.W - 0.5) * 2 * D.kick; bobv -= 0.6; }   // a nudge: angular velocity, left or right of centre — and a bump to the float
   };
 });
 
-def("H", "Hexprism", "facet", "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60° and the shades walk round", function make(u) {
+def("H", "Hexprism", "facet", "a six-sided column: the hexagon top is the lit shade, each visible side a shade set by which way it faces — press turns it 60°: it swings past, rocks back, and the shades walk round", function make(u) {
   var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", cols: ["#B87A5A"],
-            count: 1, h: 0.5, r: 0.16, every: 2 };                          // count of prisms; h and r as fractions of H and W; every = seconds between idle turns
+            count: 1, h: 0.5, r: 0.16, every: 2,                          // count of prisms; h and r as fractions of H and W; every = seconds between idle turns
+            k: 64, zeta: 0.4 };                                             // k = the turn's spring stiffness for a column of height h (taller = heavier = softer); zeta = damping as a fraction of critical — under 1, so it turns past the detent and rocks back
   var R = u.rng(7), prisms = [];
   for (var i = 0; i < D.count; i++) prisms.push({ x: (i + 0.5) / D.count, h: D.h * (D.count > 1 ? 0.55 + R() * 0.7 : 1), c: D.cols[i % D.cols.length] });
-  var turn = 0, target = 0, nextAt = D.every;
+  // a press moves the DETENT — the angle the column wants — on by 60°. the
+  // column itself has an angular velocity and a spring toward the detent,
+  // damped under critical, so it swings past, rocks back and settles rather
+  // than easing in. every column keeps its own angle and rate, and a taller
+  // column is a heavier one (a softer spring per height), so the rhyme's
+  // five columns share one detent and arrive on their own phases.
+  var turn = new Float32Array(prisms.length), om = new Float32Array(prisms.length), target = 0, nextAt = D.every;   // each column's angle and angular velocity; the shared detent
   return {
     frame: function (dt, t) {
-      if (t > nextAt) { target += u.TAU / 6; nextAt = t + D.every; }
-      turn += (target - turn) * Math.min(1, dt * 6);                        // ease toward the next 60°
+      if (t > nextAt) { target += u.TAU / 6; nextAt = t + D.every; }        // the idle turn: the detent moves on
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var p = 0; p < prisms.length; p++) {
+        var kp = D.k * D.h / prisms[p].h, dp = D.zeta * 2 * Math.sqrt(kp);   // a taller column: more inertia, so a softer spring — and its own critical damping
+        for (var s = 0; s < sub; s++) { om[p] += (kp * (target - turn[p]) - dp * om[p]) * h; turn[p] += om[p] * h; }
+      }
       u.sky(D.sky);
       var gy = u.H * 0.82;
       u.ground(gy - u.H * 0.22, D.floor);
       for (var p = 0; p < prisms.length; p++) {
-        var P = prisms[p], cx = u.W * P.x, r = u.W * D.r / (D.count > 1 ? Math.sqrt(D.count) * 0.8 : 1), h = u.H * P.h;
+        var P = prisms[p], cx = u.W * P.x, r = u.W * D.r / (D.count > 1 ? Math.sqrt(D.count) * 0.8 : 1), hp = u.H * P.h, tp = turn[p];
         u.shadow(cx + r * 0.35, gy, r * 1.4, r * 0.6, 0.45);
         var v = [];
-        for (var i = 0; i < 6; i++) { var q = turn + i * u.TAU / 6; v.push([cx + Math.cos(q) * r, gy + Math.sin(q) * r * 0.5]); }
+        for (var i = 0; i < 6; i++) { var q = tp + i * u.TAU / 6; v.push([cx + Math.cos(q) * r, gy + Math.sin(q) * r * 0.5]); }
         for (var j = 0; j < 6; j++) {
-          var A = v[j], B = v[(j + 1) % 6], mid = turn + (j + 0.5) * u.TAU / 6;   // the direction this side faces
+          var A = v[j], B = v[(j + 1) % 6], mid = tp + (j + 0.5) * u.TAU / 6;   // the direction this side faces
           if (Math.sin(mid) <= 0) continue;                                 // it faces away from us
-          u.poly([A, B, [B[0], B[1] - h], [A[0], A[1] - h]], u.shade(P.c, -0.21 - 0.21 * Math.cos(mid)));   // facing left = the colour, facing right = dark
+          u.poly([A, B, [B[0], B[1] - hp], [A[0], A[1] - hp]], u.shade(P.c, -0.21 - 0.21 * Math.cos(mid)));   // facing left = the colour, facing right = dark
         }
         var top = [];
-        for (var k = 0; k < 6; k++) top.push([v[k][0], v[k][1] - h]);
+        for (var k = 0; k < 6; k++) top.push([v[k][0], v[k][1] - hp]);
         u.poly(top, u.shade(P.c, 0.32));
       }
-      u.label("one rule for every side — shade by the way it faces — and the top stays lit whatever the turn", u.W / 2, u.H - 8, null, "center");
+      u.label("one rule for every side — shade by the way it faces — and the top stays lit whatever the turn; the turn is a spring to a detent, so it overshoots", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { target += u.TAU / 6; nextAt += D.every; }       // one more sixth of a turn
+    press: function (x, y) { target += u.TAU / 6; nextAt += D.every; }       // one more sixth of a turn: the detent moves, the spring does the rest
   };
 });
 
-def("I", "Isotile", "facet", "an isometric floor: diamonds in two alternating colours with a darker line on their right and bottom edges — and a ball whose shadow never leaves the floor", function make(u) {
+def("I", "Isotile", "facet", "an isometric floor: diamonds in two alternating colours with a darker line on their right and bottom edges — and a ball whose shadow never leaves the floor; click and it rolls there, a little past, and settles", function make(u) {
   var D = { sky: ["#141226", "#221E3A"], a: "#6A8ACF", b: "#8AA6DF", edge: -0.45, ball: "#F58A8A",
-            n: 8, speed: 0.6, glow: 0 };                                     // n tiles a side; glow = a warm torch tint over the floor (0 = none)
-  var ball = { x: 4, y: 4 }, target = null;
+            n: 8, speed: 0.6, glow: 0,                                     // n tiles a side; glow = a warm torch tint over the floor (0 = none)
+            k: 36, zeta: 0.5 };                                             // k = the pull toward where the ball is going; zeta = damping as a fraction of critical — under 1, so it rolls a little past and settles back
+  // the ball has a velocity: a spring pulls it toward its aim (a click, or
+  // the idle circle) and damping under critical lets it roll a little past
+  // and come back — it arrives like a ball, not like a cursor. the shadow is
+  // drawn at the ball's grid position on the floor whatever the ball does,
+  // which is the lesson.
+  var ball = { x: 4, y: 4 }, vel = { x: 0, y: 0 }, target = null;           // grid position, grid velocity (cells per second), the clicked aim
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
@@ -2618,49 +2650,69 @@ def("I", "Isotile", "facet", "an isometric floor: diamonds in two alternating co
       }
       if (D.glow > 0) u.soft(ox, oy + s * D.n * 0.5, s * D.n * 0.75, "#F5A15A", D.glow);
       var ax = D.n / 2 + 2.6 * Math.cos(t * D.speed), ay = D.n / 2 + 2.6 * Math.sin(t * D.speed);   // the idle path: a circle
-      if (target) { ax = target.x; ay = target.y; if (Math.abs(ax - ball.x) + Math.abs(ay - ball.y) < 0.15) target = null; }
-      ball.x += (ax - ball.x) * Math.min(1, dt * 2.5); ball.y += (ay - ball.y) * Math.min(1, dt * 2.5);
+      if (target) { ax = target.x; ay = target.y; if (Math.abs(ax - ball.x) + Math.abs(ay - ball.y) < 0.05 && Math.abs(vel.x) + Math.abs(vel.y) < 0.3) target = null; }   // there, and at rest: back to the idle path
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k);                                // damping from its fraction of critical
+      for (var st = 0; st < sub; st++) {
+        vel.x += (D.k * (ax - ball.x) - damp * vel.x) * h; vel.y += (D.k * (ay - ball.y) - damp * vel.y) * h;
+        ball.x = u.clamp(ball.x + vel.x * h, 0.3, D.n - 0.3); ball.y = u.clamp(ball.y + vel.y * h, 0.3, D.n - 0.3);   // the floor has an edge
+      }
       var g = P(ball.x, ball.y), rb = s * 0.45;
       u.shadow(g[0], g[1], rb * 1.15, rb * 0.55, 0.5);                       // the shadow sits ON the floor: that is what keeps the ball on it
       u.sphere(g[0], g[1] - rb, rb, D.ball, -0.5, -0.6, { spec: 0.5 });
-      u.label("two colours and a dark right-and-bottom edge make a floor; the shadow glues the ball to it", u.W / 2, u.H - 8, null, "center");
+      u.label("two colours and a dark right-and-bottom edge make a floor; the shadow glues the ball to it — the ball is a spring toward its aim, so it overshoots", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) {                                                 // click = roll the ball there (screen → iso grid)
+    press: function (x, y) {                                                 // click = roll the ball there (screen → iso grid): the aim moves, the spring does the rolling
       var s = Math.min(u.W * 0.065, u.H * 0.1), sx = x - u.W / 2, sy = y - u.H * 0.12;
       target = { x: u.clamp((sx / (0.866 * s) + 2 * sy / s) / 2, 0.5, D.n - 0.5), y: u.clamp((2 * sy / s - sx / (0.866 * s)) / 2, 0.5, D.n - 0.5) };
     }
   };
 });
 
-def("K", "Keep", "facet", "a castle tower from stacked blocks: one tall block, small blocks for the battlements, a dark doorway — every face obeys the same light, so it is one building", function make(u) {
+def("K", "Keep", "facet", "a castle tower from stacked blocks: one tall block, small blocks for the battlements, a dark doorway — every face obeys the same light, so it is one building; press a side and the wind turns: the flag falls slack and whips round", function make(u) {
   var D = { sky: ["#2A3A6A", "#8AA0C8"], floor: "#3A5A3A", stone: "#9A8E86", flag: "#F58A8A",
-            h: 2.4, wind: 1 };                                               // h = tower height in widths; wind = flag speed (sign = direction)
-  var sunL = true;
+            h: 2.4, wind: 1,                                               // h = tower height in widths; wind = the wind asked for: sign = direction, size = strength
+            k: 50, zeta: 0.35, lag: 2.5, droop: 0.25, flap: 0.12 };            // k = the flag tip's stiffness; zeta = damping as a fraction of critical (under 1: it whips past); lag = how fast the wind at the flag catches up with the dial, per second; droop = gravity's pull on the tip against a unit wind; flap = the flutter, radians per unit wind
+  var sunL = true, w = D.wind, th = Math.atan2(D.droop, D.wind), om = 0;   // the wind at the flag (it lags the dial); the tip's angle from the pole (0 = streaming right, π/2 = hanging, π = streaming left) and its rate
+  // the flag is one angle at its tip. the wind the flag feels chases the
+  // wind you asked for (a lag, not a switch), and the tip is a spring toward
+  // the angle wind and gravity agree on — straight downwind, drooping a
+  // little. flip the wind and that rest angle walks through 'hanging
+  // straight down' as the lagging wind passes zero, and the under-damped tip
+  // whips through the slack after it: a flag turning round, not a flag
+  // mirrored. the flutter is a small forcing on the same spring, quicker
+  // in more wind.
   function blk(x, y, s, c, h) {                                              // a block under THIS picture's sun — mirrored when the sun is on the right
     u.cube(x, y, s, c, { h: h, left: sunL ? c : u.shade(c, -0.42), right: sunL ? u.shade(c, -0.42) : c });
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k);                                // damping from its fraction of critical
+      for (var st = 0; st < sub; st++) {
+        w += (D.wind - w) * D.lag * h;                                       // the wind at the flag catches up with the dial
+        var rest = Math.atan2(D.droop, w) + Math.sin(t * 9 * Math.abs(w)) * D.flap * Math.abs(w);   // downwind and a little down (π/2 when the wind is nil), plus the flutter
+        om += (D.k * (rest - th) - damp * om) * h; th = u.clamp(th + om * h, -0.8, u.TAU / 2 + 0.8);
+      }
       u.sky(D.sky);
-      var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
+      var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h2 = s * D.h;
       var x = u.W / 2, y = u.H * 0.84, m = s / 5;
       u.ground(y - dy * 2.6, D.floor);
       u.soft(sunL ? u.W * 0.1 : u.W * 0.9, u.H * 0.12, u.W * 0.14, "#FFF3D0", 0.8);
       u.shadow(x + (sunL ? 1 : -1) * dx * 0.9, y - dy * 0.5, dx * 2.4, dy * 1.5, 0.4);
       blk(x - dx * 1.3, y - dy * 0.9, s * 0.7, D.stone, s * 0.8);            // an annex, behind-left — drawn first
-      blk(x, y, s, D.stone, h);                                               // the tower
+      blk(x, y, s, D.stone, h2);                                              // the tower
       var f1 = 0.36, f2 = 0.64, dh = s * 0.55;                                // the doorway, on the left face
       u.poly([[x - dx * f1, y - dy * f1], [x - dx * f2, y - dy * f2], [x - dx * f2, y - dy * f2 - dh], [x - dx * f1, y - dy * f1 - dh]], "#0E0B1A");
-      var ox = x, oy = y - h - 2 * dy;                                        // the top face's back corner: origin for the battlements
+      var ox = x, oy = y - h2 - 2 * dy;                                       // the top face's back corner: origin for the battlements
       var cells = [[0, 0], [0, 2], [2, 0], [0, 4], [4, 0], [2, 4], [4, 2], [4, 4]];   // rim cells of a 5×5 top, already sorted back → front
       for (var i = 0; i < cells.length; i++) { var p = u.iso(cells[i][0] + 1, cells[i][1] + 1, 0, m); blk(ox + p[0], oy + p[1], m, D.stone, m * 1.2); }
-      var px = x, py = y - h - dy, ph = s * 0.9, dir = D.wind > 0 ? 1 : -1;  // the flag pole, on the top's centre
+      var px = x, py = y - h2 - dy, ph = s * 0.9;                             // the flag pole, on the top's centre
       u.line(px, py, px, py - ph, "#3A3040", 1.5);
-      var wave = Math.sin(t * 5 * Math.abs(D.wind)) * s * 0.08 + Math.sin(t * 8.3 * Math.abs(D.wind)) * s * 0.04;
-      u.poly([[px, py - ph], [px + dir * s * 0.5, py - ph + s * 0.12 + wave], [px, py - ph + s * 0.32]], D.flag);
-      u.label("one sun for every block — tower, battlements, annex all agree on the dark side, so they are one building", u.W / 2, u.H - 8, null, "center");
+      u.poly([[px, py - ph], [px + Math.cos(th) * s * 0.52, py - ph + Math.sin(th) * s * 0.52], [px, py - ph + s * 0.32]], D.flag);   // the flag: pole top, the tip at its angle, the pole a little down
+      u.label("one sun for every block — tower, battlements, annex all agree on the dark side, so they are one building; the flag is a spring on a lagging wind", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { sunL = x < u.W / 2; D.wind = (x < u.W / 2 ? 1 : -1) * Math.abs(D.wind); }   // click a side = the sun (and the wind) come from there
+    press: function (x, y) { sunL = x < u.W / 2; D.wind = (x < u.W / 2 ? 1 : -1) * Math.abs(D.wind); }   // click a side = the sun (and the wind) come from there; the flag finds out through the lag
   };
 });
 
@@ -2723,129 +2775,198 @@ def("Q", "Quilt", "facet", "a patchwork of bumps and dents: a bump is a low bloc
   };
 });
 
-def("S", "Stairs", "facet", "blocks of climbing height drawn left to right: lit tops, mid sides, dark ends — and a ball hopping down step by step, its shadow landing on each one", function make(u) {
+def("S", "Stairs", "facet", "blocks of climbing height drawn left to right: lit tops, mid sides, dark ends — and a ball hopping down step by step under gravity: it lands, squashes, bounces once, and its shadow lands on each step with it", function make(u) {
   var D = { sky: ["#1A1E36", "#3A3F60"], floor: "#1A1A2C", cols: ["#8A8FA8"], ball: "#F5C169",
-            n: 7, rise: 0.55, hop: 0.55, tempo: 1.6 };                      // rise (keep ≥ 0.5 so each step hides the last one's end) and hop in step widths; tempo = hops per second
-  var phase = 0, lastT = 0;
+            n: 7, rise: 0.55, hop: 0.55, tempo: 1.6,                      // rise (keep ≥ 0.5 so each step hides the last one's end) and hop in step widths; tempo = hops per second, near enough — it sets the gravity, and the bounces add a little
+            bounce: 0.35, squash: 0.3, dwell: 0.12, rest: 1.0 };              // bounce = restitution: the share of the landing speed that comes back up; squash = how flat a full landing presses the ball, of its radius; dwell = seconds it sits before the next hop; rest = seconds at the bottom before it starts over
+  // the ball is a body: gravity pulls it down every step, and a step top is a
+  // floor — when it arrives moving down it bounces with restitution (a share
+  // of the speed comes back up, most is lost) until the bounce is too small
+  // to matter, then it sits a moment and launches the next hop: an upward
+  // speed for the hop height it wants, and just enough sideways to land on
+  // the next step's middle. gravity is chosen from the tempo so a hop takes
+  // about a beat. a landing also kicks a stiff, quick squash spring (a cycle
+  // of about 150 ms) that flattens the ball and lets it ring back round.
+  var ix = D.n - 1 + 0.4, vx = 0, z = D.n * D.rise, vz = 0, air = false, wait = 0;   // place along the stairs (cells) and its rate; height (cells) and its rate; in flight?; the timer on the ground
+  var sq = 0, sqv = 0, SQW = 40, SQD = 0.4 * 2 * SQW;                        // the squash and its rate; the squash spring's rate (40 rad/s) and damping (0.4 of critical)
   return {
     frame: function (dt, t) {
-      lastT = t;
+      var n = D.n, rise = D.rise;
+      var g = Math.pow((Math.sqrt(2 * D.hop) + Math.sqrt(2 * (D.hop + rise))) * D.tempo * 1.3, 2);   // gravity from the tempo: a hop's flight is (√2h + √2(h+r)) / √g, and the 1.3 leaves room for the bounces
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var s = 0; s < sub; s++) {
+        if (air) {
+          vz -= g * h; z += vz * h; ix += vx * h;
+          var under = u.clamp(Math.floor(ix), 0, n - 1), top = (under + 1) * rise;   // the step beneath: its top is the floor here
+          if (z <= top && vz < 0) {
+            z = top; var vin = -vz;
+            vz = vin * D.bounce; vx *= D.bounce;                             // restitution: a share comes back up, and the run mostly dies
+            sqv -= D.squash * 2 * SQW * Math.min(1, vin / Math.sqrt(2 * g * (D.hop + rise)));   // the landing kicks the squash, by how hard it hit (1 = a full hop's landing)
+            if (vz * vz < 2 * g * 0.03) { vz = 0; vx = 0; air = false; wait = under === 0 ? D.rest : D.dwell; }   // a bounce under 0.03 cells: it has landed
+          }
+        } else {
+          wait -= h;
+          if (wait <= 0) {
+            var on = u.clamp(Math.floor(ix), 0, n - 1);
+            if (on === 0) { ix = n - 1 + 0.4; z = n * rise; }                 // the bottom: start over at the top
+            else {
+              vz = Math.sqrt(2 * g * D.hop);                                   // up: enough for the hop height
+              var T = (vz + Math.sqrt(vz * vz + 2 * g * rise)) / g;             // how long until it is one step lower
+              vx = (on - 1 + 0.4 - ix) / T; air = true;                        // across: enough to land on the next step's middle
+            }
+          }
+        }
+        sqv += (-SQW * SQW * sq - SQD * sqv) * h; sq = u.clamp(sq + sqv * h, -0.45, 0.45);
+      }
       u.sky(D.sky);
-      var n = D.n, s = Math.min(u.W * 0.11, u.H * 0.12), rise = s * D.rise;
-      var ox = u.W / 2 - (n - 1) * 0.866 * s / 2, oy = u.H * 0.88 - (n + 1) * 0.5 * s;
-      function P(ix, iy, iz) { var p = u.iso(ix, iy, iz || 0, s); return [ox + p[0], oy + p[1]]; }
-      u.ground(oy + s * 0.4, D.floor);
-      for (var i = 0; i < n; i++) { var f = P(i + 1, 1); u.cube(f[0], f[1], s, D.cols[i % D.cols.length], { h: (i + 1) * rise }); }   // left to right = back to front
-      var k = ((t + phase) * D.tempo) % n, j = Math.floor(k), p = k - j;    // j hops done so far; p = progress of this hop
-      var from = n - 1 - j, to = Math.max(0, from - 1);                      // hopping from step `from` down to step `to`
-      var ix = u.lerp(from + 0.4, to + 0.4, p), hz = u.lerp((from + 1) * rise, (to + 1) * rise, p) / s + 4 * p * (1 - p) * D.hop;
-      var under = Math.floor(ix), topZ = (under + 1) * rise / s, lift = hz - topZ;   // the step directly beneath the ball, and how far above it we are
-      var g = P(ix, 0.78, topZ), r = s * 0.27;
-      u.shadow(g[0], g[1], r * 1.2 / (1 + lift), r * 0.55 / (1 + lift), 0.5 / (1 + lift));   // higher = a smaller, fainter shadow
-      var b = P(ix, 0.78, hz);
-      u.sphere(b[0], b[1] - r, r, D.ball, -0.5, -0.6, { spec: 0.5 });
-      u.label("seven blocks that agree about the light, drawn back to front — the shadow says which step the ball is over", u.W / 2, u.H - 8, null, "center");
+      var sz = Math.min(u.W * 0.11, u.H * 0.12), rs = sz * rise;
+      var ox = u.W / 2 - (n - 1) * 0.866 * sz / 2, oy = u.H * 0.88 - (n + 1) * 0.5 * sz;
+      function P(px, py, pz) { var p = u.iso(px, py, pz || 0, sz); return [ox + p[0], oy + p[1]]; }
+      u.ground(oy + sz * 0.4, D.floor);
+      for (var i = 0; i < n; i++) { var f = P(i + 1, 1); u.cube(f[0], f[1], sz, D.cols[i % D.cols.length], { h: (i + 1) * rs }); }   // left to right = back to front
+      var below = u.clamp(Math.floor(ix), 0, n - 1), topZ = (below + 1) * rise, lift = z - topZ;   // the step directly beneath the ball, and how far above it we are
+      var gp = P(ix, 0.78, topZ), r = sz * 0.27;
+      u.shadow(gp[0], gp[1], r * 1.2 / (1 + lift), r * 0.55 / (1 + lift), 0.5 / (1 + lift));   // higher = a smaller, fainter shadow
+      var bp = P(ix, 0.78, z);
+      u.ctx.save(); u.ctx.translate(bp[0], bp[1]); u.ctx.scale(1 - sq, 1 + sq);   // the squash, about the contact point: flatter one way, wider the other
+      u.sphere(0, -r, r, D.ball, -0.5, -0.6, { spec: 0.5 });
+      u.ctx.restore();
+      u.label("seven blocks that agree about the light, drawn back to front — the shadow says which step the ball is over; the ball: gravity, a floor, restitution", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { phase = -lastT; D.tempo = 0.8 + (x / u.W) * 2; }   // click = back to the top; click right = a quicker descent
+    press: function (x, y) { D.tempo = 0.8 + (x / u.W) * 2; if (!air) wait = 0; }   // click = hop now (or start over, from the bottom); click right = a quicker descent
   };
 });
 
-def("V", "Voxels", "facet", "a little tree of cubes, sorted far to near before drawing — press turns it a quarter, and the same cubes are re-sorted and re-drawn", function make(u) {
+def("V", "Voxels", "facet", "a little tree of cubes, sorted far to near before drawing — press turns it a quarter: it swings past and rings back, and the same cubes are re-sorted and re-drawn all the way", function make(u) {
   var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", n: 5, every: 2,   // n = grid size; every = seconds between idle quarter-turns
+            k: 60, zeta: 0.4,                                               // k = the turn's spring stiffness; zeta = damping as a fraction of critical — under 1, so the turn overshoots and rings back
             vox: [[2, 2, 0, "#8A5A3A"], [2, 2, 1, "#8A5A3A"],                 // [ix, iy, iz, colour] — the trunk...
                   [1, 1, 2, "#4A9A5A"], [2, 1, 2, "#5AAA6A"], [3, 1, 2, "#4A9A5A"], [1, 2, 2, "#5AAA6A"], [2, 2, 2, "#4A9A5A"], [3, 2, 2, "#5AAA6A"], [1, 3, 2, "#4A9A5A"], [2, 3, 2, "#5AAA6A"], [3, 3, 2, "#4A9A5A"],   // ...the canopy...
                   [2, 1, 3, "#6ABA7A"], [1, 2, 3, "#5AAA6A"], [2, 2, 3, "#6ABA7A"], [3, 2, 3, "#5AAA6A"], [2, 3, 3, "#6ABA7A"], [2, 2, 4, "#7ACA8A"]] };   // ...and the crown
-  var turns = 0, turnAt = -9, lastT = 0;
-  function rot(v, k) {                                                       // the grid turned k quarters: (ix, iy) → (n−1−iy, ix)
-    var ix = v[0], iy = v[1];
-    for (var i = 0; i < k; i++) { var nx = D.n - 1 - iy; iy = ix; ix = nx; }
-    return [ix, iy];
-  }
+  // the turn is an angle with an angular velocity: a press (or the idle
+  // timer) moves the detent a quarter on, and a spring, damped under
+  // critical, swings the tree toward it — past it, and back. every cube's
+  // ix/iy is the grid turned by that angle about its centre (at exactly 90°
+  // that is the old quarter-turn: (ix, iy) → (n−1−iy, ix)), and the depth
+  // sort works off those interpolated ix/iy, so the order re-sorts itself
+  // all the way through the swing and the overshoot.
+  var turns = 0, turnAt = -9, lastT = 0, phi = 0, omg = 0;                  // quarter-turns asked for; the angle the tree is at, and its rate
   return {
     frame: function (dt, t) {
       lastT = t;
       if (t - turnAt > D.every) { turnAt = t; turns++; }                    // an idle quarter-turn now and then
-      var p = u.ease(u.clamp((t - turnAt) * 1.6, 0, 1));                    // the turn in progress, 0 → 1
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k), tgt = turns * u.TAU / 4;      // damping from its fraction of critical; the detent
+      for (var s = 0; s < sub; s++) { omg += (D.k * (tgt - phi) - damp * omg) * h; phi += omg * h; }
       u.sky(D.sky);
       var m = Math.min(u.W * 0.075, u.H * 0.085), ox = u.W / 2, oy = u.H * 0.54;
       u.ground(oy - m * 1.5, D.floor);
-      var list = [];
+      var c = (D.n - 1) / 2, cs = Math.cos(phi), sn = Math.sin(phi), list = [];
       for (var i = 0; i < D.vox.length; i++) {
-        var v = D.vox[i], a = rot(v, (turns - 1) % 4), b = rot(v, turns % 4);   // where it was, where it is going
-        list.push({ ix: u.lerp(a[0], b[0], p), iy: u.lerp(a[1], b[1], p), iz: v[2], c: v[3] });
+        var v = D.vox[i], dx = v[0] - c, dy = v[1] - c;                       // the cell turned by phi about the grid's centre
+        list.push({ ix: c + dx * cs - dy * sn, iy: c + dx * sn + dy * cs, iz: v[2], c: v[3] });
       }
       list.sort(function (A, B) { return (A.ix + A.iy + A.iz * 0.001) - (B.ix + B.iy + B.iz * 0.001); });   // far first, then low first
       u.shadow(ox, oy, m * 2.1, m * 1.05, 0.4);
       for (var j = 0; j < list.length; j++) {
-        var q = list[j], s = u.iso(q.ix + 1 - D.n / 2, q.iy + 1 - D.n / 2, q.iz, m);   // base point = the cell's front corner, centred on the grid
-        u.cube(ox + s[0], oy + s[1], m, q.c);
+        var q = list[j], sp = u.iso(q.ix + 1 - D.n / 2, q.iy + 1 - D.n / 2, q.iz, m);   // base point = the cell's front corner, centred on the grid
+        u.cube(ox + sp[0], oy + sp[1], m, q.c);
       }
-      u.label("sort by ix+iy, then by height, then just draw — the order IS the depth; a turn only changes the order", u.W / 2, u.H - 8, null, "center");
+      u.label("sort by ix+iy, then by height, then just draw — the order IS the depth; a turn is a spring to a detent, and the sort follows it through the overshoot", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { turnAt = lastT; turns++; }                       // one quarter-turn, now
+    press: function (x, y) { turnAt = lastT; turns++; }                       // one quarter-turn, now: the detent moves, the spring swings to it
   };
 });
 
-def("W", "Wedge", "facet", "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down and its shadow slides with it", function make(u) {
+def("W", "Wedge", "facet", "a ramp: the slope is one lit face growing lighter toward you, the end is one dark face — a block slides down, faster and faster, rolls out along the floor and stops; its shadow slides with it", function make(u) {
   var D = { sky: ["#1E1C34", "#3A3858"], floor: "#1A1A2C", col: "#7AA0C8", block: "#F58A8A",
-            len: 3, h: 1.4, speed: 0.8 };                                  // len = ramp length in cells; h = the high end in cells; speed = slides per second
-  var slide = 0, lastT = 0;
+            len: 3, h: 1.4, speed: 0.8,                                  // len = ramp length in cells; h = the high end in cells; speed = the clock: gravity and grip scale with speed², so a higher speed is the same slide, quicker
+            g: 9, grip: 12, rest: 0.6 };                                     // g = gravity, cells/s² (at speed 1); grip = the floor's braking at the bottom, cells/s²; rest = seconds it lies at the end before starting over
+  // the block has a speed along the slope: gravity's share along the incline
+  // (g·sin θ) grows it every step, so it starts slow and arrives fast. at the
+  // bottom the speed turns flat (its along-the-floor part survives, the rest
+  // is lost in the bump) and the floor's grip takes it off, so the block
+  // rolls out past the ramp and stops where its speed ran out. it rests a
+  // moment, then goes back to the top for another run.
+  var iy = 0, v = 0, flat = false, wait = 0;                                 // place along the ramp (cells), speed (cells/s, along the slope, then the floor), on the floor yet?, the rest timer
   return {
     frame: function (dt, t) {
-      lastT = t;
+      var th = Math.atan2(D.h, D.len), g = D.g * D.speed * D.speed, grip = D.grip * D.speed * D.speed, mu = 0.45;   // the slope's angle; gravity and grip on this card's clock
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var st = 0; st < sub; st++) {
+        if (wait > 0) { wait -= h; if (wait <= 0) { iy = 0; v = 0; flat = false; } }   // rested: start over at the top
+        else if (!flat) {
+          v += g * Math.sin(th) * h; iy += v * Math.cos(th) * h;             // down the incline: only gravity's share along it
+          if (iy + mu * 0.5 >= D.len) { flat = true; v *= Math.cos(th); }     // the block's middle passes the bottom edge: onto the floor
+        } else {
+          v = Math.max(0, v - grip * h); iy = Math.min(iy + v * h, D.len + 3);   // the roll-out: grip takes the speed off
+          if (v === 0) wait = D.rest;
+        }
+      }
       u.sky(D.sky);
       var s = Math.min(u.W * 0.13, u.H * 0.16), ox = u.W / 2 + s * 0.4, oy = u.H * 0.84 - (D.len + 1) * 0.5 * s;
-      function P(ix, iy, iz) { var p = u.iso(ix, iy, iz || 0, s); return [ox + p[0], oy + p[1]]; }
+      function P(ix, py, iz) { var p = u.iso(ix, py, iz || 0, s); return [ox + p[0], oy + p[1]]; }
       u.ground(oy - s * 0.3, D.floor);
       u.poly([P(1, 0, 0), P(1, 0, D.h), P(1, D.len, 0)], u.shade(D.col, -0.42));   // the end face: vertical, facing right → dark
       var a = P(0.5, 0, D.h), b = P(0.5, D.len, 0);
       u.poly([P(0, 0, D.h), P(1, 0, D.h), P(1, D.len, 0), P(0, D.len, 0)], u.lin(a[0], a[1], b[0], b[1], [u.shade(D.col, 0.32), u.shade(D.col, 0.5)]));   // the slope: lit, lighter as it nears you
-      var r = ((t * D.speed + slide) % 1.25 + 1.25) % 1.25, q = u.clamp(r * r, 0, 1);   // r² = it accelerates; then rests at the bottom a moment
-      var mu = 0.45, iy = q * (D.len - mu), z = D.h * (1 - (iy + mu * 0.5) / D.len);   // the block's place on the slope and the slope's height there
+      var z = D.h * Math.max(0, 1 - (iy + mu * 0.5) / D.len);                // the slope's height under the block's middle — nil once it is on the floor
       var sh = P(0.5 + mu * 0.75, iy + mu * 0.5 + 0.15, z - 0.05);
       u.shadow(sh[0], sh[1], s * mu * 1.1, s * mu * 0.55, 0.45);             // the shadow rides the slope with it
       var f = P(0.5 + mu / 2, iy + mu, z);
       u.cube(f[0], f[1], s * mu, D.block);
-      u.label("one lit face, one dark face, and a shadow that keeps up — that is a ramp and a thing on it", u.W / 2, u.H - 8, null, "center");
+      u.label("one lit face, one dark face, and a shadow that keeps up — that is a ramp and a thing on it; the thing: g·sin θ down the slope, grip on the floor", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { slide = -lastT * D.speed; D.speed = 0.3 + (x / u.W) * 0.9; slide = -lastT * D.speed; }   // click = back to the top; click right = a faster slide
+    press: function (x, y) {                                                 // click right = a faster clock; click = a shove down the slope, or a fresh run if it is resting
+      D.speed = 0.3 + (x / u.W) * 0.9;
+      if (wait > 0) { iy = 0; v = 0; flat = false; wait = 0; } else v += D.g * 0.2;
+    }
   };
 });
 
-def("X", "Xylophone", "facet", "eight flat blocks receding toward the back, each drawn a little smaller than the one before — size shrinking with distance is the cue; press a bar and its top flashes", function make(u) {
+def("X", "Xylophone", "facet", "eight flat blocks receding toward the back, each drawn a little smaller than the one before — size shrinking with distance is the cue; press a bar and it rings: it dips, springs back and fades, the long front bars slower than the short ones at the back", function make(u) {
   var D = { sky: ["#1A1430", "#2C2448"], floor: "#1A1A2C", cols: ["#F55A5A", "#F5A15A", "#F5E06A", "#9BE28A", "#5AD9D9", "#6A9AF5", "#B08AF5", "#F58AD0"],
-            n: 8, shrink: 0.07, thick: 0.28, jitter: 0, beat: 0.45 };        // shrink per bar toward the back; thick = bar height; jitter = height wobble; beat = seconds per note
-  var tune = [0, 2, 4, 7, 4, 2, 1, 3, 5, 3], hit = [], seq = 0, nextAt = 0, lastT = 0, rows = [];
-  for (var i = 0; i < D.n; i++) hit.push(-9);
+            n: 8, shrink: 0.07, thick: 0.28, jitter: 0, beat: 0.45,        // shrink per bar toward the back; thick = bar height; jitter = height wobble; beat = seconds per note
+            ring: 8, decay: 0.06, kick: 3 };                                 // ring = the front bar's rate, radians per second (a shorter bar rings quicker, by 1/length²); decay = damping as a fraction of critical — tiny, so a bar rings for seconds; kick = the mallet: the speed a strike gives a bar, bar sizes per second
+  // each bar is a spring: a strike gives it a velocity downward, and a
+  // spring with almost no damping brings it back and past, over and over,
+  // fading — a bar rings. the rate is the bar's own: a short bar is a stiff
+  // bar (k ∝ 1/length²), so the back bars ring quick and die soon, and the
+  // long front bar rings low and slow. the top's flash is the ring's
+  // energy, so it fades with the sound rather than on a timer.
+  var tune = [0, 2, 4, 7, 4, 2, 1, 3, 5, 3], seq = 0, nextAt = 0, rows = [];
+  var yo = new Float32Array(D.n), yv = new Float32Array(D.n);               // each bar's offset (in bar sizes, down = positive) and its rate
   function bar(x, y, L, wd, hz, s, c, kTop) {                                // a long block by hand: (x, y) is its front corner, L along ix, wd along iy
     var Lc = [x - L * 0.866 * s, y - L * 0.5 * s], Rc = [x + wd * 0.866 * s, y - wd * 0.5 * s], B = [Lc[0] + Rc[0] - x, Lc[1] + Rc[1] - y];
     u.poly([[x, y], Lc, [Lc[0], Lc[1] - hz], [x, y - hz]], c);                // left face: the colour
     u.poly([[x, y], Rc, [Rc[0], Rc[1] - hz], [x, y - hz]], u.shade(c, -0.42)); // right end: dark
-    u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or flashing)
+    u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or ringing)
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
-      lastT = t;
-      if (t > nextAt) { hit[tune[seq % tune.length]] = t; seq++; nextAt = t + D.beat; }   // the tune plays itself
+      if (t > nextAt) { yv[tune[seq % tune.length]] += D.kick; seq++; nextAt = t + D.beat; }   // the tune plays itself: each note is a strike
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
       u.sky(D.sky);
       var s = Math.min(u.W * 0.08, u.H * 0.13), baseY = u.H * 0.86;
       u.ground(baseY - s * 4.5, D.floor);
       rows = [];
       for (var i = D.n - 1; i >= 0; i--) {                                    // back bar first
         var sc = 1 - i * D.shrink, si = s * sc, L = 4.2 - i * 0.3, wd = 0.8;
-        var off = u.iso(0, -i * 1.2, 0, s), x = u.W / 2 - s * 2.2 + (L - wd) * 0.433 * si + off[0], y = baseY + off[1];
+        var om = D.ring * (4.2 / L) * (4.2 / L), k = om * om, dp = D.decay * 2 * om;   // this bar's rate: stiffer the shorter it is; its damping from the fraction of critical
+        for (var st = 0; st < sub; st++) { yv[i] += (-k * yo[i] - dp * yv[i]) * h; yo[i] = u.clamp(yo[i] + yv[i] * h, -1, 1); }
+        var off = u.iso(0, -i * 1.2, 0, s), x = u.W / 2 - s * 2.2 + (L - wd) * 0.433 * si + off[0], y = baseY + off[1] + yo[i] * si;
         var hz = si * D.thick * (1 + D.jitter * Math.sin(t * 13 + i * 5));
-        var flash = u.clamp(1 - (t - hit[i]) * 3, 0, 1), c = D.cols[i % D.cols.length];
-        if (flash > 0) u.soft(x - L * 0.433 * si, y - L * 0.25 * si - hz, si * 1.4, c, flash * 0.6);
+        var flash = u.clamp(Math.sqrt(yo[i] * yo[i] + (yv[i] / om) * (yv[i] / om)) * om / D.kick, 0, 1), c = D.cols[i % D.cols.length];   // the ring's energy, 1 at a fresh strike
+        if (flash > 0.02) u.soft(x - L * 0.433 * si, y - L * 0.25 * si - hz, si * 1.4, c, flash * 0.6);
         bar(x, y, L, wd, hz, si, c, 0.32 + 0.45 * flash);
         rows.push([i, y - L * 0.25 * si - hz]);                               // remember where each bar sits, for clicking
       }
-      u.label("no perspective maths — each bar is drawn a little smaller than the one in front, and the eye reads distance", u.W / 2, u.H - 8, null, "center");
+      u.label("no perspective maths — each bar is drawn a little smaller than the one in front, and the eye reads distance; each bar is a spring that rings at its own rate", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) {                                                 // click = strike the bar nearest that height
+    press: function (x, y) {                                                 // click = strike the bar nearest that height: a velocity, and the spring rings it
       var best = 0, bd = 1e9;
       for (var i = 0; i < rows.length; i++) { var d = Math.abs(rows[i][1] - y); if (d < bd) { bd = d; best = rows[i][0]; } }
-      hit[best] = lastT;
+      yv[best] += D.kick;
     }
   };
 });
@@ -2945,13 +3066,21 @@ rhymeOf("Block", "Glass block", "the same cube at half opacity with all twelve e
   };
 });
 
-rhymeOf("Gem", "Ruby cut", "the same stone in red, turning three times as fast — the facets flicker past the light instead of drifting", function make(u) {
+rhymeOf("Gem", "Ruby cut", "the same stone in red, turning three times as fast — the facets flicker past the light instead of drifting; a nudge still spins it up and coasts down", function make(u) {
   // rhyme of Gem: dials moved — col to ruby, sky to a dark wine, spin 0.4 → 1.4
   var D = { sky: ["#1A0810", "#2E1020"], col: "#E0305A", spin: 1.4,
-            sides: 6, crown: 0.45, pav: 1.1 };
+            sides: 6, crown: 0.45, pav: 1.1,                                // crown/pav = the point above / below the rim, in radii
+            kick: 3, drag: 1.2,                                             // kick = angular velocity a full-width press adds, rad/s; drag = how fast that nudge coasts down, per second
+            bob: 8, bobdamp: 0.08 };                                        // bob = the float's spring stiffness; bobdamp = its damping as a fraction of critical (tiny: it keeps bobbing)
   var Lt = [-0.5, 0.75, 0.45], ln = Math.sqrt(Lt[0] * Lt[0] + Lt[1] * Lt[1] + Lt[2] * Lt[2]);
   Lt = [Lt[0] / ln, Lt[1] / ln, Lt[2] / ln];                                // the light: upper-left, a little toward us
-  var spin = 0;
+  // the stone turns at its idle rate (spin) plus whatever a nudge left it:
+  // a press adds angular VELOCITY, not an angle, and drag eats a share of
+  // it every step, so the stone spins up and coasts back down to its idle
+  // turn instead of jumping. the float is a spring around a rest height,
+  // damped far under critical, so it bobs for a long while and a press
+  // bumps it — nothing here is a sine of the clock.
+  var ang = 0, angv = 0, bob = 0, bobv = 0.5;                                // the turn, the nudge's leftover rate, the float (in radii) and its rate
   function facets(a) {                                                       // rebuild the triangles for rotation a
     var n = D.sides, rim = [], out = [];
     for (var i = 0; i < n; i++) { var q = a + i / n * u.TAU; rim.push([Math.cos(q), 0, Math.sin(q)]); }
@@ -2963,9 +3092,16 @@ rhymeOf("Gem", "Ruby cut", "the same stone in red, turning three times as fast �
   }
   return {
     frame: function (dt, t) {
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var bd = D.bobdamp * 2 * Math.sqrt(D.bob);                             // the float's damping, from its fraction of critical
+      for (var s = 0; s < sub; s++) {
+        angv -= angv * D.drag * h; ang += (D.spin + angv) * h;              // idle rate + the nudge, which drag wears away
+        bobv += (-D.bob * bob - bd * bobv) * h; bob = u.clamp(bob + bobv * h, -0.3, 0.3);
+      }
+      ang = ang % u.TAU;
       u.sky(D.sky);
-      var r = Math.min(u.W, u.H) * 0.26, cx = u.W / 2, cy = u.H * 0.46 + Math.sin(t * 1.3) * r * 0.06;
-      var F = facets(t * D.spin + spin), cz = (D.crown - D.pav) / 2, best = null;
+      var r = Math.min(u.W, u.H) * 0.26, cx = u.W / 2, cy = u.H * 0.46 + bob * r * 0.4;
+      var F = facets(ang), cz = (D.crown - D.pav) / 2, best = null;
       for (var i = 0; i < F.length; i++) {
         var p = F[i], e1 = [p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]], e2 = [p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]];
         var nx = e1[1] * e2[2] - e1[2] * e2[1], ny = e1[2] * e2[0] - e1[0] * e2[2], nz = e1[0] * e2[1] - e1[1] * e2[0];
@@ -2984,51 +3120,68 @@ rhymeOf("Gem", "Ruby cut", "the same stone in red, turning three times as fast �
         u.poly(pts, u.shade(D.col, q.k * 0.5));
       }
       if (best.k > 0.8) u.soft(cx + (best[0][0] + best[1][0] + best[2][0]) / 3 * r, cy - (best[0][1] + best[1][1] + best[2][1]) / 3 * r * 0.8 + best.z * r * 0.35, r * 0.4, "#FFFFFF", (best.k - 0.8) * 3);   // the facet squarest to the light sparkles
-      u.label("a red palette and a faster turn — the same triangles; only the dot product with the light moves", u.W / 2, u.H - 8, null, "center");
+      u.label("a red palette and a faster turn — the same triangles; only the dot product with the light moves, and a nudge coasts down the same way", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { spin += (x / u.W - 0.5) * 2; }                // nudge the stone round by hand
+    press: function (x, y) { angv += (x / u.W - 0.5) * 2 * D.kick; bobv -= 0.6; }   // a nudge: angular velocity, left or right of centre — and a bump to the float
   };
 });
 
-rhymeOf("Hexprism", "Basalt columns", "five grey columns of different heights, side by side, all turning together — a rock shelf from one rule", function make(u) {
+rhymeOf("Hexprism", "Basalt columns", "five grey columns of different heights, side by side, all sent round together — the tall ones lag and rock longer, so they settle on their own phases: a rock shelf from one rule", function make(u) {
   // rhyme of Hexprism: dials moved — cols to three greys, count 1 → 5, h 0.5 → 0.42
   var D = { sky: ["#141226", "#26223E"], floor: "#1A1A2C", cols: ["#4A4A52", "#5A5A62", "#3E3E46"],
-            count: 5, h: 0.42, r: 0.16, every: 3 };
+            count: 5, h: 0.42, r: 0.16, every: 3,                          // count of prisms; h and r as fractions of H and W; every = seconds between idle turns
+            k: 64, zeta: 0.4 };                                             // k = the turn's spring stiffness for a column of height h (taller = heavier = softer); zeta = damping as a fraction of critical — under 1, so it turns past the detent and rocks back
   var R = u.rng(7), prisms = [];
   for (var i = 0; i < D.count; i++) prisms.push({ x: (i + 0.5) / D.count, h: D.h * (D.count > 1 ? 0.55 + R() * 0.7 : 1), c: D.cols[i % D.cols.length] });
-  var turn = 0, target = 0, nextAt = D.every;
+  // a press moves the DETENT — the angle the column wants — on by 60°. the
+  // column itself has an angular velocity and a spring toward the detent,
+  // damped under critical, so it swings past, rocks back and settles rather
+  // than easing in. every column keeps its own angle and rate, and a taller
+  // column is a heavier one (a softer spring per height), so the rhyme's
+  // five columns share one detent and arrive on their own phases.
+  var turn = new Float32Array(prisms.length), om = new Float32Array(prisms.length), target = 0, nextAt = D.every;   // each column's angle and angular velocity; the shared detent
   return {
     frame: function (dt, t) {
-      if (t > nextAt) { target += u.TAU / 6; nextAt = t + D.every; }
-      turn += (target - turn) * Math.min(1, dt * 6);                        // ease toward the next 60°
+      if (t > nextAt) { target += u.TAU / 6; nextAt = t + D.every; }        // the idle turn: the detent moves on
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var p = 0; p < prisms.length; p++) {
+        var kp = D.k * D.h / prisms[p].h, dp = D.zeta * 2 * Math.sqrt(kp);   // a taller column: more inertia, so a softer spring — and its own critical damping
+        for (var s = 0; s < sub; s++) { om[p] += (kp * (target - turn[p]) - dp * om[p]) * h; turn[p] += om[p] * h; }
+      }
       u.sky(D.sky);
       var gy = u.H * 0.82;
       u.ground(gy - u.H * 0.22, D.floor);
       for (var p = 0; p < prisms.length; p++) {
-        var P = prisms[p], cx = u.W * P.x, r = u.W * D.r / (D.count > 1 ? Math.sqrt(D.count) * 0.8 : 1), h = u.H * P.h;
+        var P = prisms[p], cx = u.W * P.x, r = u.W * D.r / (D.count > 1 ? Math.sqrt(D.count) * 0.8 : 1), hp = u.H * P.h, tp = turn[p];
         u.shadow(cx + r * 0.35, gy, r * 1.4, r * 0.6, 0.45);
         var v = [];
-        for (var i = 0; i < 6; i++) { var q = turn + i * u.TAU / 6; v.push([cx + Math.cos(q) * r, gy + Math.sin(q) * r * 0.5]); }
+        for (var i = 0; i < 6; i++) { var q = tp + i * u.TAU / 6; v.push([cx + Math.cos(q) * r, gy + Math.sin(q) * r * 0.5]); }
         for (var j = 0; j < 6; j++) {
-          var A = v[j], B = v[(j + 1) % 6], mid = turn + (j + 0.5) * u.TAU / 6;   // the direction this side faces
+          var A = v[j], B = v[(j + 1) % 6], mid = tp + (j + 0.5) * u.TAU / 6;   // the direction this side faces
           if (Math.sin(mid) <= 0) continue;                                 // it faces away from us
-          u.poly([A, B, [B[0], B[1] - h], [A[0], A[1] - h]], u.shade(P.c, -0.21 - 0.21 * Math.cos(mid)));   // facing left = the colour, facing right = dark
+          u.poly([A, B, [B[0], B[1] - hp], [A[0], A[1] - hp]], u.shade(P.c, -0.21 - 0.21 * Math.cos(mid)));   // facing left = the colour, facing right = dark
         }
         var top = [];
-        for (var k = 0; k < 6; k++) top.push([v[k][0], v[k][1] - h]);
+        for (var k = 0; k < 6; k++) top.push([v[k][0], v[k][1] - hp]);
         u.poly(top, u.shade(P.c, 0.32));
       }
-      u.label("five columns, different heights, one light — the grey rule is still a rule, so they stand on one shelf", u.W / 2, u.H - 8, null, "center");
+      u.label("five columns, different heights, one light and one detent — the grey rule is still a rule, and each column swings to it at its own pace", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { target += u.TAU / 6; nextAt += D.every; }       // one more sixth of a turn
+    press: function (x, y) { target += u.TAU / 6; nextAt += D.every; }       // one more sixth of a turn: the detent moves, the spring does the rest
   };
 });
 
-rhymeOf("Isotile", "Dungeon floor", "the same floor in dark stone under a torch — a warm glow laid over the tiles, the edge lines cut deeper", function make(u) {
+rhymeOf("Isotile", "Dungeon floor", "the same floor in dark stone under a torch — a warm glow laid over the tiles, the edge lines cut deeper; the ball still rolls past its mark and settles", function make(u) {
   // rhyme of Isotile: dials moved — a/b to dark stone, edge −0.45 → −0.6, glow 0 → 0.35
   var D = { sky: ["#0A0812", "#161222"], a: "#3A3640", b: "#4A4650", edge: -0.6, ball: "#9BE28A",
-            n: 8, speed: 0.6, glow: 0.35 };
-  var ball = { x: 4, y: 4 }, target = null;
+            n: 8, speed: 0.6, glow: 0.35,                                     // n tiles a side; glow = a warm torch tint over the floor (0 = none)
+            k: 36, zeta: 0.5 };                                             // k = the pull toward where the ball is going; zeta = damping as a fraction of critical — under 1, so it rolls a little past and settles back
+  // the ball has a velocity: a spring pulls it toward its aim (a click, or
+  // the idle circle) and damping under critical lets it roll a little past
+  // and come back — it arrives like a ball, not like a cursor. the shadow is
+  // drawn at the ball's grid position on the floor whatever the ball does,
+  // which is the lesson.
+  var ball = { x: 4, y: 4 }, vel = { x: 0, y: 0 }, target = null;           // grid position, grid velocity (cells per second), the clicked aim
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       u.sky(D.sky);
@@ -3042,50 +3195,70 @@ rhymeOf("Isotile", "Dungeon floor", "the same floor in dark stone under a torch 
       }
       if (D.glow > 0) u.soft(ox, oy + s * D.n * 0.5, s * D.n * 0.75, "#F5A15A", D.glow);
       var ax = D.n / 2 + 2.6 * Math.cos(t * D.speed), ay = D.n / 2 + 2.6 * Math.sin(t * D.speed);   // the idle path: a circle
-      if (target) { ax = target.x; ay = target.y; if (Math.abs(ax - ball.x) + Math.abs(ay - ball.y) < 0.15) target = null; }
-      ball.x += (ax - ball.x) * Math.min(1, dt * 2.5); ball.y += (ay - ball.y) * Math.min(1, dt * 2.5);
+      if (target) { ax = target.x; ay = target.y; if (Math.abs(ax - ball.x) + Math.abs(ay - ball.y) < 0.05 && Math.abs(vel.x) + Math.abs(vel.y) < 0.3) target = null; }   // there, and at rest: back to the idle path
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k);                                // damping from its fraction of critical
+      for (var st = 0; st < sub; st++) {
+        vel.x += (D.k * (ax - ball.x) - damp * vel.x) * h; vel.y += (D.k * (ay - ball.y) - damp * vel.y) * h;
+        ball.x = u.clamp(ball.x + vel.x * h, 0.3, D.n - 0.3); ball.y = u.clamp(ball.y + vel.y * h, 0.3, D.n - 0.3);   // the floor has an edge
+      }
       var g = P(ball.x, ball.y), rb = s * 0.45;
       u.shadow(g[0], g[1], rb * 1.15, rb * 0.55, 0.5);                       // the shadow sits ON the floor: that is what keeps the ball on it
       u.sphere(g[0], g[1] - rb, rb, D.ball, -0.5, -0.6, { spec: 0.5 });
-      u.label("dark stone under a torch: the warm tint sits on top of the tiles, and the edge lines still say 'floor'", u.W / 2, u.H - 8, null, "center");
+      u.label("dark stone under a torch: the warm tint sits on top of the tiles, and the edge lines still say 'floor' — the ball's spring is the same", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) {                                                 // click = roll the ball there (screen → iso grid)
+    press: function (x, y) {                                                 // click = roll the ball there (screen → iso grid): the aim moves, the spring does the rolling
       var s = Math.min(u.W * 0.065, u.H * 0.1), sx = x - u.W / 2, sy = y - u.H * 0.12;
       target = { x: u.clamp((sx / (0.866 * s) + 2 * sy / s) / 2, 0.5, D.n - 0.5), y: u.clamp((2 * sy / s - sx / (0.866 * s)) / 2, 0.5, D.n - 0.5) };
     }
   };
 });
 
-rhymeOf("Keep", "Sci-fi silo", "the same tower in steel blue, half again as tall, with a cyan beacon for a flag — a launch silo from castle parts", function make(u) {
+rhymeOf("Keep", "Sci-fi silo", "the same tower in steel blue, half again as tall, with a cyan beacon for a flag — a launch silo from castle parts; the beacon still drops slack and whips round when the wind turns", function make(u) {
   // rhyme of Keep: dials moved — palette to steel and night, h 2.4 → 3.4, wind 1 → −1
   var D = { sky: ["#0A0F2A", "#2A3A6A"], floor: "#1A2030", stone: "#7A9AB8", flag: "#40F0F0",
-            h: 3.4, wind: -1 };
-  var sunL = true;
+            h: 3.4, wind: -1,                                               // h = tower height in widths; wind = the wind asked for: sign = direction, size = strength
+            k: 50, zeta: 0.35, lag: 2.5, droop: 0.25, flap: 0.12 };            // k = the flag tip's stiffness; zeta = damping as a fraction of critical (under 1: it whips past); lag = how fast the wind at the flag catches up with the dial, per second; droop = gravity's pull on the tip against a unit wind; flap = the flutter, radians per unit wind
+  var sunL = true, w = D.wind, th = Math.atan2(D.droop, D.wind), om = 0;   // the wind at the flag (it lags the dial); the tip's angle from the pole (0 = streaming right, π/2 = hanging, π = streaming left) and its rate
+  // the flag is one angle at its tip. the wind the flag feels chases the
+  // wind you asked for (a lag, not a switch), and the tip is a spring toward
+  // the angle wind and gravity agree on — straight downwind, drooping a
+  // little. flip the wind and that rest angle walks through 'hanging
+  // straight down' as the lagging wind passes zero, and the under-damped tip
+  // whips through the slack after it: a flag turning round, not a flag
+  // mirrored. the flutter is a small forcing on the same spring, quicker
+  // in more wind.
   function blk(x, y, s, c, h) {                                              // a block under THIS picture's sun — mirrored when the sun is on the right
     u.cube(x, y, s, c, { h: h, left: sunL ? c : u.shade(c, -0.42), right: sunL ? u.shade(c, -0.42) : c });
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k);                                // damping from its fraction of critical
+      for (var st = 0; st < sub; st++) {
+        w += (D.wind - w) * D.lag * h;                                       // the wind at the flag catches up with the dial
+        var rest = Math.atan2(D.droop, w) + Math.sin(t * 9 * Math.abs(w)) * D.flap * Math.abs(w);   // downwind and a little down (π/2 when the wind is nil), plus the flutter
+        om += (D.k * (rest - th) - damp * om) * h; th = u.clamp(th + om * h, -0.8, u.TAU / 2 + 0.8);
+      }
       u.sky(D.sky);
-      var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h = s * D.h;
+      var s = Math.min(u.W * 0.16, u.H * 0.14), dx = 0.866 * s, dy = 0.5 * s, h2 = s * D.h;
       var x = u.W / 2, y = u.H * 0.84, m = s / 5;
       u.ground(y - dy * 2.6, D.floor);
       u.soft(sunL ? u.W * 0.1 : u.W * 0.9, u.H * 0.12, u.W * 0.14, "#FFF3D0", 0.8);
       u.shadow(x + (sunL ? 1 : -1) * dx * 0.9, y - dy * 0.5, dx * 2.4, dy * 1.5, 0.4);
       blk(x - dx * 1.3, y - dy * 0.9, s * 0.7, D.stone, s * 0.8);            // an annex, behind-left — drawn first
-      blk(x, y, s, D.stone, h);                                               // the tower
+      blk(x, y, s, D.stone, h2);                                              // the tower
       var f1 = 0.36, f2 = 0.64, dh = s * 0.55;                                // the doorway, on the left face
       u.poly([[x - dx * f1, y - dy * f1], [x - dx * f2, y - dy * f2], [x - dx * f2, y - dy * f2 - dh], [x - dx * f1, y - dy * f1 - dh]], "#0E0B1A");
-      var ox = x, oy = y - h - 2 * dy;                                        // the top face's back corner: origin for the battlements
+      var ox = x, oy = y - h2 - 2 * dy;                                       // the top face's back corner: origin for the battlements
       var cells = [[0, 0], [0, 2], [2, 0], [0, 4], [4, 0], [2, 4], [4, 2], [4, 4]];   // rim cells of a 5×5 top, already sorted back → front
       for (var i = 0; i < cells.length; i++) { var p = u.iso(cells[i][0] + 1, cells[i][1] + 1, 0, m); blk(ox + p[0], oy + p[1], m, D.stone, m * 1.2); }
-      var px = x, py = y - h - dy, ph = s * 0.9, dir = D.wind > 0 ? 1 : -1;  // the flag pole, on the top's centre
+      var px = x, py = y - h2 - dy, ph = s * 0.9;                             // the flag pole, on the top's centre
       u.line(px, py, px, py - ph, "#3A3040", 1.5);
-      var wave = Math.sin(t * 5 * Math.abs(D.wind)) * s * 0.08 + Math.sin(t * 8.3 * Math.abs(D.wind)) * s * 0.04;
-      u.poly([[px, py - ph], [px + dir * s * 0.5, py - ph + s * 0.12 + wave], [px, py - ph + s * 0.32]], D.flag);
-      u.label("steel blue and taller, the flag a beacon — the light rule did not change, so it is still one building", u.W / 2, u.H - 8, null, "center");
+      u.poly([[px, py - ph], [px + Math.cos(th) * s * 0.52, py - ph + Math.sin(th) * s * 0.52], [px, py - ph + s * 0.32]], D.flag);   // the flag: pole top, the tip at its angle, the pole a little down
+      u.label("steel blue and taller, the flag a beacon — the light rule did not change, so it is still one building; the same spring on the same lagging wind", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { sunL = x < u.W / 2; D.wind = (x < u.W / 2 ? 1 : -1) * Math.abs(D.wind); }   // click a side = the sun (and the wind) come from there
+    press: function (x, y) { sunL = x < u.W / 2; D.wind = (x < u.W / 2 ? 1 : -1) * Math.abs(D.wind); }   // click a side = the sun (and the wind) come from there; the flag finds out through the lag
   };
 });
 
@@ -3150,133 +3323,202 @@ rhymeOf("Quilt", "Circuit board", "the same patchwork in green, rippling three t
   };
 });
 
-rhymeOf("Stairs", "Candy stairs", "the same staircase in four pastels with a ball that hops twice as high and faster — the shadow shrinks more, so the bounce reads taller", function make(u) {
+rhymeOf("Stairs", "Candy stairs", "the same staircase in four pastels with a ball that hops twice as high and faster — it lands harder, so it squashes and bounces more, and the shadow shrinks more, so the bounce reads taller", function make(u) {
   // rhyme of Stairs: dials moved — palette to pastels (four step colours), ball to lilac, hop 0.55 → 1.2, tempo 1.6 → 2.2
   var D = { sky: ["#F5D0E0", "#F5E8F0"], floor: "#E8C8D8", cols: ["#F5A0B8", "#A0D8F5", "#F5E0A0", "#B8F0B0"], ball: "#C9A0F5",
-            n: 7, rise: 0.55, hop: 1.2, tempo: 2.2 };
-  var phase = 0, lastT = 0;
+            n: 7, rise: 0.55, hop: 1.2, tempo: 2.2,                      // rise (keep ≥ 0.5 so each step hides the last one's end) and hop in step widths; tempo = hops per second, near enough — it sets the gravity, and the bounces add a little
+            bounce: 0.35, squash: 0.3, dwell: 0.12, rest: 1.0 };              // bounce = restitution: the share of the landing speed that comes back up; squash = how flat a full landing presses the ball, of its radius; dwell = seconds it sits before the next hop; rest = seconds at the bottom before it starts over
+  // the ball is a body: gravity pulls it down every step, and a step top is a
+  // floor — when it arrives moving down it bounces with restitution (a share
+  // of the speed comes back up, most is lost) until the bounce is too small
+  // to matter, then it sits a moment and launches the next hop: an upward
+  // speed for the hop height it wants, and just enough sideways to land on
+  // the next step's middle. gravity is chosen from the tempo so a hop takes
+  // about a beat. a landing also kicks a stiff, quick squash spring (a cycle
+  // of about 150 ms) that flattens the ball and lets it ring back round.
+  var ix = D.n - 1 + 0.4, vx = 0, z = D.n * D.rise, vz = 0, air = false, wait = 0;   // place along the stairs (cells) and its rate; height (cells) and its rate; in flight?; the timer on the ground
+  var sq = 0, sqv = 0, SQW = 40, SQD = 0.4 * 2 * SQW;                        // the squash and its rate; the squash spring's rate (40 rad/s) and damping (0.4 of critical)
   return {
     frame: function (dt, t) {
-      lastT = t;
+      var n = D.n, rise = D.rise;
+      var g = Math.pow((Math.sqrt(2 * D.hop) + Math.sqrt(2 * (D.hop + rise))) * D.tempo * 1.3, 2);   // gravity from the tempo: a hop's flight is (√2h + √2(h+r)) / √g, and the 1.3 leaves room for the bounces
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var s = 0; s < sub; s++) {
+        if (air) {
+          vz -= g * h; z += vz * h; ix += vx * h;
+          var under = u.clamp(Math.floor(ix), 0, n - 1), top = (under + 1) * rise;   // the step beneath: its top is the floor here
+          if (z <= top && vz < 0) {
+            z = top; var vin = -vz;
+            vz = vin * D.bounce; vx *= D.bounce;                             // restitution: a share comes back up, and the run mostly dies
+            sqv -= D.squash * 2 * SQW * Math.min(1, vin / Math.sqrt(2 * g * (D.hop + rise)));   // the landing kicks the squash, by how hard it hit (1 = a full hop's landing)
+            if (vz * vz < 2 * g * 0.03) { vz = 0; vx = 0; air = false; wait = under === 0 ? D.rest : D.dwell; }   // a bounce under 0.03 cells: it has landed
+          }
+        } else {
+          wait -= h;
+          if (wait <= 0) {
+            var on = u.clamp(Math.floor(ix), 0, n - 1);
+            if (on === 0) { ix = n - 1 + 0.4; z = n * rise; }                 // the bottom: start over at the top
+            else {
+              vz = Math.sqrt(2 * g * D.hop);                                   // up: enough for the hop height
+              var T = (vz + Math.sqrt(vz * vz + 2 * g * rise)) / g;             // how long until it is one step lower
+              vx = (on - 1 + 0.4 - ix) / T; air = true;                        // across: enough to land on the next step's middle
+            }
+          }
+        }
+        sqv += (-SQW * SQW * sq - SQD * sqv) * h; sq = u.clamp(sq + sqv * h, -0.45, 0.45);
+      }
       u.sky(D.sky);
-      var n = D.n, s = Math.min(u.W * 0.11, u.H * 0.12), rise = s * D.rise;
-      var ox = u.W / 2 - (n - 1) * 0.866 * s / 2, oy = u.H * 0.88 - (n + 1) * 0.5 * s;
-      function P(ix, iy, iz) { var p = u.iso(ix, iy, iz || 0, s); return [ox + p[0], oy + p[1]]; }
-      u.ground(oy + s * 0.4, D.floor);
-      for (var i = 0; i < n; i++) { var f = P(i + 1, 1); u.cube(f[0], f[1], s, D.cols[i % D.cols.length], { h: (i + 1) * rise }); }   // left to right = back to front
-      var k = ((t + phase) * D.tempo) % n, j = Math.floor(k), p = k - j;    // j hops done so far; p = progress of this hop
-      var from = n - 1 - j, to = Math.max(0, from - 1);                      // hopping from step `from` down to step `to`
-      var ix = u.lerp(from + 0.4, to + 0.4, p), hz = u.lerp((from + 1) * rise, (to + 1) * rise, p) / s + 4 * p * (1 - p) * D.hop;
-      var under = Math.floor(ix), topZ = (under + 1) * rise / s, lift = hz - topZ;   // the step directly beneath the ball, and how far above it we are
-      var g = P(ix, 0.78, topZ), r = s * 0.27;
-      u.shadow(g[0], g[1], r * 1.2 / (1 + lift), r * 0.55 / (1 + lift), 0.5 / (1 + lift));   // higher = a smaller, fainter shadow
-      var b = P(ix, 0.78, hz);
-      u.sphere(b[0], b[1] - r, r, D.ball, -0.5, -0.6, { spec: 0.5 });
-      u.label("pastel steps, a higher hop — the shadow shrinks more when the ball is higher, so the bounce reads taller", u.W / 2, u.H - 8, null, "center");
+      var sz = Math.min(u.W * 0.11, u.H * 0.12), rs = sz * rise;
+      var ox = u.W / 2 - (n - 1) * 0.866 * sz / 2, oy = u.H * 0.88 - (n + 1) * 0.5 * sz;
+      function P(px, py, pz) { var p = u.iso(px, py, pz || 0, sz); return [ox + p[0], oy + p[1]]; }
+      u.ground(oy + sz * 0.4, D.floor);
+      for (var i = 0; i < n; i++) { var f = P(i + 1, 1); u.cube(f[0], f[1], sz, D.cols[i % D.cols.length], { h: (i + 1) * rs }); }   // left to right = back to front
+      var below = u.clamp(Math.floor(ix), 0, n - 1), topZ = (below + 1) * rise, lift = z - topZ;   // the step directly beneath the ball, and how far above it we are
+      var gp = P(ix, 0.78, topZ), r = sz * 0.27;
+      u.shadow(gp[0], gp[1], r * 1.2 / (1 + lift), r * 0.55 / (1 + lift), 0.5 / (1 + lift));   // higher = a smaller, fainter shadow
+      var bp = P(ix, 0.78, z);
+      u.ctx.save(); u.ctx.translate(bp[0], bp[1]); u.ctx.scale(1 - sq, 1 + sq);   // the squash, about the contact point: flatter one way, wider the other
+      u.sphere(0, -r, r, D.ball, -0.5, -0.6, { spec: 0.5 });
+      u.ctx.restore();
+      u.label("pastel steps, a higher hop — the shadow shrinks more when the ball is higher, so the bounce reads taller; a harder landing, a deeper squash", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { phase = -lastT; D.tempo = 0.8 + (x / u.W) * 2; }   // click = back to the top; click right = a quicker descent
+    press: function (x, y) { D.tempo = 0.8 + (x / u.W) * 2; if (!air) wait = 0; }   // click = hop now (or start over, from the bottom); click right = a quicker descent
   };
 });
 
-rhymeOf("Voxels", "Voxel cactus", "a different list of cubes — a cactus with two arms and a flower — under a desert sky; the sort and the shades are untouched", function make(u) {
+rhymeOf("Voxels", "Voxel cactus", "a different list of cubes — a cactus with two arms and a flower — under a desert sky; the sort, the shades and the swinging turn are untouched", function make(u) {
   // rhyme of Voxels: dials moved — vox to a cactus list, sky and floor to desert
   var D = { sky: ["#F5C169", "#F5E0B0"], floor: "#C8945A", n: 5, every: 3,
+            k: 60, zeta: 0.4,
             vox: [[2, 2, 0, "#4A9A5A"], [2, 2, 1, "#4A9A5A"], [2, 2, 2, "#5AAA6A"], [2, 2, 3, "#5AAA6A"],
                   [1, 2, 1, "#4A9A5A"], [0, 2, 1, "#4A9A5A"], [0, 2, 2, "#5AAA6A"],
                   [3, 2, 2, "#5AAA6A"], [4, 2, 2, "#5AAA6A"], [4, 2, 3, "#6ABA7A"], [2, 2, 4, "#F58AB8"]] };
-  var turns = 0, turnAt = -9, lastT = 0;
-  function rot(v, k) {                                                       // the grid turned k quarters: (ix, iy) → (n−1−iy, ix)
-    var ix = v[0], iy = v[1];
-    for (var i = 0; i < k; i++) { var nx = D.n - 1 - iy; iy = ix; ix = nx; }
-    return [ix, iy];
-  }
+  // the turn is an angle with an angular velocity: a press (or the idle
+  // timer) moves the detent a quarter on, and a spring, damped under
+  // critical, swings the tree toward it — past it, and back. every cube's
+  // ix/iy is the grid turned by that angle about its centre (at exactly 90°
+  // that is the old quarter-turn: (ix, iy) → (n−1−iy, ix)), and the depth
+  // sort works off those interpolated ix/iy, so the order re-sorts itself
+  // all the way through the swing and the overshoot.
+  var turns = 0, turnAt = -9, lastT = 0, phi = 0, omg = 0;                  // quarter-turns asked for; the angle the tree is at, and its rate
   return {
     frame: function (dt, t) {
       lastT = t;
       if (t - turnAt > D.every) { turnAt = t; turns++; }                    // an idle quarter-turn now and then
-      var p = u.ease(u.clamp((t - turnAt) * 1.6, 0, 1));                    // the turn in progress, 0 → 1
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      var damp = D.zeta * 2 * Math.sqrt(D.k), tgt = turns * u.TAU / 4;      // damping from its fraction of critical; the detent
+      for (var s = 0; s < sub; s++) { omg += (D.k * (tgt - phi) - damp * omg) * h; phi += omg * h; }
       u.sky(D.sky);
       var m = Math.min(u.W * 0.075, u.H * 0.085), ox = u.W / 2, oy = u.H * 0.54;
       u.ground(oy - m * 1.5, D.floor);
-      var list = [];
+      var c = (D.n - 1) / 2, cs = Math.cos(phi), sn = Math.sin(phi), list = [];
       for (var i = 0; i < D.vox.length; i++) {
-        var v = D.vox[i], a = rot(v, (turns - 1) % 4), b = rot(v, turns % 4);   // where it was, where it is going
-        list.push({ ix: u.lerp(a[0], b[0], p), iy: u.lerp(a[1], b[1], p), iz: v[2], c: v[3] });
+        var v = D.vox[i], dx = v[0] - c, dy = v[1] - c;                       // the cell turned by phi about the grid's centre
+        list.push({ ix: c + dx * cs - dy * sn, iy: c + dx * sn + dy * cs, iz: v[2], c: v[3] });
       }
       list.sort(function (A, B) { return (A.ix + A.iy + A.iz * 0.001) - (B.ix + B.iy + B.iz * 0.001); });   // far first, then low first
       u.shadow(ox, oy, m * 2.1, m * 1.05, 0.4);
       for (var j = 0; j < list.length; j++) {
-        var q = list[j], s = u.iso(q.ix + 1 - D.n / 2, q.iy + 1 - D.n / 2, q.iz, m);   // base point = the cell's front corner, centred on the grid
-        u.cube(ox + s[0], oy + s[1], m, q.c);
+        var q = list[j], sp = u.iso(q.ix + 1 - D.n / 2, q.iy + 1 - D.n / 2, q.iz, m);   // base point = the cell's front corner, centred on the grid
+        u.cube(ox + sp[0], oy + sp[1], m, q.c);
       }
-      u.label("a different list of cubes, the same sort and the same three shades — the data is the dial", u.W / 2, u.H - 8, null, "center");
+      u.label("a different list of cubes, the same sort and the same three shades — the data is the dial; the turn still overshoots and rings back", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { turnAt = lastT; turns++; }                       // one quarter-turn, now
+    press: function (x, y) { turnAt = lastT; turns++; }                       // one quarter-turn, now: the detent moves, the spring swings to it
   };
 });
 
-rhymeOf("Wedge", "Skate ramp", "the same ramp in concrete grey, lower and faster, under a day sky — a skate ramp with a gold block for a board", function make(u) {
-  // rhyme of Wedge: dials moved — palette to concrete and day, h 1.4 → 1.0, speed 0.55 → 0.9
+rhymeOf("Wedge", "Skate ramp", "the same ramp in concrete grey, lower and faster, under a day sky — a skate ramp with a gold block for a board that rolls out and stops on the flat", function make(u) {
+  // rhyme of Wedge: dials moved — palette to concrete and day, h 1.4 → 1.0, speed 0.8 → 0.9
   var D = { sky: ["#6FA8E8", "#CFE6F5"], floor: "#4A4A52", col: "#8A8A92", block: "#F5C169",
-            len: 3, h: 1.0, speed: 0.9 };
-  var slide = 0, lastT = 0;
+            len: 3, h: 1.0, speed: 0.9,                                  // len = ramp length in cells; h = the high end in cells; speed = the clock: gravity and grip scale with speed², so a higher speed is the same slide, quicker
+            g: 9, grip: 12, rest: 0.6 };                                     // g = gravity, cells/s² (at speed 1); grip = the floor's braking at the bottom, cells/s²; rest = seconds it lies at the end before starting over
+  // the block has a speed along the slope: gravity's share along the incline
+  // (g·sin θ) grows it every step, so it starts slow and arrives fast. at the
+  // bottom the speed turns flat (its along-the-floor part survives, the rest
+  // is lost in the bump) and the floor's grip takes it off, so the block
+  // rolls out past the ramp and stops where its speed ran out. it rests a
+  // moment, then goes back to the top for another run.
+  var iy = 0, v = 0, flat = false, wait = 0;                                 // place along the ramp (cells), speed (cells/s, along the slope, then the floor), on the floor yet?, the rest timer
   return {
     frame: function (dt, t) {
-      lastT = t;
+      var th = Math.atan2(D.h, D.len), g = D.g * D.speed * D.speed, grip = D.grip * D.speed * D.speed, mu = 0.45;   // the slope's angle; gravity and grip on this card's clock
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
+      for (var st = 0; st < sub; st++) {
+        if (wait > 0) { wait -= h; if (wait <= 0) { iy = 0; v = 0; flat = false; } }   // rested: start over at the top
+        else if (!flat) {
+          v += g * Math.sin(th) * h; iy += v * Math.cos(th) * h;             // down the incline: only gravity's share along it
+          if (iy + mu * 0.5 >= D.len) { flat = true; v *= Math.cos(th); }     // the block's middle passes the bottom edge: onto the floor
+        } else {
+          v = Math.max(0, v - grip * h); iy = Math.min(iy + v * h, D.len + 3);   // the roll-out: grip takes the speed off
+          if (v === 0) wait = D.rest;
+        }
+      }
       u.sky(D.sky);
       var s = Math.min(u.W * 0.13, u.H * 0.16), ox = u.W / 2 + s * 0.4, oy = u.H * 0.84 - (D.len + 1) * 0.5 * s;
-      function P(ix, iy, iz) { var p = u.iso(ix, iy, iz || 0, s); return [ox + p[0], oy + p[1]]; }
+      function P(ix, py, iz) { var p = u.iso(ix, py, iz || 0, s); return [ox + p[0], oy + p[1]]; }
       u.ground(oy - s * 0.3, D.floor);
       u.poly([P(1, 0, 0), P(1, 0, D.h), P(1, D.len, 0)], u.shade(D.col, -0.42));   // the end face: vertical, facing right → dark
       var a = P(0.5, 0, D.h), b = P(0.5, D.len, 0);
       u.poly([P(0, 0, D.h), P(1, 0, D.h), P(1, D.len, 0), P(0, D.len, 0)], u.lin(a[0], a[1], b[0], b[1], [u.shade(D.col, 0.32), u.shade(D.col, 0.5)]));   // the slope: lit, lighter as it nears you
-      var r = ((t * D.speed + slide) % 1.25 + 1.25) % 1.25, q = u.clamp(r * r, 0, 1);   // r² = it accelerates; then rests at the bottom a moment
-      var mu = 0.45, iy = q * (D.len - mu), z = D.h * (1 - (iy + mu * 0.5) / D.len);   // the block's place on the slope and the slope's height there
+      var z = D.h * Math.max(0, 1 - (iy + mu * 0.5) / D.len);                // the slope's height under the block's middle — nil once it is on the floor
       var sh = P(0.5 + mu * 0.75, iy + mu * 0.5 + 0.15, z - 0.05);
       u.shadow(sh[0], sh[1], s * mu * 1.1, s * mu * 0.55, 0.45);             // the shadow rides the slope with it
       var f = P(0.5 + mu / 2, iy + mu, z);
       u.cube(f[0], f[1], s * mu, D.block);
-      u.label("concrete grey, lower, faster — the lit slope and the dark end are the same two faces", u.W / 2, u.H - 8, null, "center");
+      u.label("concrete grey, lower, faster — the lit slope and the dark end are the same two faces; a lower ramp, a shorter roll-out", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) { slide = -lastT * D.speed; D.speed = 0.3 + (x / u.W) * 0.9; slide = -lastT * D.speed; }   // click = back to the top; click right = a faster slide
+    press: function (x, y) {                                                 // click right = a faster clock; click = a shove down the slope, or a fresh run if it is resting
+      D.speed = 0.3 + (x / u.W) * 0.9;
+      if (wait > 0) { iy = 0; v = 0; flat = false; wait = 0; } else v += D.g * 0.2;
+    }
   };
 });
 
-rhymeOf("Xylophone", "Glitch keys", "the same bars in two neon hues, heights jittering, the tune at three times the beat — the sizes still shrink to the back, so the depth survives", function make(u) {
+rhymeOf("Xylophone", "Glitch keys", "the same bars in two neon hues, heights jittering, the tune at three times the beat — struck bars ring over each other; the sizes still shrink to the back, so the depth survives", function make(u) {
   // rhyme of Xylophone: dials moved — cols to cyan/magenta (two, alternating), jitter 0 → 0.35, beat 0.45 → 0.18
   var D = { sky: ["#050510", "#101028"], floor: "#0A0A18", cols: ["#40F0F0", "#F040C0"],
-            n: 8, shrink: 0.07, thick: 0.28, jitter: 0.35, beat: 0.18 };
-  var tune = [0, 2, 4, 7, 4, 2, 1, 3, 5, 3], hit = [], seq = 0, nextAt = 0, lastT = 0, rows = [];
-  for (var i = 0; i < D.n; i++) hit.push(-9);
+            n: 8, shrink: 0.07, thick: 0.28, jitter: 0.35, beat: 0.18,        // shrink per bar toward the back; thick = bar height; jitter = height wobble; beat = seconds per note
+            ring: 8, decay: 0.06, kick: 3 };                                 // ring = the front bar's rate, radians per second (a shorter bar rings quicker, by 1/length²); decay = damping as a fraction of critical — tiny, so a bar rings for seconds; kick = the mallet: the speed a strike gives a bar, bar sizes per second
+  // each bar is a spring: a strike gives it a velocity downward, and a
+  // spring with almost no damping brings it back and past, over and over,
+  // fading — a bar rings. the rate is the bar's own: a short bar is a stiff
+  // bar (k ∝ 1/length²), so the back bars ring quick and die soon, and the
+  // long front bar rings low and slow. the top's flash is the ring's
+  // energy, so it fades with the sound rather than on a timer.
+  var tune = [0, 2, 4, 7, 4, 2, 1, 3, 5, 3], seq = 0, nextAt = 0, rows = [];
+  var yo = new Float32Array(D.n), yv = new Float32Array(D.n);               // each bar's offset (in bar sizes, down = positive) and its rate
   function bar(x, y, L, wd, hz, s, c, kTop) {                                // a long block by hand: (x, y) is its front corner, L along ix, wd along iy
     var Lc = [x - L * 0.866 * s, y - L * 0.5 * s], Rc = [x + wd * 0.866 * s, y - wd * 0.5 * s], B = [Lc[0] + Rc[0] - x, Lc[1] + Rc[1] - y];
     u.poly([[x, y], Lc, [Lc[0], Lc[1] - hz], [x, y - hz]], c);                // left face: the colour
     u.poly([[x, y], Rc, [Rc[0], Rc[1] - hz], [x, y - hz]], u.shade(c, -0.42)); // right end: dark
-    u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or flashing)
+    u.poly([[x, y - hz], [Lc[0], Lc[1] - hz], [B[0], B[1] - hz], [Rc[0], Rc[1] - hz]], u.shade(c, kTop));   // top: lit (or ringing)
   }
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
-      lastT = t;
-      if (t > nextAt) { hit[tune[seq % tune.length]] = t; seq++; nextAt = t + D.beat; }   // the tune plays itself
+      if (t > nextAt) { yv[tune[seq % tune.length]] += D.kick; seq++; nextAt = t + D.beat; }   // the tune plays itself: each note is a strike
+      var sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;               // a coarse frame is cut into substeps of at most 0.02 s: one step at 60 fps
       u.sky(D.sky);
       var s = Math.min(u.W * 0.08, u.H * 0.13), baseY = u.H * 0.86;
       u.ground(baseY - s * 4.5, D.floor);
       rows = [];
       for (var i = D.n - 1; i >= 0; i--) {                                    // back bar first
         var sc = 1 - i * D.shrink, si = s * sc, L = 4.2 - i * 0.3, wd = 0.8;
-        var off = u.iso(0, -i * 1.2, 0, s), x = u.W / 2 - s * 2.2 + (L - wd) * 0.433 * si + off[0], y = baseY + off[1];
+        var om = D.ring * (4.2 / L) * (4.2 / L), k = om * om, dp = D.decay * 2 * om;   // this bar's rate: stiffer the shorter it is; its damping from the fraction of critical
+        for (var st = 0; st < sub; st++) { yv[i] += (-k * yo[i] - dp * yv[i]) * h; yo[i] = u.clamp(yo[i] + yv[i] * h, -1, 1); }
+        var off = u.iso(0, -i * 1.2, 0, s), x = u.W / 2 - s * 2.2 + (L - wd) * 0.433 * si + off[0], y = baseY + off[1] + yo[i] * si;
         var hz = si * D.thick * (1 + D.jitter * Math.sin(t * 13 + i * 5));
-        var flash = u.clamp(1 - (t - hit[i]) * 3, 0, 1), c = D.cols[i % D.cols.length];
-        if (flash > 0) u.soft(x - L * 0.433 * si, y - L * 0.25 * si - hz, si * 1.4, c, flash * 0.6);
+        var flash = u.clamp(Math.sqrt(yo[i] * yo[i] + (yv[i] / om) * (yv[i] / om)) * om / D.kick, 0, 1), c = D.cols[i % D.cols.length];   // the ring's energy, 1 at a fresh strike
+        if (flash > 0.02) u.soft(x - L * 0.433 * si, y - L * 0.25 * si - hz, si * 1.4, c, flash * 0.6);
         bar(x, y, L, wd, hz, si, c, 0.32 + 0.45 * flash);
         rows.push([i, y - L * 0.25 * si - hz]);                               // remember where each bar sits, for clicking
       }
-      u.label("jittered heights and a frantic beat — the sizes still shrink to the back, so the depth survives the glitch", u.W / 2, u.H - 8, null, "center");
+      u.label("jittered heights and a frantic beat — the sizes still shrink to the back, so the depth survives the glitch; the bars ring over one another", u.W / 2, u.H - 8, null, "center");
     },
-    press: function (x, y) {                                                 // click = strike the bar nearest that height
+    press: function (x, y) {                                                 // click = strike the bar nearest that height: a velocity, and the spring rings it
       var best = 0, bd = 1e9;
       for (var i = 0; i < rows.length; i++) { var d = Math.abs(rows[i][1] - y); if (d < bd) { bd = d; best = rows[i][0]; } }
-      hit[best] = lastT;
+      yv[best] += D.kick;
     }
   };
 });
