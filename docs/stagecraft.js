@@ -1933,26 +1933,37 @@ def("S", "Sway", "skin", "WIND SWAY: strips slide by noise(t + x) · distance-fr
 });
 rhymeOf("Sway", "Storm", "more than twice the amplitude, a wind that changes three times as fast, and the banner torn — the night the sign came down", { amp: 0.14, freq: 1.5, broken: true });
 
-def("G", "Grass", "skin", "INTERACTIVE GRASS: every blade is one angle on the lexicon's Damp spring, pushed away from the nearest body and springing back — drag to walk the hero through", function (u) {
+def("G", "Grass", "skin", "INTERACTIVE GRASS: every blade is a chain of angles on the lexicon's Damp spring — the root pushed away from the nearest body, each joint above chasing the one below on its own quicker, under-damped spring, so the tip lags and whips through after the body has passed — drag to walk the hero through", function (u) {
   var D = { blades: 70,              // blades per 250 px of width
-            k: 60,                   // the angle spring's stiffness
+            k: 60,                   // the root spring's stiffness
             damp: 12,                // its damping (2√k would be critical)
+            joints: 3,               // segments per blade: the root + the joints that follow it (1 = the old rigid needle)
+            tip: 1.4,                // each joint's k as a multiple of the one below: above 1 because the segment above is lighter — the same bend rights it faster
+            tipdamp: 0.4,            // a joint's damping, as a fraction of ITS OWN critical — well under 1, so the tip overshoots the root and whips through
             lean: 1.1,               // the most a body can push a blade, radians
             reach: 0.09,             // a body's push radius, as a fraction of W
             wind: 0.15,              // the resting lean the wind asks for, radians
             speed: 0.3,              // the hero's run, screens per second
             palette: ["#3E8A38", "#8ED45E"],
-            label: "θ'' = k·(rest + push − θ) − damp·θ' · push = lean·(1 − d / reach) away from the body" };
+            label: "root: θ'' = k·(rest + push − θ) − damp·θ' · joint j: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · dⱼ = tipdamp·2√kⱼ" };
   const { ctx, W, H, GY, TAU, stage, hero, label, text, poly, ring, line, clamp, mix, rng, noise, DIM, INK, SUN } = u;
-  // each blade of grass is ONE number, its angle θ from vertical, and one
-  // rule: a damped spring toward a resting angle (the lexicon's Damp). the
-  // wind moves the rest a little; a BODY nearby pushes the rest away from
+  // each blade of grass is a short CHAIN of angles from vertical. the root is
+  // one rule: a damped spring toward a resting angle (the lexicon's Damp).
+  // the wind moves the rest a little; a BODY nearby pushes the rest away from
   // itself, harder the closer it is, and when the body has passed the spring
-  // brings the blade back, overshooting a touch because the damping is a
-  // little under critical. blades are sheared quads: a base on the ground and
-  // a tip at (sin θ, −cos θ) times the height. the marked blade shows its θ.
+  // brings the root back, overshooting a touch because the damping is a
+  // little under critical. every JOINT above the root is the same spring
+  // again, its rest the angle of the segment below it, quicker (k · tip: the
+  // segment above is lighter, so k here is stiffness PER inertia) and much
+  // less damped (tipdamp of its own critical) — so the tip lags the root on
+  // the way out and whips through it on the way back: real grass is a
+  // cantilever, clamped at the ground, that rings from the top.
+  // a blade is drawn as a tapered polygon along its segments; the marked
+  // blade shows its root θ and its tip θ.
   const n = Math.max(8, Math.round(D.blades * W / 250)), R = rng(5);
+  const J = Math.max(1, Math.floor(D.joints));
   const bx = new Float32Array(n), bh = new Float32Array(n), th = new Float32Array(n), om = new Float32Array(n), col = [];
+  const tj = new Float32Array(n * (J - 1)), oj = new Float32Array(n * (J - 1));   // joint angles + velocities, blade-major: [i * (J − 1) + j]
   for (let i = 0; i < n; i++) {
     bx[i] = W * 0.02 + R() * W * 0.96; bh[i] = H * (0.07 + R() * 0.1);
     col.push(mix(D.palette[0], D.palette[1], R()));
@@ -1969,37 +1980,70 @@ def("G", "Grass", "skin", "INTERACTIVE GRASS: every blade is one angle on the le
       const d = tx - hx, step = W * D.speed * dt;
       if (Math.abs(d) > step) { hx += Math.sign(d) * step; dir = d > 0 ? 1 : -1; } else hx = tx;
       const moving = Math.abs(d) > 1, reach = W * D.reach;
+      // the joints up a blade are stiffer than the root (k · tip per joint), and a
+      // symplectic step is only stable while √k·h < 2 and damp·h < 2 — so a coarse
+      // frame is cut into substeps of at most 0.02 s (S·Substep): one step at 60 fps
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       let near = 0, nearD = 1e9;
       for (let i = 0; i < n; i++) {
         let rest = noise(t * 1.3 + bx[i] / W * 4) * D.wind;
         const dx = bx[i] - hx, ad = Math.abs(dx);
         if (ad < reach) rest += (dx < 0 ? -1 : 1) * D.lean * (1 - ad / reach);   // the push: away from the body
         if (ad < nearD) { nearD = ad; near = i; }
-        om[i] += (D.k * (rest - th[i]) - D.damp * om[i]) * dt;
-        th[i] = clamp(th[i] + om[i] * dt, -1.5, 1.5);
+        for (let s = 0; s < sub; s++) {
+          om[i] += (D.k * (rest - th[i]) - D.damp * om[i]) * h;
+          th[i] = clamp(th[i] + om[i] * h, -1.5, 1.5);
+          let below = th[i], kj = D.k;                    // the joints: each chases the segment below
+          for (let j = 0; j < J - 1; j++) {
+            kj *= D.tip;                                  // quicker with every joint up the blade (lighter segment, same bend)
+            const dj = D.tipdamp * 2 * Math.sqrt(kj), idx = i * (J - 1) + j;   // a fraction of THIS joint's critical damping
+            oj[idx] += (kj * (below - tj[idx]) - dj * oj[idx]) * h;
+            tj[idx] = clamp(tj[idx] + oj[idx] * h, -1.6, 1.6);
+            below = tj[idx];
+          }
+        }
       }
       const hw = Math.max(1, H * 0.006);
+      let pts = null;                                       // the marked blade's joints, base → tip, kept for the readout
       for (let pass = 0; pass < 2; pass++) {              // odd blades behind the hero, even ones in front
         if (pass === 1) hero(hx, GY, { pose: moving ? "run" : "stand", frame: moving ? frameOf(t) : 0, face: dir });
         for (let i = pass; i < n; i += 2) {
-          const tipx = bx[i] + Math.sin(th[i]) * bh[i], tipy = GY - Math.cos(th[i]) * bh[i];
-          poly([[bx[i] - hw, GY + 1], [bx[i] + hw, GY + 1], [tipx, tipy]], col[i]);
+          // walk the chain: each segment is bh / J long at its own angle. the
+          // polygon goes up the left side, round the tip and down the right, the
+          // half-width shrinking to nothing at the tip.
+          const seg = bh[i] / J;
+          let px = bx[i], py = GY;
+          const left = [[bx[i] - hw, GY + 1]], right = [[bx[i] + hw, GY + 1]], chain = [[px, py]];
+          for (let j = 0; j < J; j++) {
+            const a = j === 0 ? th[i] : tj[i * (J - 1) + j - 1];
+            px += Math.sin(a) * seg; py -= Math.cos(a) * seg;
+            chain.push([px, py]);
+            if (j < J - 1) {
+              const w = hw * (1 - (j + 1) / J), sx = Math.cos(a) * w, sy = Math.sin(a) * w;
+              left.push([px - sx, py - sy]); right.push([px + sx, py + sy]);
+            }
+          }
+          left.push([px, py]);                              // the tip, shared by both sides
+          right.reverse();
+          poly(left.concat(right), col[i]);
+          if (i === near) pts = chain;
         }
       }
-      const i = near, tipx = bx[i] + Math.sin(th[i]) * bh[i], tipy = GY - Math.cos(th[i]) * bh[i];
+      const i = near, tipA = J === 1 ? th[i] : tj[i * (J - 1) + J - 2];   // the marked blade: its root θ and its tip θ
       line(bx[i], GY, bx[i], GY - bh[i], "rgba(232,229,244,0.3)", 1);
-      line(bx[i], GY, tipx, tipy, SUN, 1);
+      for (let j = 0; pts && j < pts.length - 1; j++) line(pts[j][0], pts[j][1], pts[j + 1][0], pts[j + 1][1], SUN, 1);
       ctx.strokeStyle = SUN; ctx.lineWidth = 1; ctx.beginPath();
-      ctx.arc(bx[i], GY, bh[i] * 0.5, -Math.PI / 2, -Math.PI / 2 + th[i], th[i] < 0); ctx.stroke();
-      label("θ = " + th[i].toFixed(2), bx[i], GY - bh[i] - 6, SUN, "center");
+      ctx.arc(bx[i], GY, bh[i] * 0.35, -Math.PI / 2, -Math.PI / 2 + th[i], th[i] < 0); ctx.stroke();
+      label(J === 1 ? "θ = " + th[i].toFixed(2) : "θ₀ " + th[i].toFixed(2) + " · θtip " + tipA.toFixed(2), bx[i], GY - bh[i] - 6, SUN, "center");
       ring(hx, GY, reach, "rgba(245,193,105,0.25)");
       label("reach", hx + reach + 3, GY - 3, DIM);
-      text(n + " blades · k " + D.k + " · damp " + D.damp + " (crit " + (2 * Math.sqrt(D.k)).toFixed(1) + ")", 10, 18, 10, INK);
+      text(n + " blades · " + J + " segs · k " + D.k + " · damp " + D.damp + " (crit " + (2 * Math.sqrt(D.k)).toFixed(1) + ")", 10, 18, 10, INK);
+      if (J > 1) label("joints: k ×" + D.tip + " each · damp " + D.tipdamp + " of their own critical", 10, 32, DIM);
       label(D.label, W / 2, H - 8, null, "center");
     }
   };
 });
-rhymeOf("Grass", "Gale", "stiff dry stalks under a strong wind — a hard spring that barely gives to the body and a resting lean the whole field agrees on", { k: 150, wind: 0.55, palette: ["#A89048", "#E2CB6C"] });
+rhymeOf("Grass", "Gale", "stiff dry stalks under a strong wind — a hard spring that barely gives to the body, joints almost as stiff as the root, and a resting lean the whole field agrees on", { k: 150, wind: 0.55, tip: 0.8, tipdamp: 0.9, palette: ["#A89048", "#E2CB6C"] });
 
 def("X", "Xray", "skin", "SILHOUETTE THROUGH WALLS: the hero, then the wall, then hero ∩ wall (source-in on the wall's mask) as a flat fill or a dilated outline — press to toggle", function (u) {
   var D = { mode: "outline",         // outline / flat

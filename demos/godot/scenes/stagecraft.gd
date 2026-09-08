@@ -73,6 +73,7 @@ class Painter extends Node2D:
 		if not b.armed:                              # an opt-in card waits, still, for a click
 			queue_redraw()
 			return
+		dt = minf(dt, 0.05)                          # a hitch (a dragged window, a stall) must not arrive as one huge step — the web twin clamps the same
 		for k in tempo:                              # tempo = extra substeps, not a bigger dt
 			b.t += dt
 			fam.tick(b, dt, b.t)

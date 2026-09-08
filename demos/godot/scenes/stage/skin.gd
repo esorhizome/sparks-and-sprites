@@ -79,18 +79,21 @@ const DEFS := [
 		"rhyme": { "name": "Storm", "hint": "more than twice the amplitude, a wind that changes three times as fast, and the banner torn — the night the sign came down",
 			"dials": { "amp": 0.14, "freq": 1.5, "broken": true } } },
 	{ "id": "grass", "letter": "G", "name": "Grass", "drag": true,
-		"hint": "INTERACTIVE GRASS: every blade is one angle on the lexicon's Damp spring, pushed away from the nearest body and springing back — drag to walk the hero through",
+		"hint": "INTERACTIVE GRASS: every blade is a chain of angles on the lexicon's Damp spring — the root pushed away from the nearest body, each joint above chasing the one below on its own quicker, under-damped spring, so the tip lags and whips through after the body has passed — drag to walk the hero through",
 		"dials": { "blades": 70,          # blades per 250 px of width
-			"k": 60,                    # the angle spring's stiffness
+			"k": 60,                    # the root spring's stiffness
 			"damp": 12,                 # its damping (2√k would be critical)
+			"joints": 3,                # segments per blade: the root + the joints that follow it (1 = the old rigid needle)
+			"tip": 1.4,                 # each joint's k as a multiple of the one below: above 1 because the segment above is lighter — the same bend rights it faster
+			"tipdamp": 0.4,             # a joint's damping, as a fraction of ITS OWN critical — well under 1, so the tip overshoots the root and whips through
 			"lean": 1.1,                # the most a body can push a blade, radians
 			"reach": 0.09,              # a body's push radius, as a fraction of W
 			"wind": 0.15,               # the resting lean the wind asks for, radians
 			"speed": 0.3,               # the hero's run, screens per second
 			"palette": ["#3E8A38", "#8ED45E"],
-			"label": "θ'' = k·(rest + push − θ) − damp·θ' · push = lean·(1 − d / reach) away from the body" },
-		"rhyme": { "name": "Gale", "hint": "stiff dry stalks under a strong wind — a hard spring that barely gives to the body and a resting lean the whole field agrees on",
-			"dials": { "k": 150, "wind": 0.55, "palette": ["#A89048", "#E2CB6C"] } } },
+			"label": "root: θ'' = k·(rest + push − θ) − damp·θ' · joint j: θⱼ'' = kⱼ·(θⱼ₋₁ − θⱼ) − dⱼ·θⱼ' · kⱼ = tip·kⱼ₋₁ · dⱼ = tipdamp·2√kⱼ" },
+		"rhyme": { "name": "Gale", "hint": "stiff dry stalks under a strong wind — a hard spring that barely gives to the body, joints almost as stiff as the root, and a resting lean the whole field agrees on",
+			"dials": { "k": 150, "wind": 0.55, "tip": 0.8, "tipdamp": 0.9, "palette": ["#A89048", "#E2CB6C"] } } },
 	{ "id": "xray", "letter": "X", "name": "Xray",
 		"hint": "SILHOUETTE THROUGH WALLS: the hero, then the wall, then hero ∩ wall (source-in on the wall's mask) as a flat fill or a dilated outline — press to toggle",
 		"dials": { "mode": "outline",     # outline / flat
@@ -790,13 +793,19 @@ static func init(b: Dictionary) -> void:
 			b.gustDir = 1
 			b.autoT = 0.0
 		"grass":
-			# each blade of grass is ONE number, its angle θ from vertical, and one
-			# rule: a damped spring toward a resting angle (the lexicon's Damp). the
-			# wind moves the rest a little; a BODY nearby pushes the rest away from
+			# each blade of grass is a short CHAIN of angles from vertical. the root is
+			# one rule: a damped spring toward a resting angle (the lexicon's Damp).
+			# the wind moves the rest a little; a BODY nearby pushes the rest away from
 			# itself, harder the closer it is, and when the body has passed the spring
-			# brings the blade back, overshooting a touch because the damping is a
-			# little under critical. blades are sheared quads: a base on the ground and
-			# a tip at (sin θ, −cos θ) times the height. the marked blade shows its θ.
+			# brings the root back, overshooting a touch because the damping is a
+			# little under critical. every JOINT above the root is the same spring
+			# again, its rest the angle of the segment below it, quicker (k · tip: the
+			# segment above is lighter, so k here is stiffness PER inertia) and much
+			# less damped (tipdamp of its own critical) — so the tip lags the root on
+			# the way out and whips through it on the way back: real grass is a
+			# cantilever, clamped at the ground, that rings from the top.
+			# a blade is drawn as a tapered polygon along its segments; the marked
+			# blade shows its root θ and its tip θ.
 			var nn := maxi(8, roundi(float(D.blades) * W / 250.0))
 			var R := Kit.rng(5)
 			var pal: Array = D.palette
@@ -818,6 +827,14 @@ static func init(b: Dictionary) -> void:
 			om.resize(nn)
 			b.th = th
 			b.om = om
+			var J := maxi(1, int(D.joints))               # segments per blade; joints above the root: J − 1
+			var tj := PackedFloat32Array()                # joint angles, blade-major: tj[i * (J − 1) + j]
+			var oj := PackedFloat32Array()                # and their angular velocities
+			tj.resize(nn * (J - 1))
+			oj.resize(nn * (J - 1))
+			b.J = J
+			b.tj = tj
+			b.oj = oj
 			b.cols = cols
 			b.hx = W * 0.2
 			b.tx = W * 0.8
@@ -1202,6 +1219,17 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			var wind: float = D.wind
 			var near := 0
 			var near_d := 1.0e9
+			var J: int = b.J
+			var tj: PackedFloat32Array = b.tj
+			var oj: PackedFloat32Array = b.oj
+			var tip: float = D.tip
+			var tipdamp: float = D.tipdamp
+			# the joints up a blade are stiffer than the root (k · tip per joint), and a
+			# symplectic step is only stable while √k·h < 2 and damp·h < 2 — so a coarse
+			# frame is cut into substeps of at most 0.02 s (the lexicon's Substep):
+			# at 60 fps that is one step, exactly what it was
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			for i in nn:
 				var rest := Kit.noise(t * 1.3 + bx[i] / W * 4.0) * wind
 				var dx := bx[i] - hx
@@ -1211,8 +1239,18 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if ad < near_d:
 					near_d = ad
 					near = i
-				om[i] += (kk * (rest - th[i]) - damp * om[i]) * dt
-				th[i] = clampf(th[i] + om[i] * dt, -1.5, 1.5)
+				for _s in sub:
+					om[i] += (kk * (rest - th[i]) - damp * om[i]) * h
+					th[i] = clampf(th[i] + om[i] * h, -1.5, 1.5)
+					var below: float = th[i]              # the joints: each chases the segment below
+					var kj: float = kk
+					for j in J - 1:
+						kj *= tip                         # quicker with every joint up the blade (lighter segment, same bend)
+						var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+						var idx := i * (J - 1) + j
+						oj[idx] += (kj * (below - tj[idx]) - dj * oj[idx]) * h
+						tj[idx] = clampf(tj[idx] + oj[idx] * h, -1.6, 1.6)
+						below = tj[idx]
 			b.near = near
 		"xray":
 			var dir: int = b.dir
@@ -1540,32 +1578,57 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var bx: PackedFloat32Array = b.bx
 			var bh: PackedFloat32Array = b.bh
 			var th: PackedFloat32Array = b.th
+			var tj: PackedFloat32Array = b.tj
+			var J: int = b.J
 			var cols: Array[Color] = b.cols
 			var hx: float = b.hx
 			var moving: bool = b.moving
 			var dir: int = b.dir
 			var reach := W * float(D.reach)
 			var hw := maxf(1.0, H * 0.006)
+			var pts: Array = []                           # the marked blade's joints, base → tip, kept for the readout
 			for pass_i in 2:                              # odd blades behind the hero, even ones in front
 				if pass_i == 1:
 					Kit.hero(n, b, Vector2(hx, GY), { "pose": "run" if moving else "stand", "frame": _frame_of(t) if moving else 0.0, "face": dir })
 				var i := pass_i
 				while i < nn:
-					var tipx := bx[i] + sin(th[i]) * bh[i]
-					var tipy := GY - cos(th[i]) * bh[i]
-					Kit.poly(n, [Vector2(bx[i] - hw, GY + 1), Vector2(bx[i] + hw, GY + 1), Vector2(tipx, tipy)], cols[i])
+					# walk the chain: each segment is bh / J long at its own angle. the
+					# polygon goes up the left side, round the tip and down the right, the
+					# half-width shrinking to nothing at the tip.
+					var seg := bh[i] / float(J)
+					var p := Vector2(bx[i], GY)
+					var left: Array = [Vector2(bx[i] - hw, GY + 1)]
+					var right: Array = [Vector2(bx[i] + hw, GY + 1)]
+					var chain: Array = [p]
+					for j in J:
+						var a: float = th[i] if j == 0 else tj[i * (J - 1) + j - 1]
+						p += Vector2(sin(a), -cos(a)) * seg
+						chain.append(p)
+						if j < J - 1:
+							var w := hw * (1.0 - float(j + 1) / float(J))
+							var side := Vector2(cos(a), sin(a)) * w
+							left.append(p - side)
+							right.append(p + side)
+					left.append(p)                        # the tip, shared by both sides
+					right.reverse()
+					Kit.poly(n, left + right, cols[i])
+					if i == b.near:
+						pts = chain
 					i += 2
-			var ni: int = b.near                          # the marked blade: its θ
-			var tx := bx[ni] + sin(th[ni]) * bh[ni]
-			var ty := GY - cos(th[ni]) * bh[ni]
+			var ni: int = b.near                          # the marked blade: its root θ and its tip θ
+			var tip_a: float = th[ni] if J == 1 else tj[ni * (J - 1) + J - 2]
 			Kit.line(n, Vector2(bx[ni], GY), Vector2(bx[ni], GY - bh[ni]), Color(0.91, 0.898, 0.957, 0.3), 1.0)
-			Kit.line(n, Vector2(bx[ni], GY), Vector2(tx, ty), Kit.SUN, 1.0)
-			n.draw_arc(Vector2(bx[ni], GY), bh[ni] * 0.5, -PI / 2.0, -PI / 2.0 + th[ni], 16, Kit.SUN, 1.0)
-			Kit.label(n, b, "θ = %.2f" % th[ni], Vector2(bx[ni], GY - bh[ni] - 6), Kit.SUN, true)
+			for j in pts.size() - 1:
+				Kit.line(n, pts[j], pts[j + 1], Kit.SUN, 1.0)
+			n.draw_arc(Vector2(bx[ni], GY), bh[ni] * 0.35, -PI / 2.0, -PI / 2.0 + th[ni], 16, Kit.SUN, 1.0)
+			var tip_txt := "θ = %.2f" % th[ni] if J == 1 else "θ₀ %.2f · θtip %.2f" % [th[ni], tip_a]
+			Kit.label(n, b, tip_txt, Vector2(bx[ni], GY - bh[ni] - 6), Kit.SUN, true)
 			Kit.ring(n, Vector2(hx, GY), reach, Color(0.961, 0.757, 0.412, 0.25))
 			Kit.label(n, b, "reach", Vector2(hx + reach + 3, GY - 3), Kit.DIM)
 			var kk: float = D.k
-			Kit.text(n, "%d blades · k %s · damp %s (crit %.1f)" % [nn, _num(kk), _num(float(D.damp)), 2.0 * sqrt(kk)], Vector2(10, 18), 10, Kit.INK)
+			Kit.text(n, "%d blades · %d segs · k %s · damp %s (crit %.1f)" % [nn, J, _num(kk), _num(float(D.damp)), 2.0 * sqrt(kk)], Vector2(10, 18), 10, Kit.INK)
+			if J > 1:
+				Kit.label(n, b, "joints: k ×%s each · damp %s of their own critical" % [_num(float(D.tip)), _num(float(D.tipdamp))], Vector2(10, 32), Kit.DIM)
 			Kit.label(n, b, D.label, Vector2(W / 2.0, H - 8.0), FAINT, true)
 		"xray":
 			Kit.stage(n, b, 0.3)
