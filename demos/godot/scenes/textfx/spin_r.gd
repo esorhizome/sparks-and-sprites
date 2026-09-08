@@ -12,7 +12,7 @@ const RHYMES := {
 	"cartwheel": { "name": "Backflip", "hint": "from the other wing, spinning the other way, with a showy overshoot at the end" },
 	"revolving_door": { "name": "Saloon door", "hint": "the arrival swings past centre and back, losing a little each pass" },
 	"clock_hands": { "name": "Compass rose", "hint": "they never settle upright — all the letters align to one slowly turning angle" },
-	"tumble_dry": { "name": "Zero-g", "hint": "no walls, no bounces — the letters wrap around the card until gravity is switched on" },
+	"tumble_dry": { "name": "Zero-g", "hint": "no walls, no bounces — the letters wrap around the card, drifting slower, until gravity is switched on: then the same drop, floor and springs as the drum, with one softer bounce" },
 	"orbit_assembly": { "name": "Comet tail", "hint": "the same orbit, slower, with each letter trailing a tail of fading ghosts" },
 }
 
@@ -76,22 +76,47 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			# dial: the 2 s clock → a slow 0.5/s blend, and no 6 s re-scatter
 			b.blend = minf(1.0, b.blend + dt * 0.5)
 		"tumble_dry":
-			# dials moved: wall bounce → wraparound · drift ×0.6 slower · press lands with one bounce
+			# dials moved: wall bounce → wraparound · drift ×0.6 slower ·
+			# restitution 0.4 → 0.25 (one soft bounce, then rest) · gravity off:
+			# the same slow drift, not the drum's shove.
+			# Tumble dry's physics with the walls taken out: weightless, a letter
+			# coasts and wraps. gravity ON is the same ballistics as the drum:
+			# vy += g·dt, a floor at the baseline with restitution, and the two
+			# under-critical springs that slide x to the slot and turn the letter
+			# upright. nothing is teleported: when gravity goes off again each
+			# letter drifts away from wherever it lies.
 			var r: Rect2 = b.rect
+			var s: float = b.base_size
+			var was_on: bool = b.settle > 0.0
 			b.settle = maxf(0.0, b.settle - dt)
+			if was_on and b.settle <= 0.0:  # gravity off: each letter floats away from where it lies
+				for bd in b.bods:
+					drift(bd)
+			var g := 10.0                   # gravity (letter-heights/s²) and restitution
+			var e := 0.25
+			var kx := 30.0                  # the slot spring and its damping as a fraction of critical
+			var cx := 2.0 * 0.5 * sqrt(kx)
+			var ka := 40.0                  # the righting spring: turns the letter upright, and rocks past it
+			var ca := 2.0 * 0.4 * sqrt(ka)
+			var sub := maxi(1, ceili(dt * 50.0))   # ≤ 0.02 s steps: a coarse frame is cut up, not trusted
+			var h := dt / float(sub)
 			var L := TextKit.layout(b)
 			for l in L:
 				var bd: Dictionary = b.bods[l.i]
-				if b.settle > 0.0:          # gravity on: fall to the baseline, one soft bounce
-					bd.vv += 260.0 * dt
-					bd.y += bd.vv * dt
-					if bd.y > l.y:
-						bd.y = l.y
-						bd.vv = -bd.vv * 0.35
-					bd.x += (l.cx - bd.x) * minf(1.0, dt * 4.0)
-					bd.a += (0.0 - bd.a) * minf(1.0, dt * 4.0)
+				if b.settle > 0.0:
+					for _s in sub:
+						bd.vy += g * s * h                                  # fall
+						bd.vx += (kx * (l.cx - bd.x) - cx * bd.vx) * h      # slide toward the slot
+						bd.va += (ka * (0.0 - bd.a) - ca * bd.va) * h       # turn upright
+						bd.x += bd.vx * h
+						bd.y += bd.vy * h
+						bd.a += bd.va * h
+						if bd.y > l.y:      # the floor: one soft bounce, then rest
+							bd.y = l.y
+							bd.vy = -bd.vy * e
+							if absf(bd.vy) < s * 0.3:
+								bd.vy = 0.0
 				else:
-					bd.vv = 0.0
 					bd.x = r.position.x + fposmod(bd.x - r.position.x + bd.vx * dt, r.size.x)   # the wrap IS the dial
 					bd.y = r.position.y + fposmod(bd.y - r.position.y + bd.vy * dt, r.size.y)
 					bd.a += bd.va * dt
@@ -211,14 +236,22 @@ static func deal_broken() -> Array:
 			"cur": randi() % TextKit.GLYPHS.length() })
 	return out
 
-## Zero-g bodies: anywhere on the card, drifting ×0.6 slower, with a fall
-## speed `vv` the press's gravity uses.
+## Zero-g bodies: anywhere on the card, drifting ×0.6 slower. The same
+## vx/vy/va the drum's gravity integrates — there is one velocity, not a
+## separate fall speed.
 static func drift_free(b: Dictionary) -> Array:
 	var r: Rect2 = b.rect
 	var out: Array = []
 	for _i in TextKit.PHRASE.length():
-		out.append({ "x": r.position.x + randf_range(0.0, r.size.x),
+		var bd := { "x": r.position.x + randf_range(0.0, r.size.x),
 			"y": r.position.y + randf_range(0.0, r.size.y),
-			"vx": randf_range(-18.0, 18.0), "vy": randf_range(-18.0, 18.0),
-			"a": randf_range(0.0, TAU), "va": randf_range(-2.0, 2.0), "vv": 0.0 })
+			"a": randf_range(0.0, TAU) }
+		drift(bd)
+		out.append(bd)
 	return out
+
+## Zero-g's coast: velocities only — a letter floats off from where it lies.
+static func drift(bd: Dictionary) -> void:
+	bd.vx = randf_range(-18.0, 18.0)
+	bd.vy = randf_range(-18.0, 18.0)
+	bd.va = randf_range(-2.0, 2.0)
