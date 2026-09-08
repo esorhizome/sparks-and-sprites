@@ -11,7 +11,7 @@ const RHYMES := {
 	"skid": { "name": "Spark skid", "hint": "striking sparks instead of smoke" },
 	"speed_lines": { "name": "Slow-mo trail", "hint": "stretched long and faint — bullet-time walking" },
 	"teleport": { "name": "Mirror swap", "hint": "always lands at the stage's mirror point — no aiming" },
-	"backflip": { "name": "Frontflip", "hint": "the rotation sign flipped — momentum agrees now" },
+	"backflip": { "name": "Frontflip", "hint": "the spin's sign flipped — momentum agrees now; a lower launch, a quicker turn" },
 	"wall_kick": { "name": "Rubber walls", "hint": "the bounce dial cranked — springy chaos" },
 }
 
@@ -19,6 +19,9 @@ static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "double_jump":
 		b.jumps = 0
+	if b.id == "backflip":
+		# dial: jump 214 → 195 (arc slightly lower — and the spin is sized to the shorter hang)
+		b.D.merge({ "jump": 195.0 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -44,6 +47,13 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 					b.parts.append({ "kind": "mote", "pos": Vector2(c.x + randf_range(-c.s * 0.5, c.s * 0.5),
 						c.y - randf_range(0, c.s)), "life": 1.0 })
 				c.alpha = 0.0
+		"backflip":
+			# dial: spin sign flipped — with the run, not against it
+			if not b.air:
+				var D: Dictionary = b.D
+				b.air = true
+				b.vy = -float(D.jump)
+				b.omega = c.face * float(D.turns) * TAU * float(D.g) / (2.0 * float(D.jump))   # with travel: a FRONTflip
 		_:
 			Base.press(b, pos)
 
@@ -88,21 +98,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.life -= dt * 1.4
 					if p.pos.y > b.G:
 						p.life = 0.0
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"backflip":
-			# dial: spin sign flipped — with the run, not against it
-			if b.flip >= 0.0:
-				b.flip += dt * 1.6
-				var k: float = minf(1.0, b.flip)
-				c.y = b.G - sin(k * PI) * c.s * 1.7
-				c.spin = c.face * k * TAU
-				b.parts.append({ "pos": Vector2(c.x, c.y - c.s * 0.5), "life": 1.0 })
-				if b.flip >= 1.0:
-					b.flip = -1.0
-					c.y = b.G
-					c.spin = 0.0
-			for p in b.parts:
-				p.life -= dt * 2.0
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"wall_kick":
 			# dials: every wall pops it upward · speed grows on each bounce

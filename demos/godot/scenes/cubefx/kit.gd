@@ -7,14 +7,16 @@ extends RefCounted
 ## Card state lives in the button dictionary b:
 ##   b.rect — the card's stage area (absolute scene coords)
 ##   b.G    — the ground's y
-##   b.cub  — the cube: { x, y, s, face, vx, t, pace, hop, lean, alpha, tint, spin }
+##   b.cub  — the cube: { x, y, s, face, vx, t, pace, hop, lean, alpha, tint, spin, squash }
+##   (squash: +wide-and-short / −tall-and-thin, scaled about the feet — the
+##   landing cards' spring writes it, the way ctx.scale wraps drawCube on the web)
 
 static func setup(b: Dictionary) -> void:
 	var r: Rect2 = b.rect
 	b.G = r.position.y + r.size.y * 0.8
 	b.cub = { "x": r.get_center().x, "y": b.G, "s": maxf(14.0, r.size.y * 0.17),
 		"face": 1.0, "vx": 0.0, "t": randf_range(0, 9), "pace": true,
-		"hop": 0.0, "lean": 0.0, "alpha": 1.0, "tint": null, "spin": 0.0 }
+		"hop": 0.0, "lean": 0.0, "alpha": 1.0, "tint": null, "spin": 0.0, "squash": 0.0 }
 
 static func tick_cube(b: Dictionary, dt: float) -> void:
 	var c: Dictionary = b.cub
@@ -47,7 +49,8 @@ static func draw_cube(n: CanvasItem, b: Dictionary) -> void:
 	var s: float = c.s
 	n.draw_set_transform(Vector2(c.x, b.G + 2.0), 0.0, Vector2(1.0, 0.28))
 	n.draw_circle(Vector2.ZERO, s * 0.5, Color(0, 0, 0, 0.35 * c.alpha))   # the shadow
-	n.draw_set_transform(Vector2(c.x, c.y - c.hop), c.lean + c.spin, Vector2.ONE)
+	var sq: float = clampf(c.squash, -0.5, 0.5)              # the landing squash, about the feet
+	n.draw_set_transform(Vector2(c.x, c.y - c.hop), c.lean + c.spin, Vector2(1.0 + sq, 1.0 - sq))
 	var body: Color = c.tint if c.tint != null else Color(0.29, 0.263, 0.44)
 	body.a *= c.alpha
 	n.draw_rect(Rect2(-s / 2.0, -s, s, s), body)

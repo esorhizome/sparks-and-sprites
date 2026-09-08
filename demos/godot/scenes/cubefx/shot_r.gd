@@ -8,7 +8,7 @@ const RHYMES := {
 	"energy_ball": { "name": "Shadow ball", "hint": "in negative — a dark core wearing a violet rim" },
 	"beam": { "name": "Ice beam", "hint": "crusted cold — slower flicker, frost where it passed" },
 	"homing": { "name": "Homing embers", "hint": "on fire, and one orb lighter" },
-	"boomerang": { "name": "Twin glaives", "hint": "the out-and-back flown by two blades in mirrored phase" },
+	"boomerang": { "name": "Twin glaives", "hint": "the same launch-and-pull-home flown by two blades with mirrored loft — one loops high, one low" },
 	"laser_sight": { "name": "Green scope", "hint": "green, blinking slower — the shot hums, not cracks" },
 	"charge_shot": { "name": "Instant volley", "hint": "patience deleted — three small ones, right now" },
 	"spread": { "name": "Tight burst", "hint": "the fan squeezed narrow and doubled" },
@@ -19,6 +19,8 @@ static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "beam":
 		b.frost = []
+	if b.id == "boomerang":
+		b.glaives = []              # two flights instead of one; the dials are the Base's
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -28,6 +30,13 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			for i in 2:
 				b.parts.append({ "kind": "homer", "pos": Vector2(c.x, c.y - c.s * 0.5),
 					"a": i * PI, "spiral": 0.6, "dir": c.face, "life": 2.0 })
+		"boomerang":
+			# dials: glaive count 1 → 2 · loft +40 → ±40 (mirrored loops) · spin ±16 (opposite)
+			if b.glaives.is_empty():
+				var D: Dictionary = b.D
+				for lane in [-1.0, 1.0]:
+					b.glaives.append({ "pos": Vector2(c.x + c.face * c.s * 0.5, c.y - c.s * 0.6),
+						"vel": Vector2(c.face * float(D.speed), lane * float(D.loft)), "rot": 0.0, "lane": lane, "ft": 0.0 })
 		"charge_shot":
 			# dial: the charge deleted — three pellets immediately
 			for i in 3:
@@ -60,6 +69,20 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			for f in b.frost:
 				f.life -= dt * 0.3
 			b.frost = b.frost.filter(func(f): return f.life > 0.0)
+		"boomerang":
+			if not b.glaives.is_empty():
+				var D: Dictionary = b.D
+				var hand := Vector2(c.x, c.y - c.s * 0.6)
+				var home := 0
+				for g in b.glaives:
+					g.vel += float(D.k) * (hand - g.pos) * dt
+					g.pos += g.vel * dt
+					g.rot += g.lane * float(D.spin) * dt
+					g.ft += dt
+					if (g.ft > 0.3 and g.pos.distance_to(hand) < float(D.catchR)) or g.ft > float(D.maxFlight):
+						home += 1
+				if home == b.glaives.size():
+					b.glaives = []                             # both caught
 		"orbit_launch":
 			# dial: launched shards decelerate, turn, and fly home
 			for s in b.shards:
@@ -131,15 +154,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"boomerang":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
-			if b.flight >= 0.0:
-				for g in 2:                # mirrored phase: one out while one returns
-					var k: float = fmod(minf(1.0, b.flight) + g * 0.5, 1.0)
-					var reach: float = sin(k * PI) * c.s * 3.2
-					var pos := Vector2(c.x + b.dir * reach,
-						c.y - c.s * 0.6 - sin(k * TAU) * 8.0)
-					n.draw_set_transform(pos, t * 16.0 + g * PI, Vector2.ONE)
-					n.draw_polyline(PackedVector2Array([Vector2(-7, 3), Vector2(0, -5), Vector2(7, 3)]),
-						Color(0.86, 0.88, 0.96, 0.95) if g == 0 else Color(1, 0.84, 0.55, 0.95), 3.0)
+			if not b.glaives.is_empty():
+				for g in b.glaives:        # one loops high, one low, each on its own pull home
+					n.draw_set_transform(g.pos, g.rot, Vector2.ONE)
+					n.draw_polyline(PackedVector2Array([Vector2(-6, 3), Vector2(0, -4), Vector2(6, 3)]),
+						Color(0.86, 0.88, 0.96, 0.95) if g.lane < 0.0 else Color(1, 0.84, 0.55, 0.95), 3.0)
 					n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			else:
 				n.draw_line(Vector2(c.x - c.face * c.s * 0.4 - 4.0, c.y - c.s * 0.3),

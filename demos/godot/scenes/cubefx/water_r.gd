@@ -7,9 +7,9 @@ const Base := preload("res://scenes/cubefx/water.gd")
 const RHYMES := {
 	"waterhose": { "name": "Steam hose", "hint": "buoyancy instead of weight — it curls UP and fades" },
 	"bubble_shield": { "name": "Soap shield", "hint": "a rainbow rim — it pops lazily, in stages" },
-	"splash_stomp": { "name": "Dust stomp", "hint": "a dry landing: dust, not water" },
-	"rain_pet": { "name": "Snow cloud pet", "hint": "wintering — flakes drift and dodge sideways" },
-	"water_whip": { "name": "Vine whip", "hint": "grown green — half speed, leaf at the tip" },
+	"splash_stomp": { "name": "Dust stomp", "hint": "the same ballistic hop and squash — a dry landing: dust, not water" },
+	"rain_pet": { "name": "Snow cloud pet", "hint": "wintering, heavier with snow (k 30 → 18) — a lazier overshoot; flakes dodge" },
+	"water_whip": { "name": "Vine whip", "hint": "grown green — a slower, heavier arm (k 250 → 120, hold ×2), leaf at the tip" },
 	"geyser": { "name": "Mud pot", "hint": "lazy and brown — half height, twice the plop" },
 	"mist_veil": { "name": "Shadow veil", "hint": "dressed in darkness — wisps go black and tighten" },
 	"tidal_push": { "name": "Slow surge", "hint": "half speed, half again the height" },
@@ -17,6 +17,13 @@ const RHYMES := {
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	match b.id:
+		"rain_pet":
+			# dials: tether k 30 → 18 and damp 0.3 → 0.25 (a heavier cloud: period ≈ 1.5 s) · sag 40 → 30
+			b.D.merge({ "k": 18.0, "damp": 0.25, "sag": 30.0 }, true)
+		"water_whip":
+			# dials: k 250 → 120 and hold 0.22 → 0.44 (a slower arm, half speed) · tipdamp 0.45 → 0.5 (woodier)
+			b.D.merge({ "k": 120.0, "hold": 0.44, "tipdamp": 0.5 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -63,11 +70,24 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 0.9
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"rain_pet":
-			# dials: fall 170 → 40 · flakes dodge sideways
+			# dials: fall 170 → 40 · flakes dodge sideways · the tether spring is the Base's, on the merged dials
 			b.press_v = maxf(0.0, b.press_v - dt * 1.0)
-			b.cx += (c.x - b.cx) * minf(1.0, dt * 3.0)
+			var D: Dictionary = b.D
+			var r: Rect2 = b.rect
+			var kk: float = D.k
+			var dd: float = float(D.damp) * 2.0 * sqrt(kk)
+			var sk: float = D.sagK
+			var sd: float = 0.5 * 2.0 * sqrt(sk)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				b.cv += (kk * (c.x - b.cx) - dd * b.cv) * h
+				b.cx += b.cv * h
+				b.dyv += (sk * (0.0 - b.dy) - sd * b.dyv) * h
+				b.dy = clampf(b.dy + b.dyv * h, -20.0, 20.0)
+			b.cx = clampf(b.cx, r.position.x - 40.0, r.position.x + r.size.x + 40.0)
 			if randf() < 0.25 + b.press_v:
-				b.parts.append({ "kind": "rain", "pos": Vector2(b.cx + randf_range(-14, 14), c.y - c.s * 2.0) })
+				b.parts.append({ "kind": "rain", "pos": Vector2(b.cx + randf_range(-14, 14), c.y - c.s * 2.0 + b.dy) })
 			for p in b.parts:
 				p.pos.y += 40.0 * dt
 				p.pos.x += sin(t * 2.0 + p.pos.y * 0.15) * 18.0 * dt
@@ -76,18 +96,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if p.pos.y >= b.G:
 					p.pos.y = 1e9
 			b.parts = b.parts.filter(func(p): return p.pos.y < 1e8)
-		"water_whip":
-			# dial: lash 2.2 → 1.1
-			b.press_v = maxf(0.0, b.press_v - dt * 1.0)
-			if b.lash >= 0.0:
-				b.lash += dt * 1.1
-				if b.lash >= 1.0:
-					b.lash = -1.0
-			for p in b.parts:
-				p.pos += p.vel * dt
-				p.vel.y += 200.0 * dt
-				p.life -= dt * 1.8
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"geyser":
 			# dial: eruption lingers (decay 0.7 → 0.35) — the plop pays double
 			var r: Rect2 = b.rect
@@ -142,7 +150,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"rain_pet":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
-			var cy: float = c.y - c.s * 2.1 + sin(t * 1.3) * 2.0
+			var cy: float = c.y - c.s * 2.1 + b.dy
 			for i in 5:
 				n.draw_circle(Vector2(b.cx + (i - 2) * 8.0, cy + sin(i * 2.3) * 2.5), 7.0 + (i % 2) * 2.0,
 					Color(0.63, 0.65, 0.75, 0.9))
@@ -151,22 +159,15 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"water_whip":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
-			var hx := Vector2(c.x + c.face * c.s * 0.5, c.y - c.s * 0.6)
-			if b.lash >= 0.0:
-				var reach: float = sin(minf(1.0, b.lash) * PI) * c.s * 3.2
-				var pts := PackedVector2Array()
-				pts.append(hx)
-				for i in range(1, 11):
-					var q := i / 10.0
-					pts.append(hx + Vector2(c.face * reach * q, sin(q * 6.0 - b.lash * 10.0) * 8.0 * (1.0 - q * 0.4)))
-				n.draw_polyline(pts, Color(0.47, 0.78, 0.39, 0.9), 4.0)
-				var tip: Vector2 = pts[pts.size() - 1]
-				n.draw_set_transform(tip, 0.6 * c.face, Vector2(1.0, 0.5))
-				n.draw_circle(Vector2.ZERO, 4.0, Color(0.55, 0.86, 0.43, 0.9))
-				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			else:
-				CubeKit.qcurve(n, hx, hx + Vector2(c.face * 8.0, 10.0 + sin(t * 1.0) * 2.0),
-					hx + Vector2(c.face * 3.0, 18.0), Color(0.47, 0.78, 0.39, 0.6), 3.0)
+			# dial: palette water → vine · a leaf lying along the last segment
+			var chain: PackedVector2Array = b.chain
+			var th: PackedFloat32Array = b.th
+			var N: int = b.N
+			var busy: bool = b.swing >= 0.0
+			n.draw_polyline(chain, Color(0.47, 0.78, 0.39, 0.9 if busy else 0.6), 3.5 if busy else 3.0)
+			n.draw_set_transform(chain[N], PI / 2.0 - th[N - 1], Vector2(1.0, 0.5))   # the tip leaf
+			n.draw_circle(Vector2.ZERO, 4.0, Color(0.55, 0.86, 0.43, 0.9))
+			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			for p in b.parts:
 				n.draw_rect(Rect2(p.pos, Vector2(2, 2)), Color(0.63, 0.88, 0.55, p.life))
 		"geyser":

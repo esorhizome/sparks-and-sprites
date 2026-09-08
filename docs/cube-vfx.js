@@ -459,27 +459,47 @@ def("Bubble shield", "water", "a shimmering bubble around it; press to pop and r
   };
 });
 
-def("Splash stomp", "water", "press: a hop, a landing, and rings across the wet floor", function (u) {
+def("Splash stomp", "water", "press: a real jump — gravity brings it down, the landing squashes it, and rings cross the wet floor", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let jump = -1, rings = [], drops = [];
+  const D = { jump: 195,             // launch speed, px/s — the peak is jump²/2g, about 1.4 cube-sides
+              g: 620,                // gravity, px/s² (Double jump's)
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical — under 1, so it rebounds into a stretch
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, airborne = false, sq = 0, sqv = 0, rings = [], drops = [];
+  // the hop is Double jump's integrator: the press injects an upward velocity,
+  // gravity integrates it back down, and the floor is a real contact. the
+  // landing hands its speed to a squash spring — wide and short on impact,
+  // then an under-damped rebound through tall and thin — so the follow-
+  // through is the physics settling, not a keyframe.
   return {
-    press() { if (jump < 0) jump = 0; },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; } },
     frame(dt, t) {
       stage(); tickCube(dt);
       // the puddle it always carries
       ctx.fillStyle = "rgba(90,150,210,0.20)";
       ctx.beginPath(); ctx.ellipse(C.x, G + 3, C.s * 1.1, 4, 0, 0, TAU); ctx.fill();
-      if (jump >= 0) {                     // hop arc; landing throws the splash
-        jump += dt * 2.4;
-        C.y = G - Math.sin(Math.min(1, jump) * Math.PI) * C.s * 1.4;
-        if (jump >= 1) {
-          C.y = G; jump = -1;
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        if (C.y >= G) {                    // contact: the landing throws the splash
+          C.y = G; airborne = false;
+          sqv += vy * D.squashKick;        // the impact becomes squash velocity
+          vy = 0;
           rings.push({ r: 4, life: 1 });
           for (let i = 0; i < 12; i++)
             drops.push({ x: C.x, y: G, vx: rand(-110, 110), vy: rand(-160, -50), life: 1 });
         }
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the spring's substep guard
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+      }
+      ctx.save();                          // the squash: scaled about the feet
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       for (const ring of rings) {
         ring.r += 90 * dt; ring.life -= dt * 1.4;
         if (ring.life > 0) {
@@ -498,15 +518,31 @@ def("Splash stomp", "water", "press: a hop, a landing, and rings across the wet 
   };
 });
 
-def("Rain cloud pet", "water", "a loyal cloud follows overhead, drizzling; press: downpour", function (u) {
+def("Rain cloud pet", "water", "a loyal cloud on a spring tether — it overshoots every time the hero turns, drizzling; press: downpour (the cloud sags)", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let cx = 0, pour = 0, rain = [];
+  const D = { k: 30,                 // the tether spring's stiffness — the cloud's own period is 2π/√k ≈ 1.1 s
+              damp: 0.3,             // damping as a fraction of critical — well under 1: it overshoots at every turn (the joke)
+              sag: 40,               // the downpour press's downward kick, px/s — a heavier cloud sags
+              sagK: 25 };            // the height spring that lifts it back once the rain is out
+  let cx = C.x, cv = 0, dy = 0, dyv = 0, pour = 0, rain = [];
+  // the old cloud lerped toward the hero — a first-order chase that can never
+  // overshoot. a loyal pet has momentum: a mass on a spring tether. when the
+  // hero turns, the cloud keeps going, gets hauled back, and sails past the
+  // other way; that overshoot is the whole character. the same spring in y
+  // lets the downpour press sag it under the extra water.
   return {
-    press() { pour = 1.2; },
+    press() { pour = 1.2; dyv += D.sag; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      cx += (C.x - cx) * Math.min(1, dt * 3);          // the cloud lags, loyally
-      const cy = C.y - C.s * 2.1 + Math.sin(t * 1.3) * 2;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the springs' substep guard
+      for (let s = 0; s < sub; s++) {
+        cv += (D.k * (C.x - cx) - D.damp * 2 * Math.sqrt(D.k) * cv) * h;     // the tether
+        cx += cv * h;
+        dyv += (D.sagK * (0 - dy) - 0.5 * 2 * Math.sqrt(D.sagK) * dyv) * h;   // the sag, a touch better damped
+        dy = Math.max(-20, Math.min(20, dy + dyv * h));
+      }
+      cx = Math.max(-40, Math.min(W + 40, cx));
+      const cy = C.y - C.s * 2.1 + dy;
       for (let i = 0; i < 5; i++) {
         ctx.fillStyle = "rgba(120,125,155,0.9)";
         ctx.beginPath();
@@ -520,6 +556,7 @@ def("Rain cloud pet", "water", "a loyal cloud follows overhead, drizzling; press
         r.y += 170 * dt;
         if (r.y >= C.y - C.s && Math.abs(r.x - C.x) < C.s * 0.5) r.y = 1e9;   // bonk
         if (r.y >= G) r.y = 1e9;
+        if (r.y > H) continue;               // gone — bonked or landed; the filter below drops it
         ctx.strokeStyle = "rgba(150,200,240,0.6)";
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(r.x, r.y - 5); ctx.lineTo(r.x, r.y); ctx.stroke();
@@ -529,40 +566,70 @@ def("Rain cloud pet", "water", "a loyal cloud follows overhead, drizzling; press
   };
 });
 
-def("Water whip", "water", "press: a sinuous lash of water snaps forward", function (u) {
+def("Water whip", "water", "a ten-joint chain hangs from its fist; press swings the arm, and the crack — the tip whipping past the arm — falls out of the chain", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let lash = -1, drops = [];
+  const D = { segs: 10,              // joints in the whip
+              len: 0.32,             // each segment's length, in cube-sides (ten of them reach 3.2 sides)
+              k: 250,                // the root spring's stiffness — the fist's grip is firm
+              damp: 0.8,             // the root's damping as a fraction of critical
+              tip: 1.25,             // each joint's k as a multiple of the one below: lighter water out there rights faster
+              tipdamp: 0.45,         // a joint's damping as a fraction of ITS OWN critical — under 1, so the tip overshoots the arm
+              bend: 1.2,             // the most a joint can fold past the one below, radians
+              swing: 1.6,            // where the arm swings to, radians from hanging-down toward the front
+              hold: 0.22,            // how long the arm holds there before dropping back, s
+              idle: 0.35 };          // the coiled rest, radians behind straight-down
+  const N = D.segs;
+  const th = new Float32Array(N), om = new Float32Array(N);   // world angles from straight-down toward +x, and their rates
+  for (let j = 0; j < N; j++) th[j] = -C.face * D.idle;
+  let swing = -1, drops = [], px = new Float32Array(N + 1), py = new Float32Array(N + 1), tipVx = 0, tipVy = 0;
+  // the whip is the stagecraft Grass blade turned upside down: a chain of
+  // angles, each joint a damped spring whose rest is the joint below it. the
+  // press never touches the chain — it swings the ARM (the root's rest
+  // angle) forward and holds it. the joints chase that, each a little late
+  // and a little under-damped, so a wave runs out along the whip and the
+  // tip arrives last, fastest, and overshoots the arm: that is the crack,
+  // and nothing in the code draws it on purpose.
   return {
-    press() { if (lash < 0) lash = 0; },
+    press() { if (swing < 0) swing = 0; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      const hx = C.x + C.face * C.s * 0.5, hy = C.y - C.s * 0.6;
-      if (lash >= 0) {
-        lash += dt * 2.2;
-        const k = Math.min(1, lash);       // reach: out fast, ease at the tip
-        const reach = Math.sin(k * Math.PI) * C.s * 3.2;
-        ctx.strokeStyle = "rgba(130,200,245,0.85)";
-        ctx.lineWidth = 4;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        for (let i = 1; i <= 10; i++) {    // the whip: a sine that travels
-          const q = i / 10;
-          ctx.lineTo(hx + C.face * reach * q,
-                     hy + Math.sin(q * 6 - lash * 10) * 8 * (1 - q * 0.4));
-        }
-        ctx.stroke();
-        if (Math.random() < 0.6)
-          drops.push({ x: hx + C.face * reach, y: hy, vx: rand(-30, 30), vy: rand(-40, 20), life: 0.6 });
-        if (lash >= 1) lash = -1;
-      } else {                             // the idle sway of a coiled whip
-        ctx.strokeStyle = "rgba(130,200,245,0.5)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        ctx.quadraticCurveTo(hx + C.face * 8, hy + 10 + Math.sin(t * 2) * 2, hx + C.face * 3, hy + 18);
-        ctx.stroke();
+      const hx = C.x + C.face * C.s * 0.5, hy = C.y - C.s * 0.6, L = C.s * D.len;
+      let rest = -C.face * D.idle;
+      if (swing >= 0) {
+        swing += dt;
+        if (swing < D.hold) rest = C.face * D.swing;      // the arm, out and held
+        else if (swing > D.hold + 1.2) swing = -1;         // and the chain is left to settle
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // stiff joints: substeps of ≤ 0.02 s
+      for (let s = 0; s < sub; s++) {
+        let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+        for (let j = 0; j < N; j++) {
+          if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+          om[j] += (kj * (below - th[j]) - dj * om[j]) * h;
+          let a = th[j] + om[j] * h;
+          if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));   // water folds, but not back on itself
+          th[j] = Math.max(-3, Math.min(3, a));
+          below = th[j];
+        }
+      }
+      const oldTx = px[N], oldTy = py[N];
+      px[0] = hx; py[0] = hy;
+      for (let j = 0; j < N; j++) {        // walk the chain from the fist
+        px[j + 1] = px[j] + Math.sin(th[j]) * L;
+        py[j + 1] = py[j] + Math.cos(th[j]) * L;
+      }
+      tipVx = (px[N] - oldTx) / dt; tipVy = (py[N] - oldTy) / dt;   // the tip's speed, for the spray
+      const busy = swing >= 0;
+      ctx.strokeStyle = busy ? "rgba(130,200,245,0.85)" : "rgba(130,200,245,0.5)";
+      ctx.lineWidth = busy ? 4 : 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(px[0], py[0]);
+      for (let j = 1; j <= N; j++) ctx.lineTo(px[j], py[j]);
+      ctx.stroke();
+      const tipSpeed = Math.hypot(tipVx, tipVy);
+      if (tipSpeed > 150 && tipSpeed < 5000 && Math.random() < 0.7)   // spray flies off a fast tip at the tip's own speed
+        drops.push({ x: px[N], y: py[N], vx: tipVx * 0.3 + rand(-20, 20), vy: tipVy * 0.3 + rand(-30, 10), life: 0.6 });
       for (const d of drops) {
         d.x += d.vx * dt; d.y += d.vy * dt; d.vy += 200 * dt; d.life -= dt * 1.8;
         if (d.life > 0) { ctx.fillStyle = "rgba(170,220,250," + d.life + ")"; ctx.fillRect(d.x, d.y, 2, 2); }
@@ -1897,27 +1964,54 @@ def("Teleport blink", "motion", "press: it implodes into motes and reappears whe
   };
 });
 
-def("Backflip", "motion", "press: a full backflip with a ribbon of trail", function (u) {
+def("Backflip", "motion", "press: a ballistic backflip — launch speed and spin set at take-off, gravity and the floor do the rest, and the landing squashes it", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let flip = -1, trail = [];
+  const D = { jump: 214,             // launch speed, px/s — the peak is jump²/2g, about 1.7 cube-sides
+              g: 620,                // gravity, px/s²
+              turns: 1,              // rotations to complete before the floor: the spin is chosen at take-off to fit the hang time 2·jump/g
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical — under 1, so it rebounds into a stretch
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, omega = 0, airborne = false, sq = 0, sqv = 0, trail = [];
+  // the old flip parked y on a sine and rotation on the clock. now the press
+  // sets two velocities and nothing else: an upward one, and an angular one
+  // sized so `turns` rotations fit the ballistic hang time (a gymnast's
+  // trick too — spin is chosen at take-off, it cannot be changed in the air).
+  // gravity integrates the height, the floor is a contact that kills both
+  // velocities, and the impact speed becomes a squash the spring resolves.
   return {
-    press() { if (flip < 0) flip = 0; },
+    press() {
+      if (!airborne) {
+        airborne = true; vy = -D.jump;
+        omega = -C.face * D.turns * TAU * D.g / (2 * D.jump);   // against travel: a BACKflip
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (flip >= 0) {
-        flip += dt * 1.6;
-        const k = Math.min(1, flip);
-        C.y = G - Math.sin(k * Math.PI) * C.s * 1.7;
-        C.spin = -C.face * k * TAU;        // one full rotation, against travel
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        C.spin += omega * dt;
         trail.push({ x: C.x, y: C.y - C.s * 0.5, life: 1 });
-        if (flip >= 1) { flip = -1; C.y = G; C.spin = 0; }
+        if (C.y >= G) {                    // contact: the feet find the floor, the spin is done
+          C.y = G; airborne = false; C.spin = 0; omega = 0;
+          sqv += vy * D.squashKick; vy = 0;
+        }
+      }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the spring's substep guard
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
       }
       for (const p of trail) {
         p.life -= dt * 2;
         if (p.life > 0) glow(p.x, p.y, 5, "rgba(180,200,255," + p.life * 0.4 + ")");
       }
       trail = trail.filter(p => p.life > 0);
+      ctx.save();                          // the squash: scaled about the feet
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
     }
   };
 });
@@ -2214,25 +2308,44 @@ def("Ground crack", "impact", "press: one punch down — the floor remembers it 
   };
 });
 
-def("Stomp quake", "impact", "press: a stomp sends dust waves rolling both ways", function (u) {
+def("Stomp quake", "impact", "press: a short ballistic hop — the landing squashes it and sends dust waves rolling both ways", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let waves = [], hop = -1;
+  const D = { jump: 140,             // launch speed, px/s — a stomp is a short hop: peak jump²/2g ≈ 0.7 cube-sides
+              g: 620,                // gravity, px/s²
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical — under 1, so it rebounds into a stretch
+              squashKick: 0.06,      // squash velocity bought per px/s of landing speed — a stomp lands heavy
+              wave: 130 };           // the dust waves' speed, px/s
+  let waves = [], vy = 0, airborne = false, sq = 0, sqv = 0;
+  // Double jump's integrator again: the press injects an upward velocity,
+  // gravity brings it back, and the floor is a contact — the waves leave at
+  // the moment of contact because that is when the floor is hit, not at the
+  // end of a timer. the impact speed becomes a squash the spring resolves.
   return {
-    press() { if (hop < 0) hop = 0; },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; } },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (hop >= 0) {
-        hop += dt * 3;
-        C.y = G - Math.sin(Math.min(1, hop) * Math.PI) * C.s * 0.7;
-        if (hop >= 1) {
-          C.y = G; hop = -1;
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        if (C.y >= G) {                    // contact: the stomp lands
+          C.y = G; airborne = false;
+          sqv += vy * D.squashKick; vy = 0;
           waves.push({ x: C.x, dir: 1, life: 1 });
           waves.push({ x: C.x, dir: -1, life: 1 });
         }
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the spring's substep guard
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+      }
+      ctx.save();                          // the squash: scaled about the feet
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       for (const w of waves) {             // each wave: a travelling dust hump
-        w.x += w.dir * 130 * dt; w.life -= dt * 1.1;
+        w.x += w.dir * D.wave * dt; w.life -= dt * 1.1;
         if (w.life <= 0) continue;
         for (let k = 0; k < 3; k++) {
           ctx.fillStyle = "rgba(160,150,185," + w.life * (0.35 - k * 0.09) + ")";
@@ -2288,11 +2401,39 @@ def("Rock throw", "earth", "a pebble orbits, waiting; press to lob the real boul
   };
 });
 
-def("Vine snare", "earth", "press: vines erupt where you click, writhe, and withdraw", function (u) {
+def("Vine snare", "earth", "press: three vines lying flat where you click get kicked upright — each a three-joint chain that whips past vertical, settles, then lies back down", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { joints: 3,             // segments per vine
+              len: 0.6,              // each segment's length, in cube-sides (three reach 1.8 sides)
+              k: 60,                 // the root spring's stiffness — the vine rights itself with this
+              damp: 0.45,            // the root's damping as a fraction of critical — under 1: it swings past vertical
+              tip: 1.4,              // each joint's k as a multiple of the one below (lighter up there)
+              tipdamp: 0.4,          // a joint's damping as a fraction of ITS OWN critical — the tip whips through
+              bend: 1.5,             // the most a joint can fold past the one below, radians
+              flat: 1.5,             // where a vine lies before the press, radians from upright
+              kick: 3,               // the press's impulse on each root, rad/s — the eruption is a shove, not a tween
+              life: 1.6,             // seconds before the vines lie back down
+              splay: 0.08 };         // the outer vines' resting lean away from the middle one, radians
+  const J = D.joints;
   let snares = [];
+  // the old vines rose on a sine envelope and writhed on the clock. here each
+  // vine is a Grass blade — a chain of angles from upright, every joint a
+  // damped spring chasing the one below — that starts LYING FLAT. the press
+  // kicks the root; the spring toward upright does the rest, and because the
+  // joints are lighter and less damped than the root, the tips arrive late
+  // and overshoot past vertical before settling: the writhe is the settle.
+  // when life runs out the rest angle goes back to flat, and they lie down.
   return {
-    press(x) { snares.push({ x: x || C.x + C.face * C.s * 2, life: 1.6 }); },
+    press(x) {
+      const sn = { x: Math.max(10, Math.min(W - 10, x || C.x + C.face * C.s * 2)), life: D.life,
+                   th: new Float32Array(3 * J), om: new Float32Array(3 * J) };   // vine-major: [v * J + j]
+      for (let v = 0; v < 3; v++) {
+        const dir = v === 1 ? -1 : 1;      // the middle one lies the other way
+        for (let j = 0; j < J; j++) sn.th[v * J + j] = dir * D.flat;
+        sn.om[v * J] = -dir * D.kick;      // the shove, at the root only
+      }
+      snares.push(sn);
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       // idle: the leaf it wears
@@ -2302,24 +2443,38 @@ def("Vine snare", "earth", "press: vines erupt where you click, writhe, and with
       ctx.rotate(0.5 + Math.sin(t * 2) * 0.15);
       ctx.beginPath(); ctx.ellipse(3, 0, 4.5, 2, 0, 0, TAU); ctx.fill();
       ctx.restore();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, L = C.s * D.len;   // the springs' substep guard
       for (const sn of snares) {
-        sn.life -= dt * 0.7;
-        if (sn.life <= 0) continue;
-        const up = Math.sin(Math.min(1, (1.6 - sn.life) * 2) * Math.PI * 0.5) * Math.min(1, sn.life * 1.8);
-        for (let v = -1; v <= 1; v++) {    // three vines, braided by phase
-          ctx.strokeStyle = "rgba(90,160,90," + Math.min(1, sn.life) + ")";
+        sn.life -= dt;
+        for (let v = 0; v < 3; v++) {
+          const dir = v === 1 ? -1 : 1;
+          const rest = sn.life > 0.5 ? (v - 1) * D.splay : dir * D.flat;   // upright while alive; back to flat to withdraw
+          for (let s = 0; s < sub; s++) {
+            let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+            for (let j = 0; j < J; j++) {
+              const i = v * J + j;
+              if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+              sn.om[i] += (kj * (below - sn.th[i]) - dj * sn.om[i]) * h;
+              let a = sn.th[i] + sn.om[i] * h;
+              if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));
+              sn.th[i] = Math.max(-1.6, Math.min(1.6, a));   // never below the floor
+              below = sn.th[i];
+            }
+          }
+          ctx.strokeStyle = "rgba(90,160,90," + Math.max(0, Math.min(1, sn.life + 0.4)) + ")";
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.moveTo(sn.x + v * 5, G);
-          for (let k = 1; k <= 6; k++) {
-            const q = k / 6;
-            ctx.lineTo(sn.x + v * 5 + Math.sin(q * 5 + t * 6 + v * 2) * 6 * q,
-                       G - up * C.s * 1.8 * q);
+          let px = sn.x + (v - 1) * 5, py = G;
+          ctx.moveTo(px, py);
+          for (let j = 0; j < J; j++) {    // walk the chain up from the ground
+            const a = sn.th[v * J + j];
+            px += Math.sin(a) * L; py -= Math.cos(a) * L;
+            ctx.lineTo(px, py);
           }
           ctx.stroke();
         }
       }
-      snares = snares.filter(sn => sn.life > 0);
+      snares = snares.filter(sn => sn.life > -0.4);
     }
   };
 });
@@ -2610,31 +2765,46 @@ def("Homing orbs", "shot", "three orbs idle in orbit; press and they spiral out,
   };
 });
 
-def("Boomerang", "shot", "press: the glaive flies out, hangs, and comes home", function (u) {
+def("Boomerang", "shot", "press: the glaive leaves with a velocity and a pull back toward the hand — it slows, hangs at the far end, and comes home to a moving catch", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { speed: 200,            // launch speed, px/s — the reach is speed/√k, about 3.2 cube-sides
+              loft: 40,              // the upward part of the launch, px/s — bends the line into a thin loop
+              k: 8.2,                // the homing pull's stiffness (a spring toward the hand): out and back takes π/√k ≈ 1.1 s
+              spin: 16,              // the blade's own spin, rad/s
+              catchR: 8,             // how close it must come to be caught, px
+              maxFlight: 3 };        // the safety catch, s — a hand that walks away could otherwise chase it all day
   let flight = null;
+  // the old flight was reach = sin(kπ): a timer wearing a curve. now the
+  // press gives the glaive a velocity and a lateral pull — a spring toward
+  // the hand, the way a boomerang's bank keeps turning it back — and the
+  // out, the hang, and the return all fall out of integrating that: it
+  // decelerates as the pull catches up, hangs where its speed is spent,
+  // then falls home. the pull aims at the hand's CURRENT position, so it
+  // comes home even though the hero has strolled on.
   return {
     press() {
-      if (!flight) flight = { p: 0, dir: C.face };
+      if (!flight) flight = { x: C.x + C.face * C.s * 0.5, y: C.y - C.s * 0.6,
+                              vx: C.face * D.speed, vy: -D.loft, rot: 0, t: 0 };
     },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (flight) {
-        flight.p += dt * 0.9;
-        const k = flight.p;                // out fast, hover, return — one cosine
-        const reach = Math.sin(Math.min(1, k) * Math.PI) * C.s * 3.2;
-        const x = C.x + flight.dir * reach;
-        const y = C.y - C.s * 0.6 - Math.sin(Math.min(1, k) * TAU) * 8;
+        const hx = C.x, hy = C.y - C.s * 0.6;                 // the hand it is coming home to
+        flight.vx += D.k * (hx - flight.x) * dt;
+        flight.vy += D.k * (hy - flight.y) * dt;
+        flight.x += flight.vx * dt; flight.y += flight.vy * dt;
+        flight.rot += D.spin * dt; flight.t += dt;
         ctx.save();
-        ctx.translate(x, y);
-        ctx.rotate(t * 16);
+        ctx.translate(flight.x, flight.y);
+        ctx.rotate(flight.rot);
         ctx.strokeStyle = "rgba(220,225,245,0.95)";
         ctx.lineWidth = 3;
         ctx.beginPath();                   // the glaive: a bent bar
         ctx.moveTo(-7, 3); ctx.lineTo(0, -5); ctx.lineTo(7, 3);
         ctx.stroke();
         ctx.restore();
-        if (flight.p >= 1) flight = null;  // caught!
+        if ((flight.t > 0.3 && Math.hypot(flight.x - hx, flight.y - hy) < D.catchR) || flight.t > D.maxFlight)
+          flight = null;                   // caught!
       } else {
         // idle: a glint on the stowed glaive at its hip
         ctx.strokeStyle = "rgba(220,225,245," + (0.5 + Math.sin(t * 3) * 0.3) + ")";
@@ -3025,21 +3195,49 @@ def("Gust palm", "wind", "press: rings of pushed air roll forward — force you 
   };
 });
 
-def("Cyclone jump", "wind", "press: a spiral of wind corkscrews it upward, then sets it down", function (u) {
+def("Cyclone jump", "wind", "press: the spiral flings it up spinning — the spin decays, the lift it carried decays with it, gravity sets it down, and the landing squashes it", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let lift = -1, streaks = [];
+  const D = { jump: 120,             // the launch kick, px/s
+              g: 620,                // gravity, px/s²
+              lift: 700,             // the cyclone's lift while it spins at full rate, px/s² — more than gravity, so it climbs
+              spin: 20,              // angular velocity at launch, rad/s
+              spinDecay: 2.5,        // the spin's decay rate, per second — the lift fades with it, and gravity wins
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical — under 1, so it rebounds into a stretch
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, omega = 0, airborne = false, sq = 0, sqv = 0, streaks = [];
+  // the old jump was a sine 2.2 sides tall. now the press injects a kick and
+  // a spin; the spin is an angular velocity that decays (air drag on a
+  // cyclone), the LIFT is proportional to it, and the height is integrated:
+  // lift beats gravity at first, so it keeps climbing after the kick, then
+  // the spin dies, gravity wins, and the same integrator sets it down — the
+  // floor is a contact, and the impact speed becomes a squash the spring
+  // resolves. the streaks are shed at a rate that follows the spin, because
+  // they are it.
   return {
-    press() { if (lift < 0) lift = 0; },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; omega = C.face * D.spin; } },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (lift >= 0) {
-        lift += dt * 1.1;
-        C.y = G - Math.sin(Math.min(1, lift) * Math.PI) * C.s * 2.2;
-        for (let i = 0; i < 2; i++) {      // the corkscrew written in streaks
-          const a = t * 14 + i * Math.PI;
-          streaks.push({ x: C.x + Math.cos(a) * C.s * 0.8, y: C.y - rand(0, C.s), life: 0.5 });
+      if (airborne) {
+        const spinFrac = Math.abs(omega) / D.spin;
+        vy += (D.g - D.lift * spinFrac) * dt;
+        C.y = Math.max(-C.s * 3, C.y + vy * dt);
+        omega -= omega * Math.min(1, D.spinDecay * dt);
+        C.spin += omega * dt;
+        for (let i = 0; i < 2; i++)        // the corkscrew written in streaks, shed as fast as it spins
+          if (Math.random() < spinFrac) {
+            const a = C.spin * 3 + i * Math.PI;
+            streaks.push({ x: C.x + Math.cos(a) * C.s * 0.8, y: C.y - rand(0, C.s), life: 0.5 });
+          }
+        if (C.y >= G) {                    // set down: the floor stops the spin, and the impact becomes squash velocity
+          C.y = G; airborne = false; C.spin = 0; omega = 0;
+          sqv += vy * D.squashKick; vy = 0;
         }
-        if (lift >= 1) { lift = -1; C.y = G; }
+      }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the spring's substep guard
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
       }
       for (const s of streaks) {
         s.y -= 30 * dt; s.life -= dt * 1.8;
@@ -3050,26 +3248,77 @@ def("Cyclone jump", "wind", "press: a spiral of wind corkscrews it upward, then 
         }
       }
       streaks = streaks.filter(s => s.life > 0);
+      ctx.save();                          // the squash: scaled about the feet
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
     }
   };
 });
 
-def("Wind cloak", "wind", "curved streams orbit it always; press flares the cloak into a deflect", function (u) {
+def("Wind cloak", "wind", "two cloth strips hang from its shoulders and trail its every step, lagging and swinging through when it turns; press throws them forward into a deflect", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let deflect = 0;
+  const D = { joints: 4,             // segments per strip
+              len: 0.32,             // each segment's length, in cube-sides
+              k: 120,                // the root spring's stiffness — thin cloth answers quickly
+              damp: 0.45,            // the root's damping as a fraction of critical
+              tip: 1.3,              // each joint's k as a multiple of the one below
+              tipdamp: 0.35,         // a joint's damping as a fraction of ITS OWN critical — the hem overshoots
+              bend: 1.0,             // the most a joint can fold past the one below, radians
+              stream: 0.8,           // how far 40 px/s of travel streams the strips back, radians
+              inertia: 1,            // how much of the shoulder's acceleration the cloth feels (0 = weightless)
+              flare: 7 };            // the deflect press's forward impulse on every joint, rad/s
+  const J = D.joints;
+  const th = new Float32Array(2 * J), om = new Float32Array(2 * J);   // strip-major: [side * J + j], world angles from straight-down toward +x
+  let deflect = 0, prevVx = C.vx;
+  // the old cloak was four ellipse arcs on the clock. now it is cloth: two
+  // short Grass chains hung from the shoulders. the root's rest angle
+  // streams back with the hero's velocity (air drag), every joint chases
+  // the one above on its own under-damped spring, and each joint also feels
+  // the shoulder's ACCELERATION — a pendulum in an accelerating frame gets
+  // the torque −a·cos θ / L — so when the hero turns, the strips fly across
+  // and the hem lags and whips through. the deflect is an impulse, forward.
   return {
-    press() { deflect = 1; },
+    press() {
+      deflect = 1;
+      for (let i = 0; i < 2 * J; i++) om[i] += C.face * D.flare;   // thrown forward, all at once
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      for (let i = 0; i < 4; i++) {        // the cloak: four orbiting streams
-        const a = t * 2 + i / 4 * TAU;
-        const r = C.s * (0.95 + deflect * 0.7);
-        ctx.strokeStyle = "rgba(195,210,232," + (0.35 + deflect * 0.45) + ")";
-        ctx.lineWidth = 1.6 + deflect;
+      const L = C.s * D.len;
+      const ax = Math.max(-2000, Math.min(2000, (C.vx - prevVx) / Math.max(dt, 1e-4)));   // the shoulder's acceleration
+      prevVx = C.vx;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // stiff joints: substeps of ≤ 0.02 s
+      for (let side = 0; side < 2; side++) {
+        const rest = Math.max(-1.3, Math.min(1.3, -C.vx / 40 * D.stream)) + (side * 2 - 1) * 0.15;   // streamed back, hung a little outward
+        for (let s = 0; s < sub; s++) {
+          let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+          for (let j = 0; j < J; j++) {
+            const i = side * J + j;
+            if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+            om[i] += (kj * (below - th[i]) - dj * om[i] - D.inertia * ax / L * Math.cos(th[i])) * h;
+            let a = th[i] + om[i] * h;
+            if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));
+            th[i] = Math.max(-2.5, Math.min(2.5, a));
+            below = th[i];
+          }
+        }
+      }
+      for (let side = 0; side < 2; side++) {   // each strip: a band along its chain
+        let px = C.x + (side * 2 - 1) * C.s * 0.42, py = C.y - C.s * 0.92 - C.hop;
+        const left = [], right = [];
+        for (let j = 0; j < J; j++) {
+          const a = th[side * J + j], nx = Math.cos(a) * 2.2, ny = -Math.sin(a) * 2.2;   // the segment's normal, half a strip wide
+          left.push([px - nx, py - ny]); right.push([px + nx, py + ny]);
+          px += Math.sin(a) * L; py += Math.cos(a) * L;
+        }
+        left.push([px, py]);
+        ctx.fillStyle = "rgba(195,210,232," + (0.45 + deflect * 0.4) + ")";
         ctx.beginPath();
-        ctx.ellipse(C.x, C.y - C.s * 0.5, r, r * 0.55, 0, a, a + 1.2);
-        ctx.stroke();
+        ctx.moveTo(left[0][0], left[0][1]);
+        for (const p of left) ctx.lineTo(p[0], p[1]);
+        for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+        ctx.closePath(); ctx.fill();
       }
       deflect = Math.max(0, deflect - dt * 1.4);
     }
@@ -3110,29 +3359,55 @@ def("Air slash", "wind", "press: crescent blades of wind fly forward", function 
   };
 });
 
-def("Updraft column", "wind", "press: a column of rising air where you click; idle: drifting down", function (u) {
+def("Updraft column", "wind", "feathers fall against drag, rocking and side-slipping as they go; press: a column of lift where you click, strongest at its centre, that they float up through", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { g: 52,                 // gravity on a feather, px/s²
+              drag: 2,               // vertical drag per unit speed — the terminal speed is g/drag = 26 px/s
+              sideDrag: 1.6,         // the same for sideways motion
+              slip: 120,             // how hard a tilted feather glides sideways, px/s² per radian
+              rockK: 30,             // the rocking spring — a feather's centre of lift is above its weight, so it rights itself
+              rockDamp: 1.0,         // its damping as a fraction of critical
+              couple: 0.15,          // how much side-slip tilts the feather back (the glide's own lift), rad/s² per px/s
+              turb: 4,               // vortex-shedding kicks, rad/s² — the rocking is real, its timing random
+              lift: 220,             // the column's lift at its centre, px/s² — well past gravity, so feathers rise
+              radius: 16 };          // the column's half-width, px — the lift ramps to nothing at its edge
   let columns = [], feathers = [];
+  // the old feather fell at 26 px/s, flipped to −110 the instant it entered
+  // a column, and swayed on a sine. now it has velocities and forces: it
+  // falls until drag balances gravity (a terminal speed, reached on a curve),
+  // a rocking angle on a spring is coupled to its side-slip both ways — tilt
+  // makes it glide, gliding tilts it back — and random torque kicks stand in
+  // for the vortices a real feather sheds. the column is a lift force that
+  // ramps with distance from its centre, so entering it is a curve too.
   return {
-    press(x) { columns.push({ x: x || C.x, life: 1.6 }); },
+    press(x) { columns.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), life: 1.6 }); },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.03)            // a feather, falling as feathers do
-        feathers.push({ x: rand(10, W - 10), y: -4, ph: rand(0, 9) });
+        feathers.push({ x: rand(10, W - 10), y: -4, vx: 0, vy: 0, phi: rand(-0.4, 0.4), om: 0 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the rocking spring's substep guard
       for (const f of feathers) {
-        let vy = 26;
-        for (const c of columns)           // the column argues with gravity
-          if (Math.abs(f.x - c.x) < 16 && c.life > 0) vy = -110;
-        f.y += vy * dt;
-        f.x += Math.sin(t * 2 + f.ph) * 12 * dt;
+        let lift = 0;
+        for (const c of columns) {         // the column argues with gravity, harder near its centre
+          const q = Math.abs(f.x - c.x) / D.radius;
+          if (q < 1 && c.life > 0) lift = Math.max(lift, D.lift * (1 - q * q));
+        }
+        for (let s = 0; s < sub; s++) {
+          f.vy += (D.g - lift - D.drag * f.vy) * h;
+          f.vx += (D.slip * f.phi - D.sideDrag * f.vx) * h;
+          f.om += (-D.rockK * f.phi - D.rockDamp * 2 * Math.sqrt(D.rockK) * f.om + D.couple * f.vx
+                   + (Math.random() - 0.5) * 2 * D.turb / Math.sqrt(h)) * h;
+          f.phi = Math.max(-1.4, Math.min(1.4, f.phi + f.om * h));
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
         ctx.save();
         ctx.translate(f.x, f.y);
-        ctx.rotate(Math.sin(t * 3 + f.ph) * 0.5);
+        ctx.rotate(f.phi);
         ctx.fillStyle = "rgba(230,235,245,0.8)";
         ctx.beginPath(); ctx.ellipse(0, 0, 3.5, 1.3, 0, 0, TAU); ctx.fill();
         ctx.restore();
       }
-      feathers = feathers.filter(f => f.y > -12 && f.y < G);
+      feathers = feathers.filter(f => f.y > -12 && f.y < G && f.x > -20 && f.x < W + 20);
       for (const c of columns) {
         c.life -= dt * 0.7;
         if (c.life <= 0) continue;
@@ -3340,26 +3615,55 @@ def("Night veil", "dark", "the dark closes in — light survives only near the h
 
 /* ============================== DECORATIONS ============================== */
 
-def("Butterflies", "decor", "three companions flutter along; press and they scatter, then forgive", function (u) {
+def("Butterflies", "decor", "three companions steer toward the spot they fancy near the hero, overshooting and fluttering, wings beating faster the faster they fly; press and an outward shove scatters them, then they forgive", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { k: 6,                  // the steering force per px of distance to the fancied spot
+              drag: 2.2,             // air drag per unit speed — with k it is under-damped, so they overshoot
+              flutter: 60,           // the random force that keeps them from ever flying straight, px/s²
+              scatter: 140,          // the press's outward shove, px/s
+              up: 60,                // and its upward part, px/s
+              flapBase: 8,           // wingbeat rate at rest, rad/s
+              flapPer: 0.25,         // extra wingbeat rate per px/s of speed, rad/s
+              wander: 0.8,           // how fast the fancied spot wanders round the hero, rad/s
+              forgive: 0.5 };        // how fast the panic fades, per second
   const flies = [];
   for (let i = 0; i < 3; i++)
-    flies.push({ x: rand(0, 200), y: rand(20, 80), ph: rand(0, 9), panic: 0,
+    flies.push({ x: rand(0, 200), y: rand(20, 80), vx: 0, vy: 0, ph: rand(0, 9), wa: rand(0, TAU), panic: 0,
                  hue: [330, 45, 200][i] });
+  // the old flies lerped toward a target plus a sine, and scattered by a
+  // negative lerp. now each has a velocity: a steering force toward the
+  // spot it fancies (which wanders slowly round the hero), drag, and a
+  // random flutter force, so they overshoot the spot and jitter round it
+  // the way flies do. the scatter is an impulse away from the hero, after
+  // which they simply stop steering until they forgive; the wings beat at
+  // a rate that follows the speed the physics gives them.
   return {
-    press() { for (const f of flies) f.panic = 1; },
+    press() {
+      for (const f of flies) {
+        f.panic = 1;
+        const dx = f.x - C.x, dy = f.y - (C.y - C.s * 0.5), d = Math.max(1, Math.hypot(dx, dy));
+        f.vx += dx / d * D.scatter; f.vy += dy / d * D.scatter - D.up;   // shoved away, and up
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       for (const f of flies) {
-        f.panic = Math.max(0, f.panic - dt * 0.5);
-        const tx = C.x + Math.sin(t * 0.8 + f.ph * 3) * C.s * 1.6;
-        const ty = C.y - C.s * 1.2 + Math.sin(t * 1.3 + f.ph) * 14;
-        const chase = f.panic > 0 ? -3 : 1.6;          // scatter = chase reversed
-        f.x += (tx - f.x) * dt * chase + Math.sin(t * 9 + f.ph) * 14 * dt;
-        f.y += (ty - f.y) * dt * chase - f.panic * 40 * dt;
-        f.y = Math.max(8, Math.min(G - 8, f.y));
-        f.x = Math.max(4, Math.min(W - 4, f.x));
-        const flap = Math.sin(t * 16 + f.ph) * 0.8;    // the wings
+        f.panic = Math.max(0, f.panic - dt * D.forgive);
+        f.wa += D.wander * dt;
+        const tx = C.x + Math.cos(f.wa) * C.s * 1.6;
+        const ty = C.y - C.s * 1.2 + Math.sin(f.wa * 1.6 + f.ph) * 14;
+        const seek = f.panic > 0 ? 0 : D.k;            // no steering while it panics — just drag and flutter
+        f.vx += (seek * (tx - f.x) - D.drag * f.vx + (Math.random() - 0.5) * 2 * D.flutter) * dt;
+        f.vy += (seek * (ty - f.y) - D.drag * f.vy + (Math.random() - 0.5) * 2 * D.flutter) * dt;
+        const sp = Math.hypot(f.vx, f.vy);
+        if (sp > 400) { f.vx *= 400 / sp; f.vy *= 400 / sp; }
+        f.x += f.vx * dt; f.y += f.vy * dt;
+        if (f.y < 8) { f.y = 8; f.vy = Math.abs(f.vy) * 0.5; }         // the stage edges: soft bounces
+        if (f.y > G - 8) { f.y = G - 8; f.vy = -Math.abs(f.vy) * 0.5; }
+        if (f.x < 4) { f.x = 4; f.vx = Math.abs(f.vx) * 0.5; }
+        if (f.x > W - 4) { f.x = W - 4; f.vx = -Math.abs(f.vx) * 0.5; }
+        f.ph += (D.flapBase + sp * D.flapPer) * dt;   // the wings beat as fast as it flies
+        const flap = Math.sin(f.ph) * 0.8;
         for (const side of [-1, 1]) {
           ctx.fillStyle = "hsla(" + f.hue + ",75%,72%,0.9)";
           ctx.beginPath();
@@ -3458,30 +3762,73 @@ def("Fireflies at dusk", "decor", "they gather near whoever stands still; press 
   };
 });
 
-def("Hero's cape", "decor", "a cape streams behind it; press for the wind-machine pose", function (u) {
+def("Hero's cape", "decor", "a cape of seven hinged segments hangs from the clasp: it streams back with the hero's speed, lags and swings through when it turns, and the hem arrives last; press for the wind machine — a gust that shoves it", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  const pts = [];
-  for (let i = 0; i < 9; i++) pts.push({ x: 0, y: 0 });
-  let gust = 0;
+  const D = { joints: 7,             // segments in the cape
+              len: 0.3,              // each segment's length, in cube-sides
+              k: 90,                 // the root spring's stiffness — the clasp end answers this fast
+              damp: 0.5,             // the root's damping as a fraction of critical
+              tip: 1.3,              // each joint's k as a multiple of the one below: lighter cloth toward the hem
+              tipdamp: 0.45,         // a joint's damping as a fraction of ITS OWN critical — under 1, so the hem overshoots
+              bend: 0.9,             // the most a joint can fold past the one above, radians
+              stream: 0.8,           // how far 40 px/s of travel streams the cape back, radians
+              hang: 0.15,            // the resting lean behind it even standing still, radians
+              inertia: 1,            // how much of the clasp's acceleration the cloth feels (0 = weightless)
+              gustLean: 0.9,         // how far the wind machine's gust pushes the rest angle, radians
+              kick: 5,               // the press's impulse on every joint, rad/s
+              turb: 3 };             // turbulence: random torque kicks, rad/s² — stronger in the gust
+  const J = D.joints;
+  const th = new Float32Array(J), om = new Float32Array(J);   // world angles from straight-down toward +x, and their rates
+  let gust = 0, prevVx = C.vx;
+  // this is the stagecraft Grass blade, hung from a shoulder instead of
+  // planted in the ground: a chain of angles, the root a damped spring
+  // toward a rest that the wind decides (the hero's own speed, plus the
+  // gust), every joint below chasing the one above on its own quicker,
+  // under-damped spring. two things the old lerp-plus-sine could not do
+  // now come for free: the hem LAGS the clasp and whips through it when
+  // the hero turns (the joints are lighter than the root), and the cape
+  // feels the clasp's acceleration — a pendulum in an accelerating frame
+  // gets the torque −a·cos θ / L — so a sudden stop throws it forward.
+  // the flutter is turbulence: random torque kicks, more in the gust.
   return {
-    press() { gust = 1.4; },
+    press() {
+      gust = 1.4;
+      for (let j = 0; j < J; j++) om[j] += -C.face * D.kick;   // the wind machine's shove, all along the cloth
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
-      const ax = C.x - C.face * C.s * 0.45;            // the clasp at its shoulder
-      const ay = C.y - C.s * 0.9 - C.hop;
-      pts[0].x = ax; pts[0].y = ay;
-      const wind = 1 + gust * 2.4 + Math.min(1, Math.abs(C.vx) / 40);
-      for (let i = 1; i < pts.length; i++) {           // each point chases the last
-        const tx = pts[i - 1].x - C.face * 5 * wind;
-        const ty = pts[i - 1].y + 2.5 + Math.sin(t * (5 + wind) + i) * (1.5 + gust * 2);
-        pts[i].x += (tx - pts[i].x) * Math.min(1, dt * 14);
-        pts[i].y += (ty - pts[i].y) * Math.min(1, dt * 14);
+      const cx = C.x - C.face * C.s * 0.45;            // the clasp at its shoulder
+      const cy = C.y - C.s * 0.9 - C.hop, L = C.s * D.len;
+      const ax = Math.max(-2000, Math.min(2000, (C.vx - prevVx) / Math.max(dt, 1e-4)));   // the clasp's acceleration
+      prevVx = C.vx;
+      const rest = -C.face * Math.min(1.4, D.hang + Math.abs(C.vx) / 40 * D.stream + gust * D.gustLean);   // streamed behind
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // stiff joints: substeps of ≤ 0.02 s
+      for (let s = 0; s < sub; s++) {
+        let above = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+        for (let j = 0; j < J; j++) {
+          if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+          om[j] += (kj * (above - th[j]) - dj * om[j] - D.inertia * ax / L * Math.cos(th[j])
+                    + (Math.random() - 0.5) * 2 * D.turb * (1 + gust * 2) / Math.sqrt(h)) * h;
+          let a = th[j] + om[j] * h;
+          if (j > 0) a = Math.max(above - D.bend, Math.min(above + D.bend, a));
+          th[j] = Math.max(-2.6, Math.min(2.6, a));
+          above = th[j];
+        }
       }
-      ctx.fillStyle = "rgba(170,50,70,0.9)";           // the cape as a ribbon-fan
+      let px = cx, py = cy;                            // the cape as a band along its chain, widening to the hem
+      const left = [], right = [];
+      for (let j = 0; j < J; j++) {
+        const a = th[j], hw = 2.5 + j * 0.6, nx = Math.cos(a) * hw, ny = -Math.sin(a) * hw;
+        left.push([px - nx, py - ny]); right.push([px + nx, py + ny]);
+        px += Math.sin(a) * L; py += Math.cos(a) * L;
+      }
+      const a = th[J - 1], hw = 2.5 + J * 0.6;
+      left.push([px - Math.cos(a) * hw, py + Math.sin(a) * hw]); right.push([px + Math.cos(a) * hw, py - Math.sin(a) * hw]);
+      ctx.fillStyle = "rgba(170,50,70,0.9)";
       ctx.beginPath();
-      ctx.moveTo(ax, ay);
-      for (const p of pts) ctx.lineTo(p.x, p.y);
-      for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].y + 6 + i * 1.2);
+      ctx.moveTo(left[0][0], left[0][1]);
+      for (const p of left) ctx.lineTo(p[0], p[1]);
+      for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
       ctx.closePath(); ctx.fill();
       drawCube();
       gust = Math.max(0, gust - dt);
@@ -3853,25 +4200,39 @@ rhymeOf("Bubble shield", "Soap shield", "the same bubble with a rainbow rim — 
   };
 });
 
-rhymeOf("Splash stomp", "Dust stomp", "the same hop and rings — a dry landing: dust, not water", function (u) {
+rhymeOf("Splash stomp", "Dust stomp", "the same ballistic hop and landing squash — a dry landing: dust, not water", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: palette water→dust · droplets → hanging puffs · puddle removed
-  let jump = -1, rings = [], puffs = [];
+  // dials moved: palette water→dust · droplets → hanging puffs · puddle removed · the hop and squash untouched
+  const D = { jump: 195,             // launch speed, px/s
+              g: 620,                // gravity, px/s²
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, airborne = false, sq = 0, sqv = 0, rings = [], puffs = [];
   return {
-    press() { if (jump < 0) jump = 0; },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; } },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (jump >= 0) {
-        jump += dt * 2.4;
-        C.y = G - Math.sin(Math.min(1, jump) * Math.PI) * C.s * 1.4;
-        if (jump >= 1) {
-          C.y = G; jump = -1;
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        if (C.y >= G) {                    // contact: the dry landing
+          C.y = G; airborne = false;
+          sqv += vy * D.squashKick; vy = 0;
           rings.push({ r: 4, life: 1 });
           for (let i = 0; i < 10; i++)
             puffs.push({ x: C.x + rand(-6, 6), y: G, vx: rand(-60, 60), vy: rand(-30, -8), r: rand(3, 5), life: 1 });
         }
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+      }
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       for (const ring of rings) {
         ring.r += 70 * dt; ring.life -= dt * 1.4;
         if (ring.life > 0) {
@@ -3894,16 +4255,27 @@ rhymeOf("Splash stomp", "Dust stomp", "the same hop and rings — a dry landing:
   };
 });
 
-rhymeOf("Rain cloud pet", "Snow cloud pet", "the same loyal cloud, wintering — flakes drift and dodge sideways", function (u) {
+rhymeOf("Rain cloud pet", "Snow cloud pet", "the same loyal cloud on its spring tether, wintering and heavier with snow — a lazier overshoot; flakes drift and dodge sideways", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: rain streaks → swaying flakes · fall 170 → 40 · press: flurry
-  let cx = 0, pour = 0, flakes = [];
+  // dials moved: tether k 30 → 18 and damp 0.3 → 0.25 (a heavier cloud) · rain streaks → swaying flakes · fall 170 → 40 · press: flurry
+  const D = { k: 18,                 // the tether spring's stiffness — period ≈ 1.5 s now
+              damp: 0.25,            // damping as a fraction of critical
+              sag: 30,               // the flurry press's downward kick, px/s
+              sagK: 25 };            // the height spring that lifts it back
+  let cx = C.x, cv = 0, dy = 0, dyv = 0, pour = 0, flakes = [];
   return {
-    press() { pour = 1.2; },
+    press() { pour = 1.2; dyv += D.sag; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      cx += (C.x - cx) * Math.min(1, dt * 3);
-      const cy = C.y - C.s * 2.1 + Math.sin(t * 1.3) * 2;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        cv += (D.k * (C.x - cx) - D.damp * 2 * Math.sqrt(D.k) * cv) * h;
+        cx += cv * h;
+        dyv += (D.sagK * (0 - dy) - 0.5 * 2 * Math.sqrt(D.sagK) * dyv) * h;
+        dy = Math.max(-20, Math.min(20, dy + dyv * h));
+      }
+      cx = Math.max(-40, Math.min(W + 40, cx));
+      const cy = C.y - C.s * 2.1 + dy;
       for (let i = 0; i < 5; i++) {
         ctx.fillStyle = "rgba(160,168,190,0.9)";
         ctx.beginPath();
@@ -3917,6 +4289,7 @@ rhymeOf("Rain cloud pet", "Snow cloud pet", "the same loyal cloud, wintering —
         f.y += 40 * dt; f.x += Math.sin(t * 2 + f.ph) * 12 * dt;
         if (f.y >= C.y - C.s && Math.abs(f.x - C.x) < C.s * 0.5) f.y = 1e9;
         if (f.y >= G) f.y = 1e9;
+        if (f.y > H) continue;
         ctx.fillStyle = "rgba(235,242,255,0.85)";
         ctx.beginPath(); ctx.arc(f.x, f.y, 1.5, 0, TAU); ctx.fill();
       }
@@ -3925,43 +4298,61 @@ rhymeOf("Rain cloud pet", "Snow cloud pet", "the same loyal cloud, wintering —
   };
 });
 
-rhymeOf("Water whip", "Vine whip", "the same travelling-sine lash grown green — half speed, leaf at the tip", function (u) {
+rhymeOf("Water whip", "Vine whip", "the same ten-joint chain grown green — a slower, heavier arm swing, so the crack arrives at half speed; leaf at the tip", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: lash 2.2 → 1.2 · palette water→vine · droplets → a tip leaf
-  let lash = -1;
+  // dials moved: k 250 → 120 and hold 0.22 → 0.44 (a slower arm, half speed) · tipdamp 0.45 → 0.5 (woodier) · palette water→vine · droplets → a tip leaf
+  const D = { segs: 10,              // joints in the whip
+              len: 0.32,             // each segment's length, in cube-sides
+              k: 120,                // the root spring's stiffness — a slower arm
+              damp: 0.8,             // the root's damping as a fraction of critical
+              tip: 1.25,             // each joint's k as a multiple of the one below
+              tipdamp: 0.5,          // a joint's damping as a fraction of ITS OWN critical
+              bend: 1.2,             // the most a joint can fold past the one below, radians
+              swing: 1.6,            // where the arm swings to, radians from hanging-down toward the front
+              hold: 0.44,            // how long the arm holds there, s — twice the water whip's
+              idle: 0.35 };          // the coiled rest, radians behind straight-down
+  const N = D.segs;
+  const th = new Float32Array(N), om = new Float32Array(N);
+  for (let j = 0; j < N; j++) th[j] = -C.face * D.idle;
+  let swing = -1, px = new Float32Array(N + 1), py = new Float32Array(N + 1);
   return {
-    press() { if (lash < 0) lash = 0; },
+    press() { if (swing < 0) swing = 0; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      const hx = C.x + C.face * C.s * 0.5, hy = C.y - C.s * 0.6;
-      if (lash >= 0) {
-        lash += dt * 1.2;
-        const k = Math.min(1, lash);
-        const reach = Math.sin(k * Math.PI) * C.s * 3.2;
-        ctx.strokeStyle = "rgba(110,180,100,0.9)";
-        ctx.lineWidth = 3.5;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        let tipX = hx, tipY = hy;
-        for (let i = 1; i <= 10; i++) {
-          const q = i / 10;
-          tipX = hx + C.face * reach * q;
-          tipY = hy + Math.sin(q * 6 - lash * 10) * 8 * (1 - q * 0.4);
-          ctx.lineTo(tipX, tipY);
-        }
-        ctx.stroke();
-        ctx.fillStyle = "rgba(140,200,110,0.9)";           // the tip leaf
-        ctx.beginPath(); ctx.ellipse(tipX, tipY, 4, 2, lash * 3, 0, TAU); ctx.fill();
-        if (lash >= 1) lash = -1;
-      } else {
-        ctx.strokeStyle = "rgba(110,180,100,0.6)";
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.moveTo(hx, hy);
-        ctx.quadraticCurveTo(hx + C.face * 8, hy + 10 + Math.sin(t * 1.4) * 2, hx + C.face * 3, hy + 18);
-        ctx.stroke();
+      const hx = C.x + C.face * C.s * 0.5, hy = C.y - C.s * 0.6, L = C.s * D.len;
+      let rest = -C.face * D.idle;
+      if (swing >= 0) {
+        swing += dt;
+        if (swing < D.hold) rest = C.face * D.swing;
+        else if (swing > D.hold + 1.6) swing = -1;
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+        for (let j = 0; j < N; j++) {
+          if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+          om[j] += (kj * (below - th[j]) - dj * om[j]) * h;
+          let a = th[j] + om[j] * h;
+          if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));
+          th[j] = Math.max(-3, Math.min(3, a));
+          below = th[j];
+        }
+      }
+      px[0] = hx; py[0] = hy;
+      for (let j = 0; j < N; j++) {
+        px[j + 1] = px[j] + Math.sin(th[j]) * L;
+        py[j + 1] = py[j] + Math.cos(th[j]) * L;
+      }
+      const busy = swing >= 0;
+      ctx.strokeStyle = busy ? "rgba(110,180,100,0.9)" : "rgba(110,180,100,0.6)";
+      ctx.lineWidth = busy ? 3.5 : 3;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(px[0], py[0]);
+      for (let j = 1; j <= N; j++) ctx.lineTo(px[j], py[j]);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(140,200,110,0.9)";           // the tip leaf, lying along the last segment
+      ctx.beginPath(); ctx.ellipse(px[N], py[N], 4, 2, Math.PI / 2 - th[N - 1], 0, TAU); ctx.fill();
     }
   };
 });
@@ -5265,21 +5656,39 @@ rhymeOf("Teleport blink", "Mirror swap", "the same blink that always lands at th
   };
 });
 
-rhymeOf("Backflip", "Frontflip", "the same acrobatics with the rotation sign flipped — momentum agrees now", function (u) {
+rhymeOf("Backflip", "Frontflip", "the same ballistic acrobatics with the spin's sign flipped — momentum agrees now; a lower launch, so the turn is quicker", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: spin −face → +face (with travel) · trail warm · arc slightly lower
-  let flip = -1, trail = [];
+  // dials moved: spin −face → +face (with travel) · jump 214 → 195 (arc slightly lower, and the spin sized to the shorter hang) · trail warm
+  const D = { jump: 195,             // launch speed, px/s
+              g: 620,                // gravity, px/s²
+              turns: 1,              // rotations to fit into the hang time
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, omega = 0, airborne = false, sq = 0, sqv = 0, trail = [];
   return {
-    press() { if (flip < 0) flip = 0; },
+    press() {
+      if (!airborne) {
+        airborne = true; vy = -D.jump;
+        omega = C.face * D.turns * TAU * D.g / (2 * D.jump);   // with travel: a FRONTflip
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (flip >= 0) {
-        flip += dt * 1.6;
-        const k = Math.min(1, flip);
-        C.y = G - Math.sin(k * Math.PI) * C.s * 1.4;
-        C.spin = C.face * k * TAU;
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        C.spin += omega * dt;
         trail.push({ x: C.x, y: C.y - C.s * 0.5, life: 1 });
-        if (flip >= 1) { flip = -1; C.y = G; C.spin = 0; }
+        if (C.y >= G) {
+          C.y = G; airborne = false; C.spin = 0; omega = 0;
+          sqv += vy * D.squashKick; vy = 0;
+        }
+      }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
       }
       ctx.globalCompositeOperation = "lighter";
       for (const p of trail) {
@@ -5288,7 +5697,10 @@ rhymeOf("Backflip", "Frontflip", "the same acrobatics with the rotation sign fli
       }
       ctx.globalCompositeOperation = "source-over";
       trail = trail.filter(p => p.life > 0);
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
     }
   };
 });
@@ -5595,25 +6007,39 @@ rhymeOf("Ground crack", "Frost crack", "the same punched floor veined with GLOWI
   };
 });
 
-rhymeOf("Stomp quake", "Ripple stomp", "the same stomp on water — rings roll out instead of dust humps", function (u) {
+rhymeOf("Stomp quake", "Ripple stomp", "the same ballistic stomp and landing squash on water — rings roll out instead of dust humps", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: dust waves → travelling rings · palette earth→water · slower
-  let rings = [], hop = -1;
+  // dials moved: dust waves → travelling rings · palette earth→water · slower · the hop and squash untouched
+  const D = { jump: 140,             // launch speed, px/s
+              g: 620,                // gravity, px/s²
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical
+              squashKick: 0.06 };    // squash velocity bought per px/s of landing speed
+  let rings = [], vy = 0, airborne = false, sq = 0, sqv = 0;
   return {
-    press() { if (hop < 0) hop = 0; },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; } },
     frame(dt, t) {
       stage(); tickCube(dt);
       ctx.fillStyle = "rgba(90,150,210,0.15)";
       ctx.fillRect(0, G, W, H - G);
-      if (hop >= 0) {
-        hop += dt * 3;
-        C.y = G - Math.sin(Math.min(1, hop) * Math.PI) * C.s * 0.7;
-        if (hop >= 1) {
-          C.y = G; hop = -1;
+      if (airborne) {
+        vy += D.g * dt;
+        C.y += vy * dt;
+        if (C.y >= G) {                    // contact: the stomp lands on water
+          C.y = G; airborne = false;
+          sqv += vy * D.squashKick; vy = 0;
           for (let i = 0; i < 3; i++) rings.push({ r: 4 + i * 8, life: 1 + i * 0.15 });
         }
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+      }
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       for (const r of rings) {
         r.r += 80 * dt; r.life -= dt * 0.8;
         if (r.life > 0) {
@@ -5667,28 +6093,68 @@ rhymeOf("Rock throw", "Snowball throw", "the same lob — it splats instead of s
   };
 });
 
-rhymeOf("Vine snare", "Chain snare", "the same rising grab in cold iron — links, not leaves, and no sway", function (u) {
+rhymeOf("Vine snare", "Chain snare", "the same kicked-upright chains in cold iron — critically damped, so they rise and stop dead: links, not leaves, and no sway", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: vines → chain links (circles) · writhe removed · rise faster
+  // dials moved: damp 0.45 → 1 and tipdamp 0.4 → 1 (critical: no overshoot, no sway) · k 60 → 90 (rise faster) · vines → chain links · life 1.6 → 1.4
+  const D = { joints: 3,             // segments per chain
+              len: 0.6,              // each segment's length, in cube-sides
+              k: 90,                 // the root spring's stiffness — iron rights itself fast
+              damp: 1,               // the root's damping as a fraction of critical — exactly critical: it stops dead
+              tip: 1.4,              // each joint's k as a multiple of the one below
+              tipdamp: 1,            // a joint's damping as a fraction of ITS OWN critical — critical too: no whip
+              bend: 1.5,             // the most a joint can fold past the one below, radians
+              flat: 1.5,             // where a chain lies before the press, radians from upright
+              kick: 3,               // the press's impulse on each root, rad/s
+              life: 1.4,             // seconds before the chains lie back down
+              splay: 0.08 };         // the outer chains' resting lean, radians
+  const J = D.joints;
   let snares = [];
   return {
-    press(x) { snares.push({ x: Math.max(10, Math.min(W - 10, x || C.x + C.face * C.s * 2)), life: 1.4 }); },
+    press(x) {
+      const sn = { x: Math.max(10, Math.min(W - 10, x || C.x + C.face * C.s * 2)), life: D.life,
+                   th: new Float32Array(3 * J), om: new Float32Array(3 * J) };
+      for (let v = 0; v < 3; v++) {
+        const dir = v === 1 ? -1 : 1;
+        for (let j = 0; j < J; j++) sn.th[v * J + j] = dir * D.flat;
+        sn.om[v * J] = -dir * D.kick;
+      }
+      snares.push(sn);
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub, L = C.s * D.len;
       for (const sn of snares) {
-        sn.life -= dt * 0.8;
-        if (sn.life <= 0) continue;
-        const up = Math.sin(Math.min(1, (1.4 - sn.life) * 2.6) * Math.PI * 0.5) * Math.min(1, sn.life * 1.8);
-        const links = Math.floor(up * 7);
-        ctx.strokeStyle = "rgba(150,155,170," + Math.min(1, sn.life) + ")";
-        ctx.lineWidth = 2;
-        for (let k = 0; k < links; k++) {
-          ctx.beginPath();
-          ctx.ellipse(sn.x, G - 6 - k * 9, 3, 5, k % 2 ? 0.5 : -0.5, 0, TAU);
-          ctx.stroke();
+        sn.life -= dt;
+        for (let v = 0; v < 3; v++) {
+          const dir = v === 1 ? -1 : 1;
+          const rest = sn.life > 0.5 ? (v - 1) * D.splay : dir * D.flat;
+          for (let s = 0; s < sub; s++) {
+            let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+            for (let j = 0; j < J; j++) {
+              const i = v * J + j;
+              if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+              sn.om[i] += (kj * (below - sn.th[i]) - dj * sn.om[i]) * h;
+              let a = sn.th[i] + sn.om[i] * h;
+              if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));
+              sn.th[i] = Math.max(-1.6, Math.min(1.6, a));
+              below = sn.th[i];
+            }
+          }
+          ctx.strokeStyle = "rgba(150,155,170," + Math.max(0, Math.min(1, sn.life + 0.4)) + ")";
+          ctx.lineWidth = 2;
+          let px = sn.x + (v - 1) * 6, py = G, k = 0;
+          for (let j = 0; j < J; j++) {    // links laid along each segment of the chain
+            const a = sn.th[v * J + j];
+            for (let q = 0.5; q < 2; q++, k++) {
+              ctx.beginPath();
+              ctx.ellipse(px + Math.sin(a) * L * q * 0.5, py - Math.cos(a) * L * q * 0.5, 3, 5, -a + (k % 2 ? 0.5 : -0.5), 0, TAU);
+              ctx.stroke();
+            }
+            px += Math.sin(a) * L; py -= Math.cos(a) * L;
+          }
         }
       }
-      snares = snares.filter(sn => sn.life > 0);
+      snares = snares.filter(sn => sn.life > -0.4);
     }
   };
 });
@@ -5982,34 +6448,43 @@ rhymeOf("Homing orbs", "Homing embers", "the same spiral-then-chase, on fire and
   };
 });
 
-rhymeOf("Boomerang", "Twin glaives", "the same out-and-back flown by two blades in mirrored phase", function (u) {
+rhymeOf("Boomerang", "Twin glaives", "the same launch-and-pull-home flown by two blades with mirrored loft — one loops high, one low, opposite spins", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: glaive count 1 → 2 (one high, one low, opposite spin)
-  let flight = null;
+  // dials moved: glaive count 1 → 2 · loft +40 → ±40 (mirrored loops) · spin ±16 (opposite)
+  const D = { speed: 200,            // launch speed, px/s
+              loft: 40,              // the vertical part of the launch, px/s — one blade up, one down
+              k: 8.2,                // the homing pull's stiffness
+              spin: 16,              // each blade's own spin, rad/s
+              catchR: 8,             // how close a blade must come to be caught, px
+              maxFlight: 3 };        // the safety catch, s
+  let flights = null;
   return {
     press() {
-      if (!flight) flight = { p: 0, dir: C.face };
+      if (!flights) flights = [-1, 1].map(lane => ({ x: C.x + C.face * C.s * 0.5, y: C.y - C.s * 0.6,
+                                                     vx: C.face * D.speed, vy: lane * D.loft, rot: 0, lane: lane, t: 0 }));
     },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
-      if (flight) {
-        flight.p += dt * 0.9;
-        const k = Math.min(1, flight.p);
-        const reach = Math.sin(k * Math.PI) * C.s * 3.2;
-        for (const lane of [-1, 1]) {
-          const x = C.x + flight.dir * reach;
-          const y = C.y - C.s * 0.6 + lane * (10 + Math.sin(k * TAU) * 4);
+      if (flights) {
+        const hx = C.x, hy = C.y - C.s * 0.6;
+        let home = 0;
+        for (const f of flights) {
+          f.vx += D.k * (hx - f.x) * dt;
+          f.vy += D.k * (hy - f.y) * dt;
+          f.x += f.vx * dt; f.y += f.vy * dt;
+          f.rot += f.lane * D.spin * dt; f.t += dt;
           ctx.save();
-          ctx.translate(x, y);
-          ctx.rotate(lane * t * 16);
+          ctx.translate(f.x, f.y);
+          ctx.rotate(f.rot);
           ctx.strokeStyle = "rgba(220,225,245,0.95)";
           ctx.lineWidth = 3;
           ctx.beginPath();
           ctx.moveTo(-6, 3); ctx.lineTo(0, -4); ctx.lineTo(6, 3);
           ctx.stroke();
           ctx.restore();
+          if ((f.t > 0.3 && Math.hypot(f.x - hx, f.y - hy) < D.catchR) || f.t > D.maxFlight) home++;
         }
-        if (flight.p >= 1) flight = null;
+        if (home === flights.length) flights = null;   // both caught
       } else {
         ctx.strokeStyle = "rgba(220,225,245," + (0.5 + Math.sin(t * 3) * 0.3) + ")";
         ctx.lineWidth = 2;
@@ -6417,12 +6892,20 @@ rhymeOf("Gust palm", "Water palm", "the same pushed rings made liquid — drople
   };
 });
 
-rhymeOf("Cyclone jump", "Rocket jump", "the same launch powered by fire — exhaust below instead of wind around", function (u) {
+rhymeOf("Cyclone jump", "Rocket jump", "the same kick-and-decaying-lift launch powered by fire — the thrust is a burn that runs out; exhaust below instead of wind around", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: wind corkscrew → downward exhaust · arc ×1.2 higher · scorch mark
-  let lift = -1, exhaust = [], scorch = 0;
+  // dials moved: lift 700 → 840 (×1.2 higher) · the spin becomes a throttle (no rotation) · wind corkscrew → downward exhaust · scorch mark · the landing squash untouched
+  const D = { jump: 120,             // the launch kick, px/s
+              g: 620,                // gravity, px/s²
+              lift: 840,             // the thrust at full throttle, px/s²
+              spin: 20,              // the throttle at launch (the cyclone's spin, here with no rotation to show)
+              spinDecay: 2.5,        // the burn's decay rate, per second — the fuel runs out
+              squashK: 400,          // the landing squash's spring stiffness
+              squashDamp: 0.35,      // its damping as a fraction of critical
+              squashKick: 0.05 };    // squash velocity bought per px/s of landing speed
+  let vy = 0, throttle = 0, airborne = false, sq = 0, sqv = 0, exhaust = [], scorch = 0;
   return {
-    press() { if (lift < 0) { lift = 0; scorch = 2; } },
+    press() { if (!airborne) { airborne = true; vy = -D.jump; throttle = D.spin; scorch = 2; } },
     frame(dt, t) {
       stage(); tickCube(dt);
       if (scorch > 0) {
@@ -6430,12 +6913,19 @@ rhymeOf("Cyclone jump", "Rocket jump", "the same launch powered by fire — exha
         ctx.beginPath(); ctx.ellipse(C.x, G + 1, 12, 3, 0, 0, TAU); ctx.fill();
         scorch -= dt * 0.5;
       }
-      if (lift >= 0) {
-        lift += dt * 1.1;
-        C.y = G - Math.sin(Math.min(1, lift) * Math.PI) * C.s * 2.6;
-        for (let i = 0; i < 3; i++)
-          exhaust.push({ x: C.x + rand(-4, 4), y: C.y, vy: rand(60, 120), life: 0.6 });
-        if (lift >= 1) { lift = -1; C.y = G; }
+      if (airborne) {
+        const burn = throttle / D.spin;
+        vy += (D.g - D.lift * burn) * dt;
+        C.y = Math.max(-C.s * 3, C.y + vy * dt);
+        throttle -= throttle * Math.min(1, D.spinDecay * dt);
+        for (let i = 0; i < 3; i++)        // exhaust, as much as the burn gives
+          if (Math.random() < burn) exhaust.push({ x: C.x + rand(-4, 4), y: C.y, vy: rand(60, 120), life: 0.6 });
+        if (C.y >= G) { C.y = G; airborne = false; throttle = 0; sqv += vy * D.squashKick; vy = 0; }
+      }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        sqv += (D.squashK * (0 - sq) - D.squashDamp * 2 * Math.sqrt(D.squashK) * sqv) * h;
+        sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
       }
       ctx.globalCompositeOperation = "lighter";
       for (const e of exhaust) {
@@ -6445,35 +6935,77 @@ rhymeOf("Cyclone jump", "Rocket jump", "the same launch powered by fire — exha
       }
       exhaust = exhaust.filter(e => e.life > 0);
       ctx.globalCompositeOperation = "source-over";
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
     }
   };
 });
 
-rhymeOf("Wind cloak", "Storm cloak", "the same orbiting streams, electrified — arcs jump between them", function (u) {
+rhymeOf("Wind cloak", "Storm cloak", "the same two trailing cloth strips, electrified — arcs jump between their joints, more in the deflect", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: palette wind→storm · arcs between streams added · deflect flashes
-  let deflect = 0;
+  // dials moved: palette wind→storm · arcs between the strips' joints added · the chains untouched
+  const D = { joints: 4,             // segments per strip
+              len: 0.32,             // each segment's length, in cube-sides
+              k: 120,                // the root spring's stiffness
+              damp: 0.45,            // the root's damping as a fraction of critical
+              tip: 1.3,              // each joint's k as a multiple of the one below
+              tipdamp: 0.35,         // a joint's damping as a fraction of ITS OWN critical
+              bend: 1.0,             // the most a joint can fold past the one below, radians
+              stream: 0.8,           // how far 40 px/s of travel streams the strips back, radians
+              inertia: 1,            // how much of the shoulder's acceleration the cloth feels
+              flare: 7 };            // the deflect press's forward impulse on every joint, rad/s
+  const J = D.joints;
+  const th = new Float32Array(2 * J), om = new Float32Array(2 * J);
+  let deflect = 0, prevVx = C.vx;
   return {
-    press() { deflect = 1; },
+    press() {
+      deflect = 1;
+      for (let i = 0; i < 2 * J; i++) om[i] += C.face * D.flare;
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
+      const L = C.s * D.len;
+      const ax = Math.max(-2000, Math.min(2000, (C.vx - prevVx) / Math.max(dt, 1e-4)));
+      prevVx = C.vx;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let side = 0; side < 2; side++) {
+        const rest = Math.max(-1.3, Math.min(1.3, -C.vx / 40 * D.stream)) + (side * 2 - 1) * 0.15;
+        for (let s = 0; s < sub; s++) {
+          let below = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+          for (let j = 0; j < J; j++) {
+            const i = side * J + j;
+            if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+            om[i] += (kj * (below - th[i]) - dj * om[i] - D.inertia * ax / L * Math.cos(th[i])) * h;
+            let a = th[i] + om[i] * h;
+            if (j > 0) a = Math.max(below - D.bend, Math.min(below + D.bend, a));
+            th[i] = Math.max(-2.5, Math.min(2.5, a));
+            below = th[i];
+          }
+        }
+      }
       ctx.globalCompositeOperation = "lighter";
-      const pts = [];
-      for (let i = 0; i < 4; i++) {
-        const a = t * 2 + i / 4 * TAU;
-        const rr = C.s * (0.95 + deflect * 0.7);
-        const x = C.x + Math.cos(a + 0.6) * rr;
-        const y = C.y - C.s * 0.5 + Math.sin(a + 0.6) * rr * 0.55;
-        pts.push([x, y]);
-        ctx.strokeStyle = "rgba(170,190,235," + (0.4 + deflect * 0.4) + ")";
-        ctx.lineWidth = 1.6 + deflect;
+      const pts = [];                      // every joint of both strips, for the arcs
+      for (let side = 0; side < 2; side++) {
+        let px = C.x + (side * 2 - 1) * C.s * 0.42, py = C.y - C.s * 0.92 - C.hop;
+        const left = [], right = [];
+        for (let j = 0; j < J; j++) {
+          const a = th[side * J + j], nx = Math.cos(a) * 2.2, ny = -Math.sin(a) * 2.2;
+          left.push([px - nx, py - ny]); right.push([px + nx, py + ny]);
+          px += Math.sin(a) * L; py += Math.cos(a) * L;
+          pts.push([px, py]);
+        }
+        left.push([px, py]);
+        ctx.fillStyle = "rgba(170,190,235," + (0.45 + deflect * 0.4) + ")";
         ctx.beginPath();
-        ctx.ellipse(C.x, C.y - C.s * 0.5, rr, rr * 0.55, 0, a, a + 1.2);
-        ctx.stroke();
+        ctx.moveTo(left[0][0], left[0][1]);
+        for (const p of left) ctx.lineTo(p[0], p[1]);
+        for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+        ctx.closePath(); ctx.fill();
       }
       if (Math.random() < 0.15 + deflect * 0.5) {
-        const a = pts[Math.floor(rand(0, 4))], b = pts[Math.floor(rand(0, 4))];
+        const a = pts[Math.floor(rand(0, pts.length))], b = pts[Math.floor(rand(0, pts.length))];
         ctx.strokeStyle = "rgba(200,215,255,0.8)";
         ctx.lineWidth = 1;
         ctx.beginPath();
@@ -6527,30 +7059,49 @@ rhymeOf("Air slash", "Flame crescent", "the same flying arcs on fire — they sh
   };
 });
 
-rhymeOf("Updraft column", "Downdraft", "the same column with the sign flipped — it slams the feathers DOWN", function (u) {
+rhymeOf("Updraft column", "Downdraft", "the same drag-limited, rocking feathers under a column with its sign flipped — it slams them DOWN", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: column force up→down ×1.5 · strands drawn falling · feathers thud
+  // dials moved: lift 220 → −270 (down, and a little harder) · strands drawn falling · feathers thud
+  const D = { g: 52,                 // gravity on a feather, px/s²
+              drag: 2,               // vertical drag per unit speed — terminal speed g/drag = 26 px/s
+              sideDrag: 1.6,         // the same for sideways motion
+              slip: 120,             // how hard a tilted feather glides sideways, px/s² per radian
+              rockK: 30,             // the rocking spring
+              rockDamp: 1.0,         // its damping as a fraction of critical
+              couple: 0.15,          // how much side-slip tilts the feather back
+              turb: 4,               // vortex-shedding kicks, rad/s²
+              lift: -270,            // the column's force at its centre, px/s² — negative: a downdraft
+              radius: 16 };          // the column's half-width, px
   let columns = [], feathers = [];
   return {
     press(x) { columns.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), life: 1.6 }); },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.03)
-        feathers.push({ x: rand(10, W - 10), y: -4, ph: rand(0, 9) });
+        feathers.push({ x: rand(10, W - 10), y: -4, vx: 0, vy: 0, phi: rand(-0.4, 0.4), om: 0 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of feathers) {
-        let vy = 26;
-        for (const c of columns)
-          if (Math.abs(f.x - c.x) < 16 && c.life > 0) vy = 180;
-        f.y += vy * dt;
-        f.x += Math.sin(t * 2 + f.ph) * 12 * dt;
+        let lift = 0;
+        for (const c of columns) {
+          const q = Math.abs(f.x - c.x) / D.radius;
+          if (q < 1 && c.life > 0) lift = Math.min(lift, D.lift * (1 - q * q));   // the strongest push down
+        }
+        for (let s = 0; s < sub; s++) {
+          f.vy += (D.g - lift - D.drag * f.vy) * h;
+          f.vx += (D.slip * f.phi - D.sideDrag * f.vx) * h;
+          f.om += (-D.rockK * f.phi - D.rockDamp * 2 * Math.sqrt(D.rockK) * f.om + D.couple * f.vx
+                   + (Math.random() - 0.5) * 2 * D.turb / Math.sqrt(h)) * h;
+          f.phi = Math.max(-1.4, Math.min(1.4, f.phi + f.om * h));
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
         ctx.save();
         ctx.translate(f.x, f.y);
-        ctx.rotate(Math.sin(t * 3 + f.ph) * 0.5);
+        ctx.rotate(f.phi);
         ctx.fillStyle = "rgba(230,235,245,0.8)";
         ctx.beginPath(); ctx.ellipse(0, 0, 3.5, 1.3, 0, 0, TAU); ctx.fill();
         ctx.restore();
       }
-      feathers = feathers.filter(f => f.y > -12 && f.y < G);
+      feathers = feathers.filter(f => f.y > -12 && f.y < G && f.x > -20 && f.x < W + 20);
       for (const c of columns) {
         c.life -= dt * 0.7;
         if (c.life <= 0) continue;
@@ -6757,14 +7308,29 @@ rhymeOf("Night veil", "Dawn veil", "the same closing circle made of light — th
   };
 });
 
-rhymeOf("Butterflies", "Moths", "the same companions after dark — grey wings, drawn to a lamp overhead", function (u) {
+rhymeOf("Butterflies", "Moths", "the same steering companions after dark — grey wings that beat slower, drawn to a lamp overhead and circling it too tightly to ever settle", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: hues → moth-grey · target cube → a lamp above it · flap ÷1.5
+  // dials moved: hues → moth-grey · the fancied spot orbits a lamp, not the hero (k 6 → 8: keener) · flapBase 8 → 5, flapPer 0.25 → 0.15 (÷1.5)
+  const D = { k: 8,                  // the steering force per px of distance to the fancied spot
+              drag: 2.2,             // air drag per unit speed
+              flutter: 60,           // the random force that keeps them from ever flying straight, px/s²
+              scatter: 140,          // the press's outward shove, px/s
+              up: 60,                // and its upward part, px/s
+              flapBase: 5,           // wingbeat rate at rest, rad/s
+              flapPer: 0.15,         // extra wingbeat rate per px/s of speed, rad/s
+              wander: 1.4,           // how fast the fancied spot circles the lamp, rad/s
+              forgive: 0.5 };        // how fast the panic fades, per second
   const flies = [];
   for (let i = 0; i < 3; i++)
-    flies.push({ x: rand(0, 200), y: rand(20, 80), ph: rand(0, 9), panic: 0 });
+    flies.push({ x: rand(0, 200), y: rand(20, 80), vx: 0, vy: 0, ph: rand(0, 9), wa: rand(0, TAU), panic: 0 });
   return {
-    press() { for (const f of flies) f.panic = 1; },
+    press() {
+      for (const f of flies) {
+        f.panic = 1;
+        const dx = f.x - C.x, dy = f.y - (C.y - C.s * 2.2), d = Math.max(1, Math.hypot(dx, dy));
+        f.vx += dx / d * D.scatter; f.vy += dy / d * D.scatter - D.up;
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       const lx = C.x, ly = C.y - C.s * 2.2;              // the lamp they love
@@ -6772,15 +7338,22 @@ rhymeOf("Butterflies", "Moths", "the same companions after dark — grey wings, 
       glow(lx, ly, 8, "rgba(255,220,150,0.7)");
       ctx.globalCompositeOperation = "source-over";
       for (const f of flies) {
-        f.panic = Math.max(0, f.panic - dt * 0.5);
-        const tx = lx + Math.sin(t * 1.4 + f.ph * 3) * 16;
-        const ty = ly + Math.cos(t * 1.8 + f.ph) * 10;
-        const chase = f.panic > 0 ? -3 : 2.2;
-        f.x += (tx - f.x) * dt * chase + Math.sin(t * 7 + f.ph) * 10 * dt;
-        f.y += (ty - f.y) * dt * chase - f.panic * 40 * dt;
-        f.y = Math.max(8, Math.min(G - 8, f.y));
-        f.x = Math.max(4, Math.min(W - 4, f.x));
-        const flap = Math.sin(t * 10 + f.ph) * 0.8;
+        f.panic = Math.max(0, f.panic - dt * D.forgive);
+        f.wa += D.wander * dt;
+        const tx = lx + Math.cos(f.wa) * 16;
+        const ty = ly + Math.sin(f.wa * 1.3 + f.ph) * 10;
+        const seek = f.panic > 0 ? 0 : D.k;
+        f.vx += (seek * (tx - f.x) - D.drag * f.vx + (Math.random() - 0.5) * 2 * D.flutter) * dt;
+        f.vy += (seek * (ty - f.y) - D.drag * f.vy + (Math.random() - 0.5) * 2 * D.flutter) * dt;
+        const sp = Math.hypot(f.vx, f.vy);
+        if (sp > 400) { f.vx *= 400 / sp; f.vy *= 400 / sp; }
+        f.x += f.vx * dt; f.y += f.vy * dt;
+        if (f.y < 8) { f.y = 8; f.vy = Math.abs(f.vy) * 0.5; }
+        if (f.y > G - 8) { f.y = G - 8; f.vy = -Math.abs(f.vy) * 0.5; }
+        if (f.x < 4) { f.x = 4; f.vx = Math.abs(f.vx) * 0.5; }
+        if (f.x > W - 4) { f.x = W - 4; f.vx = -Math.abs(f.vx) * 0.5; }
+        f.ph += (D.flapBase + sp * D.flapPer) * dt;
+        const flap = Math.sin(f.ph) * 0.8;
         for (const side of [-1, 1]) {
           ctx.fillStyle = "rgba(170,165,155,0.85)";
           ctx.beginPath();
@@ -6881,34 +7454,62 @@ rhymeOf("Fireflies at dusk", "Embers at dusk", "the same gathering lights, blown
   };
 });
 
-rhymeOf("Hero's cape", "Tattered cape", "the same chasing ribbon after many battles — darker, slower, gap-toothed", function (u) {
+rhymeOf("Hero's cape", "Tattered cape", "the same hinged cape after many battles — heavier cloth, so it answers slower and swings longer; darker, gap-toothed", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: colour crimson→worn slate · follow 14 → 8 (heavier) · torn gaps drawn
-  const pts = [];
-  for (let i = 0; i < 9; i++) pts.push({ x: 0, y: 0 });
-  let gust = 0;
+  // dials moved: colour crimson→worn slate · k 90 → 45 (heavier: half the stiffness per inertia) · tipdamp 0.45 → 0.6 (frayed cloth) · torn gaps drawn
+  const D = { joints: 7,             // segments in the cape
+              len: 0.3,              // each segment's length, in cube-sides
+              k: 45,                 // the root spring's stiffness — heavy, worn cloth
+              damp: 0.5,             // the root's damping as a fraction of critical
+              tip: 1.3,              // each joint's k as a multiple of the one below
+              tipdamp: 0.6,          // a joint's damping as a fraction of ITS OWN critical
+              bend: 0.9,             // the most a joint can fold past the one above, radians
+              stream: 0.8,           // how far 40 px/s of travel streams the cape back, radians
+              hang: 0.15,            // the resting lean behind it, radians
+              inertia: 1,            // how much of the clasp's acceleration the cloth feels
+              gustLean: 0.9,         // how far the gust pushes the rest angle, radians
+              kick: 5,               // the press's impulse on every joint, rad/s
+              turb: 3 };             // turbulence: random torque kicks, rad/s²
+  const J = D.joints;
+  const th = new Float32Array(J), om = new Float32Array(J);
+  let gust = 0, prevVx = C.vx;
   return {
-    press() { gust = 1.4; },
+    press() {
+      gust = 1.4;
+      for (let j = 0; j < J; j++) om[j] += -C.face * D.kick;
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
-      const ax = C.x - C.face * C.s * 0.45;
-      const ay = C.y - C.s * 0.9 - C.hop;
-      pts[0].x = ax; pts[0].y = ay;
-      const wind = 1 + gust * 2.4 + Math.min(1, Math.abs(C.vx) / 40);
-      for (let i = 1; i < pts.length; i++) {
-        const tx = pts[i - 1].x - C.face * 5 * wind;
-        const ty = pts[i - 1].y + 3 + Math.sin(t * (4 + wind) + i) * (1.5 + gust * 2);
-        pts[i].x += (tx - pts[i].x) * Math.min(1, dt * 8);
-        pts[i].y += (ty - pts[i].y) * Math.min(1, dt * 8);
+      const cx = C.x - C.face * C.s * 0.45;
+      const cy = C.y - C.s * 0.9 - C.hop, L = C.s * D.len;
+      const ax = Math.max(-2000, Math.min(2000, (C.vx - prevVx) / Math.max(dt, 1e-4)));
+      prevVx = C.vx;
+      const rest = -C.face * Math.min(1.4, D.hang + Math.abs(C.vx) / 40 * D.stream + gust * D.gustLean);
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      for (let s = 0; s < sub; s++) {
+        let above = rest, kj = D.k, dj = D.damp * 2 * Math.sqrt(D.k);
+        for (let j = 0; j < J; j++) {
+          if (j > 0) { kj *= D.tip; dj = D.tipdamp * 2 * Math.sqrt(kj); }
+          om[j] += (kj * (above - th[j]) - dj * om[j] - D.inertia * ax / L * Math.cos(th[j])
+                    + (Math.random() - 0.5) * 2 * D.turb * (1 + gust * 2) / Math.sqrt(h)) * h;
+          let a = th[j] + om[j] * h;
+          if (j > 0) a = Math.max(above - D.bend, Math.min(above + D.bend, a));
+          th[j] = Math.max(-2.6, Math.min(2.6, a));
+          above = th[j];
+        }
       }
-      for (let i = 1; i < pts.length; i++) {             // torn: every third segment missing
-        if (i % 3 === 0) continue;
-        ctx.strokeStyle = "rgba(90,95,110,0.9)";
-        ctx.lineWidth = 5 - i * 0.3;
-        ctx.beginPath();
-        ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
-        ctx.lineTo(pts[i].x, pts[i].y);
-        ctx.stroke();
+      let px = cx, py = cy;
+      for (let j = 0; j < J; j++) {                      // torn: every third segment missing
+        const a = th[j], nx = px + Math.sin(a) * L, ny = py + Math.cos(a) * L;
+        if (j % 3 !== 2) {
+          ctx.strokeStyle = "rgba(90,95,110,0.9)";
+          ctx.lineWidth = 5 + j * 0.6;
+          ctx.beginPath();
+          ctx.moveTo(px, py);
+          ctx.lineTo(nx, ny);
+          ctx.stroke();
+        }
+        px = nx; py = ny;
       }
       drawCube();
       gust = Math.max(0, gust - dt);
