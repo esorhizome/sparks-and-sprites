@@ -501,7 +501,7 @@ def("N", "Nightfall", "sky", "a full day in 14 seconds: five palettes on a circu
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
-      var k = ((t + offset) / D.day) % 1, n = D.tops.length;
+      var k = (((t + offset) / D.day) % 1 + 1) % 1, n = D.tops.length;   // wrapped positive: a press can set the offset negative
       var seg = k * n, i = Math.floor(seg) % n, f = seg - Math.floor(seg);
       var top = u.mix(D.tops[i], D.tops[(i + 1) % n], f), hor = u.mix(D.hors[i], D.hors[(i + 1) % n], f);
       var GY = u.H * 0.74;
@@ -811,7 +811,7 @@ rhymeOf("Nightfall", "Fast-forward night", "the same day in six seconds instead 
   return { drag: true,                                 // press is continuous — dragging scrubs it
     frame: function (dt, t) {
       lastT = t;
-      var k = ((t + offset) / D.day) % 1, n = D.tops.length;
+      var k = (((t + offset) / D.day) % 1 + 1) % 1, n = D.tops.length;   // wrapped positive: a press can set the offset negative
       var seg = k * n, i = Math.floor(seg) % n, f = seg - Math.floor(seg);
       var top = u.mix(D.tops[i], D.tops[(i + 1) % n], f), hor = u.mix(D.hors[i], D.hors[(i + 1) % n], f);
       var GY = u.H * 0.74;
