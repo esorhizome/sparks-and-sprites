@@ -21,15 +21,20 @@ static func init(b: Dictionary) -> void:
 		b.frost = []
 	if b.id == "boomerang":
 		b.glaives = []              # two flights instead of one; the dials are the Base's
+	if b.id == "homing":
+		b.D.merge({ "speed": 264.0 }, true)   # dial: speed ×1.2 — the turn cap stays, so the swing across the line widens
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
 	match b.id:
 		"homing":
 			# dial: three homers → two
+			var D: Dictionary = b.D
 			for i in 2:
+				var a: float = i * PI
 				b.parts.append({ "kind": "homer", "pos": Vector2(c.x, c.y - c.s * 0.5),
-					"a": i * PI, "spiral": 0.6, "dir": c.face, "life": 2.0 })
+					"vel": Vector2(cos(a) * 0.4, sin(a) * 0.3) * float(D.speed),
+					"a": a, "spiral": float(D.peel), "dir": c.face, "life": 2.0 })
 		"boomerang":
 			# dials: glaive count 1 → 2 · loft +40 → ±40 (mirrored loops) · spin ±16 (opposite)
 			if b.glaives.is_empty():

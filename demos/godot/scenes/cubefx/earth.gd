@@ -8,11 +8,11 @@ const BLURB := "rocks thrown, vines called, flowers left behind"
 const DEFS := [
 	{ "id": "rock_throw", "name": "Rock throw", "hint": "a pebble orbits, waiting; press to lob the real boulder" },
 	{ "id": "vine_snare", "name": "Vine snare", "hint": "press: three flat vines where you click get kicked upright — chains that whip past vertical, settle, lie back down" },
-	{ "id": "leaf_whirl", "name": "Leaf whirl", "hint": "leaves orbit like a green satellite belt; press for the storm" },
+	{ "id": "leaf_whirl", "name": "Leaf whirl", "hint": "leaves orbit on a radial spring; press kicks them out, the orbit reels them back" },
 	{ "id": "boulder_shield", "name": "Boulder shield", "hint": "press: four rocks rise and orbit as armour for a while" },
 	{ "id": "bloom_trail", "name": "Bloom trail", "hint": "flowers open in its footsteps; press for a whole garden" },
 	{ "id": "sand_kick", "name": "Sand kick", "hint": "press: a spray of sand, straight at the opponent's eyes" },
-	{ "id": "quake_slam", "name": "Quake slam", "hint": "press: fists down — a hump of ground ROLLS away from it" },
+	{ "id": "quake_slam", "name": "Quake slam", "hint": "press: fists down — a hump ROLLS away and throws the hero off its crest" },
 	{ "id": "thorn_wall", "name": "Thorn wall", "hint": "press: a fence of thorns rises ahead, holds, and sinks" },
 ]
 
@@ -41,15 +41,42 @@ static func init(b: Dictionary) -> void:
 				"splay": 0.08 }              # the outer vines' resting lean away from the middle one, radians
 		"leaf_whirl":
 			b.leaves = []
+			b.D = {
+				"k": 30.0,        # the orbit spring: pull back toward the resting radius, per px of stretch (per unit mass)
+				"damp": 0.25,     # radial damping as a fraction of critical — under 1, so a kicked leaf overshoots on the way home
+				"drive": 1.2,     # the motor: how fast the tangential speed chases its resting value, per second
+				"kick": 8.0,      # the press: outward impulse, in cube-sides per second
+				"spinUp": 3.0,    # the press: extra tangential speed, as a multiple of the resting orbit speed
+				"flat": 0.55,     # the orbit plane seen nearly edge-on: y is squashed by this
+				"lift": 0.5 }     # the belt's height above the feet, in cube-sides
 			for i in 8:
-				b.leaves.append({ "a": randf_range(0, TAU), "r": randf_range(0.9, 1.3),
-					"v": randf_range(1.0, 1.8), "burst": 0.0 })
+				var a := randf_range(0, TAU)
+				var rr := randf_range(0.9, 1.3)
+				var w := randf_range(1.0, 1.8)
+				var r0: float = b.cub.s * rr
+				b.leaves.append({ "p": Vector2(cos(a), sin(a)) * r0,              # in the orbit plane, about the chest
+					"v": Vector2(-sin(a), cos(a)) * w * r0,                    # already on its circle
+					"R": rr, "w": w })                                          # resting radius (cube-sides) and angular speed (rad/s)
 		"boulder_shield":
 			b.armour = 0.0
 		"bloom_trail":
 			b.blooms = []
 			b.last_x = b.cub.x
 			b.travelled = 0.0
+		"quake_slam":
+			b.hy = b.G            # the hero's feet: a height and a velocity of their own
+			b.hvy = 0.0
+			b.sq = 0.0
+			b.D = {
+				"amp": 12.0,      # the hump's height, px
+				"width": 30.0,    # half the hump's footprint, px
+				"speed": 120.0,   # the hump's travel, px/s
+				"rise": 16.0,     # per second: how fast the hump swells at birth (full in 1/rise s)
+				"fade": 0.8,      # per second: the hump's life ticks down at this rate
+				"g": 620.0,       # gravity on the hero, px/s²
+				"k": 900.0,       # the contact spring: how hard the ground pushes back, per px the feet sink in
+				"damp": 0.5,      # its damping as a fraction of critical
+				"sqRate": 0.05 }  # squash drawn per px of sink — the same spring, made visible
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -74,8 +101,12 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			b.parts.append({ "kind": "snare", "x": clampf(pos.x, r.position.x + 10, r.position.x + r.size.x - 10),
 				"life": float(D.life), "th": th, "om": om })
 		"leaf_whirl":
-			for l in b.leaves:
-				l.burst = 1.0
+			var D: Dictionary = b.D
+			for l in b.leaves:          # a radial kick plus a spin-up — velocity, never position
+				var p: Vector2 = l.p
+				var u: Vector2 = p / maxf(0.001, p.length())
+				var boost: float = float(l.w) * c.s * float(l.R) * float(D.spinUp)
+				l.v += u * float(D.kick) * c.s + Vector2(-u.y, u.x) * boost
 		"boulder_shield":
 			b.armour = 3.0
 		"bloom_trail":
@@ -88,7 +119,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 				b.parts.append({ "kind": "grain", "pos": Vector2(c.x + c.face * c.s * 0.4, b.G - 2.0),
 					"vel": Vector2(c.face * randf_range(70, 180), randf_range(-110, -30)), "life": 1.0 })
 		"quake_slam":
-			b.parts.append({ "kind": "hump", "x": c.x, "dir": c.face, "life": 1.0 })
+			b.parts.append({ "kind": "hump", "x": c.x, "dir": c.face, "life": 1.0, "age": 0.0 })
 		"thorn_wall":
 			b.parts.append({ "kind": "wall", "x": c.x + c.face * c.s * 1.8, "life": 2.2 })
 
@@ -152,9 +183,32 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 							below = th[i]
 			b.parts = b.parts.filter(func(p): return p.life > -0.4)
 		"leaf_whirl":
+			# each leaf is a point mass in the orbit plane with a velocity of its own.
+			# two forces hold the belt: a SPRING on the radius (toward the resting
+			# radius, not the centre — a leaf at rest feels nothing) and a MOTOR
+			# nudging the tangential speed toward its resting value. the press injects
+			# velocity; the spring reels the leaf back and, under-damped, overshoots —
+			# and the faster spin widens the orbit by itself, because a central spring
+			# must stretch further to bend a faster path (v²/r = k·Δr)
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))   # substep so a coarse frame stays stable
+			var h := dt / float(sub)
+			var k: float = D.k
+			var damp: float = float(D.damp) * 2.0 * sqrt(k)
 			for l in b.leaves:
-				l.burst = maxf(0.0, l.burst - dt * 0.7)
-				l.a += l.v * (1.0 + l.burst * 3.0) * dt
+				var R0: float = c.s * float(l.R)
+				var p: Vector2 = l.p
+				var v: Vector2 = l.v
+				for _q in sub:
+					var r: float = maxf(0.001, p.length())
+					var u: Vector2 = p / r
+					var tn := Vector2(-u.y, u.x)
+					var ar: float = -k * (r - R0) - damp * v.dot(u)                  # the spring on the radius, damped
+					var at: float = float(D.drive) * (float(l.w) * R0 - v.dot(tn))   # the motor on the tangential speed
+					v += (u * ar + tn * at) * h
+					p += v * h
+				l.p = p
+				l.v = v
 		"boulder_shield":
 			b.armour = maxf(0.0, b.armour - dt)
 		"bloom_trail":
@@ -178,16 +232,32 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 1.4
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"quake_slam":
+			# _ground_at is a surface, not a rail: the hero's feet have a height and a
+			# velocity of their own, gravity always pulls, and the ground pushes back
+			# ONLY while the feet are below it — a one-sided spring. so a hump swelling
+			# underfoot throws the hero up, the crest rolling on leaves it ballistic,
+			# and it lands on the same spring, whose compression is drawn as the squash
 			var r: Rect2 = b.rect
-			for p in b.parts:
-				p.x += p.dir * 120.0 * dt
-				p.life -= dt * 0.8
-			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.x > r.position.x - 20 and p.x < r.position.x + r.size.x + 20)
-			# the hero rides its own quake
-			var lift := 0.0
-			for p in b.parts:
-				lift = maxf(lift, maxf(0.0, 10.0 - absf(c.x - p.x) * 0.4) * p.life)
-			c.y = b.G - lift
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))   # the contact spring is stiff: substep coarse frames
+			var h := dt / float(sub)
+			var damp: float = float(D.damp) * 2.0 * sqrt(float(D.k))
+			var sink := 0.0
+			for _q in sub:
+				for p in b.parts:                 # the ground moves with the feet, step for step
+					p.x += p.dir * float(D.speed) * h
+					p.age += h
+					p.life -= float(D.fade) * h
+				var gy: float = _ground_at(b, c.x)
+				var a: float = D.g                # gravity, always
+				if b.hy > gy:                     # in contact: the ground pushes back, and only then
+					a += -float(D.k) * (b.hy - gy) - damp * b.hvy
+				b.hvy += a * h
+				b.hy += b.hvy * h
+				sink = maxf(0.0, b.hy - gy)
+			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.x > r.position.x - float(D.width) and p.x < r.position.x + r.size.x + float(D.width))
+			b.sq = minf(0.4, sink * float(D.sqRate))
+			c.y = minf(b.hy, _ground_at(b, c.x))   # the feet are drawn at the surface; the sink-in shows as the squash
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var c: Dictionary = b.cub
@@ -227,10 +297,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					n.draw_polyline(pts, Color(0.35, 0.63, 0.35, clampf(p.life + 0.4, 0.0, 1.0)), 3.0)
 		"leaf_whirl":
 			CubeKit.draw_cube(n, b)
+			var D: Dictionary = b.D
 			for l in b.leaves:
-				var rr: float = c.s * l.r * (1.0 + l.burst * 1.4)
-				n.draw_set_transform(Vector2(c.x + cos(l.a) * rr, c.y - c.s * 0.5 + sin(l.a) * rr * 0.55),
-					l.a + t, Vector2(1.0, 0.45))
+				var p: Vector2 = l.p
+				var v: Vector2 = l.v
+				n.draw_set_transform(Vector2(c.x + p.x, c.y - c.s * float(D.lift) + p.y * float(D.flat)),
+					atan2(v.y * float(D.flat), v.x), Vector2(1.0, 0.45))   # a leaf flies along its velocity
 				n.draw_circle(Vector2.ZERO, 4.0, Color(0.47, 0.73, 0.43, 0.85))
 				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"boulder_shield":
@@ -269,13 +341,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var pts := PackedVector2Array()
 			var x: float = r.position.x
 			while x <= r.position.x + r.size.x:
-				var y: float = b.G
-				for p in b.parts:
-					y -= maxf(0.0, 10.0 - absf(x - p.x) * 0.4) * p.life
-				pts.append(Vector2(x, y))
+				pts.append(Vector2(x, _ground_at(b, x)))
 				x += 4.0
 			n.draw_polyline(pts, Color(0.59, 0.57, 0.75, 0.35), 1.0)
-			CubeKit.draw_cube(n, b)
+			_draw_cube_squashed(n, b, b.sq)
 		"thorn_wall":
 			CubeKit.draw_cube(n, b)
 			for i in range(-1, 2):
@@ -290,3 +359,33 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 						Vector2(p.x + i * 9.0 - 4.0, b.G), Vector2(p.x + i * 9.0, b.G - hgt),
 						Vector2(p.x + i * 9.0 + 4.0, b.G)]),
 						Color(0.37, 0.55, 0.31, minf(1.0, p.life)))
+
+## The quake's floor at x: the travelling humps, swelling in at birth, fading with life.
+static func _ground_at(b: Dictionary, x: float) -> float:
+	var D: Dictionary = b.D
+	var y: float = b.G
+	for p in b.parts:
+		y -= maxf(0.0, 1.0 - absf(x - p.x) / float(D.width)) * float(D.amp) * p.life * minf(1.0, p.age * float(D.rise))
+	return y
+
+## The kit's draw_cube has no scale — the landing squash is the same shadow,
+## body, and eyes under a (1 + q, 1 − q) transform about the feet.
+static func _draw_cube_squashed(n: CanvasItem, b: Dictionary, q: float) -> void:
+	var c: Dictionary = b.cub
+	if absf(q) < 0.005:
+		CubeKit.draw_cube(n, b)
+		return
+	if c.alpha <= 0.01:
+		return
+	var s: float = c.s
+	n.draw_set_transform(Vector2(c.x, b.G + 2.0), 0.0, Vector2(1.0 + q, 0.28))
+	n.draw_circle(Vector2.ZERO, s * 0.5, Color(0, 0, 0, 0.35 * c.alpha))
+	n.draw_set_transform(Vector2(c.x, c.y - c.hop), c.lean + c.spin, Vector2(1.0 + q, 1.0 - q))
+	var body: Color = c.tint if c.tint != null else Color(0.29, 0.263, 0.44)
+	body.a *= c.alpha
+	n.draw_rect(Rect2(-s / 2.0, -s, s, s), body)
+	n.draw_rect(Rect2(-s / 2.0, -s, s, s), Color(0.75, 0.73, 0.88, 0.7 * c.alpha), false, 1.5)
+	var ex: float = c.face * s * 0.13
+	n.draw_rect(Rect2(ex - s * 0.17 - 1.2, -s * 0.68, 2.4, 4.0), Color(0.94, 0.93, 1.0, c.alpha))
+	n.draw_rect(Rect2(ex + s * 0.17 - 1.2, -s * 0.68, 2.4, 4.0), Color(0.94, 0.93, 1.0, c.alpha))
+	n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

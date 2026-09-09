@@ -22,6 +22,12 @@ static func init(b: Dictionary) -> void:
 		"cape":
 			# dials: k 90 → 45 (heavier: half the stiffness per inertia) · tipdamp 0.45 → 0.6 (frayed cloth)
 			b.D.merge({ "k": 45.0, "tipdamp": 0.6 }, true)
+		"petals":
+			# dials: g 60 → 43 (terminal 22 → 16 px/s for the same drag) · wind 14 → 6 · gust ÷2 · a gentler whirl · fewer flakes
+			b.D.merge({ "g": 43.0, "wind": 6.0, "gust": 45.0, "swirl": 120.0, "pull": 80.0, "born": 0.12, "burst": 0.4 }, true)
+		"fireflies":
+			# dials: home → a campfire on the floor · rise 0 → 36 (buoyancy) · attractY 1 → 0 (nothing pulls them back down)
+			b.D.merge({ "fire": true, "rise": 36.0, "attractY": 0.0 }, true)
 		"stage_rain":
 			b.pile = 0.0
 
@@ -94,30 +100,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.pos.x = clampf(p.pos.x, r.position.x + 8, r.position.x + r.size.x - 8)
 			while b.parts.size() > 9:
 				b.parts.pop_front()
-		"petals":
-			# dials: drift 14 → 4 sideways, fall 22 → 12 — first snow is shy
-			b.press_v = maxf(0.0, b.press_v - dt)
-			if randf() < 0.12 + (0.4 if b.press_v > 0.0 else 0.0):
-				b.parts.append({ "pos": Vector2(randf_range(r.position.x - 10, r.position.x + r.size.x), r.position.y),
-					"ph": randf_range(0, 9), "rot": randf_range(0, TAU) })
-			for p in b.parts:
-				if b.press_v > 0.0:
-					var ctr := Vector2(c.x, c.y - c.s)
-					var d: Vector2 = p.pos - ctr
-					var a: float = d.angle() + dt * 4.0
-					p.pos = ctr + Vector2(cos(a), sin(a)) * d.length() * (1.0 - dt * 0.3)
-				else:
-					p.pos += Vector2(4.0 + sin(t * 2.0 + p.ph) * 6.0, 12.0) * dt
-				p.rot += dt * 1.2
-			b.parts = b.parts.filter(func(p): return p.pos.y < b.G and p.pos.x < r.position.x + r.size.x + 14.0)
-		"fireflies":
-			# dial: the gathering point is a campfire on the floor — they RISE off it
-			for f in b.flies:
-				var fire := Vector2(r.get_center().x, b.G - 4.0)
-				f.pos.x += (fire.x + sin(f.wx * 3.0) * c.s * 1.6 - f.pos.x) * dt * 0.4 + sin(t + f.wx) * 10.0 * dt
-				f.pos.y += -14.0 * dt + cos(t * 1.3 + f.wx) * 8.0 * dt
-				if f.pos.y < r.position.y + 10.0:
-					f.pos = fire + Vector2(randf_range(-8, 8), randf_range(-4, 0))
 		"stage_rain":
 			# dials: fall 230 → 45 · flakes SETTLE on the head instead of splashing
 			b.press_v = maxf(0.0, b.press_v - dt)

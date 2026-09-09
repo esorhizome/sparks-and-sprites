@@ -24,6 +24,12 @@ static func init(b: Dictionary) -> void:
 		"water_whip":
 			# dials: k 250 → 120 and hold 0.22 → 0.44 (a slower arm, half speed) · tipdamp 0.45 → 0.5 (woodier)
 			b.D.merge({ "k": 120.0, "hold": 0.44, "tipdamp": 0.5 }, true)
+		"geyser":
+			# dials: height 2.8 → 1.4 · rate 40 → 20 and size ×1.4 (fewer, fatter blobs) · run 1.4 → 2 · spread 18 → 10
+			b.D.merge({ "height": 1.4, "rate": 20.0, "size": 1.4, "run": 2.0, "spread": 10.0 }, true)
+		"tidal_push":
+			# dials: speed 150 → 70 · height ×1.5 · fade 0.55 → 0.3 · steepen 1.2 → 0.6 (it breaks later, further out) · foam gravity 160 → 120
+			b.D.merge({ "speed": 70.0, "height": 1.95, "fade": 0.3, "steepen": 0.6, "foamG": 120.0 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -96,24 +102,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if p.pos.y >= b.G:
 					p.pos.y = 1e9
 			b.parts = b.parts.filter(func(p): return p.pos.y < 1e8)
-		"geyser":
-			# dial: eruption lingers (decay 0.7 → 0.35) — the plop pays double
-			var r: Rect2 = b.rect
-			b.gx = r.get_center().x + sin(t * 0.3 + 2.0) * r.size.x * 0.3
-			for p in b.parts:
-				p.life -= dt * 0.35
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"tidal_push":
-			# dial: wave speed 150 → 75, it lives longer
-			for p in b.parts:
-				if p.kind == "wave":
-					p.x += p.dir * 75.0 * dt
-					p.life -= dt * 0.35
-				else:
-					p.pos += p.vel * dt
-					p.vel.y += 160.0 * dt
-					p.life -= dt * 1.6
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		_:
 			Base.tick(b, dt, t)
 
@@ -176,13 +164,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				CubeKit.ellipse(n, Vector2(b.gx + randf_range(-6, 6), b.G - 1.0), randf_range(2.0, 4.0), 2.0,
 					Color(0.63, 0.5, 0.35, 0.6), 1.0, PI, TAU, 8)
 			CubeKit.draw_cube(n, b)
-			for p in b.parts:
-				var hgt: float = sin(minf(1.0, (1.0 - p.life) * 3.0) * PI * 0.5) * c.s * 1.4 * minf(1.0, p.life * 2.0)
-				for i in 8:
-					var q := i / 8.0
-					n.draw_set_transform(Vector2(p.x + sin(t * 8.0 + i) * 2.0, b.G - hgt * q), 0.0, Vector2(1.0, 1.2))
-					n.draw_circle(Vector2.ZERO, 6.5 - q * 2.0, Color(0.55, 0.43, 0.29, 0.6 - q * 0.3))
-					n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var D: Dictionary = b.D
+			for bl in b.blobs:           # the same ballistic blobs, in mud — no crown glow
+				var rr: float = maxf(2.0, (6.0 - bl.age * 2.5) * float(D.size))
+				n.draw_set_transform(bl.pos, 0.0, Vector2(1.0, 1.2))
+				n.draw_circle(Vector2.ZERO, rr, Color(0.55, 0.43, 0.29, 0.7 if bl.vel.y < 0.0 else 0.45))
+				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"mist_veil":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
@@ -190,17 +177,5 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var pos := Vector2(c.x + cos(w.a) * c.s * (0.8 + b.press_v * 0.4),
 					c.y - c.s * 0.5 + sin(w.a) * c.s * 0.5)
 				CubeKit.glow(n, pos, w.r * (0.9 + b.press_v * 0.8), Color(0.1, 0.08, 0.16, 0.22 + b.press_v * 0.2), 2)
-		"tidal_push":
-			CubeKit.stage(n, b)
-			CubeKit.ellipse(n, Vector2(c.x, b.G + 1.0), c.s * (0.8 + sin(t * 2.0) * 0.1), 3.0,
-				Color(0.51, 0.75, 0.92, 0.35), 1.5, PI, TAU, 10)
-			CubeKit.draw_cube(n, b)
-			for p in b.parts:
-				if p.kind != "wave":
-					continue
-				var hgt: float = c.s * 1.95 * minf(1.0, p.life * 1.6)   # half again the height
-				for k in 4:
-					CubeKit.ellipse(n, Vector2(p.x - p.dir * k * 5.0, b.G), 14.0 + k * 4.0,
-						maxf(0.5, hgt - k * 5.0), Color(0.47, 0.75, 0.94, (0.6 - k * 0.12) * p.life), 3.0, PI, TAU, 12)
 		_:
 			Base.draw(n, b, t)

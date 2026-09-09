@@ -8,7 +8,7 @@ const BLURB := "orbs, beams, boomerangs, and charged shots"
 const DEFS := [
 	{ "id": "energy_ball", "name": "Energy ball", "hint": "a palm-flicker while it waits; press to throw the classic orb" },
 	{ "id": "beam", "name": "Beam blast", "hint": "press: the full-width beam, with charge motes while it idles" },
-	{ "id": "homing", "name": "Homing orbs", "hint": "three orbs idle in orbit; press: they spiral out, then chase" },
+	{ "id": "homing", "name": "Homing orbs", "hint": "three orbs idle in orbit; press: they peel out, then STEER — overshooting the line" },
 	{ "id": "boomerang", "name": "Boomerang", "hint": "press: the glaive leaves with a velocity and a pull back to the hand — it slows, hangs, comes home" },
 	{ "id": "laser_sight", "name": "Laser sight", "hint": "a thin aiming line flickers ahead; press for the railgun crack" },
 	{ "id": "charge_shot", "name": "Charge shot", "hint": "the orb at its palm GROWS while you wait; press to fire it" },
@@ -20,6 +20,13 @@ static func init(b: Dictionary) -> void:
 	b.press_v = 0.0
 	b.parts = []
 	match b.id:
+		"homing":
+			b.D = {
+				"speed": 220.0,   # cruising speed, px/s — steering may only bend this, never add to it
+				"turn": 900.0,    # the most steering acceleration an orb can muster, px/s² — its tightest turn radius is speed²/turn
+				"look": 30.0,     # the point it aims for sits this far ahead on the line, px — shorter aims tighter and wobbles longer
+				"peel": 0.6,      # seconds spent spiralling away before the chase
+				"rate": 9.0 }     # how fast the peel's heading turns, rad/s
 		"boomerang":
 			# the old flight was reach = sin(kπ): a timer wearing a curve. now the
 			# press gives the glaive a velocity and a lateral pull — a spring toward
@@ -56,9 +63,12 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 		"beam", "laser_sight":
 			b.press_v = 0.8 if b.id == "beam" else 1.0
 		"homing":
+			var D: Dictionary = b.D
 			for i in 3:
+				var a: float = i / 3.0 * TAU
 				b.parts.append({ "kind": "homer", "pos": Vector2(c.x, c.y - c.s * 0.5),
-					"a": i / 3.0 * TAU, "spiral": 0.6, "dir": c.face, "life": 2.0 })
+					"vel": Vector2(cos(a) * 0.4, sin(a) * 0.3) * float(D.speed),
+					"a": a, "spiral": float(D.peel), "dir": c.face, "life": 2.0 })
 		"boomerang":
 			if not b.flying:
 				var D: Dictionary = b.D
@@ -100,14 +110,33 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.press_v > 0.0:
 				c.lean = -c.face * 0.12
 		"homing":
+			# an orb has a velocity and a steering budget, nothing else. it asks for a
+			# velocity toward where it wants to be and the steering force is the
+			# difference, CAPPED — a projectile that can only bend its path so hard.
+			# the peel wants a heading that keeps turning; the chase wants a point a
+			# little ahead on the line. coming off the peel it crosses the line
+			# before it can level out, then swings back: the wobble is the turn radius
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var speed: float = D.speed
+			var line_y: float = c.y - c.s * 0.5           # the chase line: chest height
 			for p in b.parts:
-				if p.spiral > 0.0:
-					p.spiral -= dt
-					p.a += 9.0 * dt
-					p.pos += Vector2(cos(p.a) * 90.0, sin(p.a) * 60.0) * dt
-				else:
-					p.pos.x += p.dir * 220.0 * dt
-					p.pos.y += (c.y - c.s * 0.5 - p.pos.y) * dt * 2.0
+				p.spiral -= dt
+				var pos: Vector2 = p.pos
+				var vel: Vector2 = p.vel
+				for _q in sub:
+					var want: Vector2
+					if p.spiral > 0.0:                    # phase 1: a heading that keeps turning — the peel
+						p.a += float(D.rate) * h
+						want = Vector2(cos(p.a) * 0.4, sin(p.a) * 0.3) * speed
+					else:                                 # phase 2: aim at a point ahead on the line
+						want = Vector2(p.dir * float(D.look), line_y - pos.y).normalized() * speed
+					var steer: Vector2 = (want - vel).limit_length(float(D.turn))   # wanted minus have, capped
+					vel += steer * h
+					pos += vel * h
+				p.pos = pos
+				p.vel = vel
 				p.life -= dt
 			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.pos.x > r.position.x - 20 and p.pos.x < r.position.x + r.size.x + 20)
 		"boomerang":

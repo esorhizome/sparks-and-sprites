@@ -15,8 +15,15 @@ const RHYMES := {
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
-	if b.id == "vanish":
-		b.flash = 0.0
+	match b.id:
+		"vanish":
+			b.flash = 0.0
+		"grasp":
+			# dials: dirn −1 → +1 (down from the sky) · reach 1.1 → 2.2 · curl 0.9 → 0.35 (fingers open) · shadow → light, with a glow
+			b.D.merge({ "dirn": 1.0, "reach": 2.2, "curl": 0.35, "col": Color(1, 0.96, 0.82), "glow": 0.5 }, true)
+		"black_hole":
+			# dials: Gm 480000 → −120000 (a push, a quarter the strength) · born at the lip, no sideways start · vmax 700 → 300 · nothing swallowed
+			b.D.merge({ "Gm": -120000.0, "tang": 0.0, "vmax": 300.0, "lip": 0.0, "born": 0.25 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -68,22 +75,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.r += 6.0 * dt
 				p.life -= dt * 1.1
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"black_hole":
-			# dial: pull → push, lean AWAY
-			if b.hole != null:
-				var hole: Dictionary = b.hole
-				if randf() < 0.5:
-					b.parts.append({ "pos": hole.pos + Vector2(randf_range(-6, 6), randf_range(-4, 4)), "life": 1.0 })
-				c.lean = signf(c.x - hole.pos.x) * 0.12
-				for p in b.parts:
-					var d: Vector2 = p.pos - hole.pos
-					p.pos += d.normalized() * 70.0 * dt
-					p.life -= dt * 1.3
-				b.parts = b.parts.filter(func(p): return p.life > 0.0)
-				hole.life -= dt
-				if hole.life <= 0.0:
-					b.hole = null
-					b.parts = []
 		_:
 			Base.tick(b, dt, t)
 
@@ -118,22 +109,6 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			n.draw_rect(Rect2(c.s * 0.1, -c.s * 0.66, 2.5, 4.0), Color(1, 0.96, 0.82, alpha))
 			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			CubeKit.draw_cube(n, b)
-		"grasp":
-			CubeKit.stage(n, b)
-			CubeKit.draw_cube(n, b)
-			var r: Rect2 = b.rect
-			for p in b.parts:
-				# dial: the hand reaches DOWN from the sky, in light
-				var down: float = sin(minf(1.0, (1.6 - p.life) * 2.0) * PI * 0.5) * minf(1.0, p.life * 2.0)
-				var top := r.position.y - 2.0
-				var wrist := Vector2(p.x, top + c.s * 1.1 * down)
-				n.draw_line(Vector2(p.x, top), wrist, Color(1, 0.96, 0.82, minf(1.0, p.life * 1.2)), 5.0)
-				for f in range(-2, 3):
-					CubeKit.qcurve(n, wrist,
-						Vector2(p.x + f * 5.0, top + c.s * 1.4 * down),
-						Vector2(p.x + f * 6.0, top + c.s * 1.25 * down + sin(t * 6.0 + f) * 2.0),
-						Color(1, 0.94, 0.75, minf(1.0, p.life * 1.2)), 2.5)
-				CubeKit.glow(n, wrist, 8.0, Color(1, 0.96, 0.82, minf(1.0, p.life) * 0.5), 2)
 		"dark_aura":
 			CubeKit.stage(n, b)
 			for p in b.parts:
@@ -150,8 +125,9 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			CubeKit.draw_cube(n, b)
 			if b.hole != null:
 				var hole: Dictionary = b.hole
+				var streak: float = b.D.streak
 				for p in b.parts:
-					n.draw_rect(Rect2(p.pos, Vector2(1.8, 1.8)), Color(1, 0.9, 0.63, p.life * 0.8))
+					n.draw_line(p.pos, p.pos - p.vel * streak, Color(1, 0.9, 0.63, p.life * 0.8), 1.5)
 				CubeKit.glow(n, hole.pos, 12.0, Color(1, 0.92, 0.71, 0.9), 3)
 				CubeKit.ellipse(n, hole.pos, 11.0, 7.5, Color(1, 0.86, 0.47, 0.8), 1.5)
 		"veil":

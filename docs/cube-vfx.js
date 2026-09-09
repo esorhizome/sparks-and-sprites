@@ -639,11 +639,24 @@ def("Water whip", "water", "a ten-joint chain hangs from its fist; press swings 
   };
 });
 
-def("Geyser", "water", "the ground bubbles somewhere; press to erupt it where you click", function (u) {
+def("Geyser", "water", "the ground bubbles somewhere; press to erupt it where you click — a jet of blobs thrown up with real speed, so the crown is exactly where gravity turns them round", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let gx = 0, geysers = [];
+  const D = { height: 2.8,   // the jet's full height, in cube-sides — it sets the launch speed: v0 = √(2·g·height)
+              g: 500,        // gravity on a blob, px/s²
+              rate: 40,      // blobs thrown per second while the jet runs
+              ramp: 0.3,     // seconds for the jet to come up to full speed
+              run: 1.4,      // seconds the eruption lasts
+              spread: 18,    // sideways scatter at the vent, px/s
+              size: 1 };     // blob size multiplier
+  // the column is not drawn — it IS the blobs. each one leaves the vent with
+  // an upward speed (ramping in, dying out with the eruption) and then obeys
+  // gravity alone, so the top of the column is where a blob's rise runs out,
+  // v0²/2g, and the crown spreading and falling back is those same blobs on
+  // the way down. the geyser's life belongs to the emitter; the water outlives
+  // it by one flight.
+  let gx = 0, geysers = [], blobs = [];
   return {
-    press(x) { geysers.push({ x: x || gx, life: 1 }); },
+    press(x) { geysers.push({ x: x || gx, age: 0, emit: 0 }); },
     frame(dt, t) {
       stage();
       gx = W / 2 + Math.sin(t * 0.3 + 2) * W * 0.3;   // the wandering weak spot
@@ -653,20 +666,30 @@ def("Geyser", "water", "the ground bubbles somewhere; press to erupt it where yo
         ctx.beginPath(); ctx.arc(gx + rand(-6, 6), G - 1, rand(1.5, 3), Math.PI, TAU); ctx.stroke();
       }
       tickCube(dt); drawCube();
-      for (const g of geysers) {           // the column: a jet of stacked blobs
-        g.life -= dt * 0.7;
-        if (g.life <= 0) continue;
-        const hgt = Math.sin(Math.min(1, (1 - g.life) * 3) * Math.PI * 0.5) * C.s * 2.8 * Math.min(1, g.life * 2);
-        for (let i = 0; i < 8; i++) {
-          const q = i / 8;
-          ctx.fillStyle = "rgba(140,205,245," + (0.55 - q * 0.3) + ")";
-          ctx.beginPath();
-          ctx.ellipse(g.x + Math.sin(t * 20 + i) * 2, G - hgt * q, 6 - q * 2, 9, 0, 0, TAU);
-          ctx.fill();
+      const v0 = Math.sqrt(2 * D.g * C.s * D.height);   // the launch speed that reaches the full height
+      for (const g of geysers) {
+        g.age += dt;
+        const power = Math.min(1, g.age / D.ramp) * Math.max(0, Math.min(1, (D.run - g.age) * 2));   // ramps in, dies out
+        if (power <= 0) continue;
+        g.emit += dt * D.rate;
+        while (g.emit >= 1) {              // a fixed rate, whatever the frame length
+          g.emit -= 1;
+          blobs.push({ x: g.x + rand(-2, 2), y: G - 1, vx: rand(-D.spread, D.spread),
+                       vy: -v0 * rand(0.85, 1) * power, age: 0 });
         }
-        glow(g.x, G - hgt, 10, "rgba(190,230,250,0.5)");
       }
-      geysers = geysers.filter(g => g.life > 0);
+      geysers = geysers.filter(g => g.age < D.run);
+      let top = null;
+      for (const b of blobs) {             // ballistic: only gravity, then the floor
+        b.vy += D.g * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.age += dt;
+        if (b.y >= G) continue;
+        if (!top || b.y < top.y) top = b;
+        const r = Math.max(1.5, (6 - b.age * 2.5) * D.size);
+        ctx.fillStyle = "rgba(140,205,245," + (b.vy < 0 ? 0.55 : 0.3) + ")";   // rising water is denser than falling spray
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, r, r * 1.5, 0, 0, TAU); ctx.fill();
+      }
+      blobs = blobs.filter(b => b.y < G);
+      if (top) glow(top.x, top.y, 10, "rgba(190,230,250,0.5)");   // the crown: the highest blob, wherever gravity put it
     }
   };
 });
@@ -694,11 +717,34 @@ def("Mist veil", "water", "fog clings to it; press to vanish into the mist a mom
   };
 });
 
-def("Tidal push", "water", "press: a wall of water rolls forward off the stage", function (u) {
+def("Tidal push", "water", "press: a wall of water rolls forward — its face a chain of springs that steepens as it travels, curls past the vertical, and BREAKS into foam off the lip", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { speed: 150,    // the wave's travel, px/s
+              height: 1.3,   // the wall's full height, in cube-sides
+              fade: 0.55,    // per second: the wave's life ticks down at this rate
+              joints: 5,     // the face is a chain of this many segments, toe to lip
+              k: 40,         // the toe segment's spring: stiffness toward its resting lean
+              tip: 1.3,      // each segment up the face is this much stiffer than the one below (lighter water)
+              damp: 0.3,     // the joints' damping as a fraction of their own critical — under 1, so the lip whips past its rest
+              lean: -0.25,   // the toe's resting lean, radians — back, into the wave
+              curl: 0.42,    // each joint's extra forward bend at full steepness, radians
+              steepen: 1.2,  // how fast that bend is asked for, per second — the wave steepens as it runs
+              breakAt: 1.6,  // a lip past this angle from vertical is breaking: it sheds foam
+              foamG: 160 };  // gravity on the foam, px/s²
+  // the wall is a chain of angles like the almanac's grass, stood on its toe:
+  // every segment is a spring toward "the one below, plus a little more
+  // forward", and that "more" ramps up as the wave travels — the steepening
+  // of a wave running into the shallows. because each joint chases the one
+  // below on an UNDER-damped spring the lip lags the body, then whips past
+  // it; once it swings beyond breakAt the wave is breaking, and foam leaves
+  // the lip at the wave's speed and falls under gravity — the same foam this
+  // card always had, now thrown from a real place.
   let waves = [], foam = [];
   return {
-    press() { waves.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, life: 1 }); },
+    press() {
+      waves.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, life: 1, age: 0,
+                   a: new Float32Array(D.joints), om: new Float32Array(D.joints) });   // joint angles from vertical, and their rates
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
       // idle: ankle-high lapping around the cube
@@ -708,24 +754,45 @@ def("Tidal push", "water", "press: a wall of water rolls forward off the stage",
       ctx.ellipse(C.x, G + 1, C.s * (0.8 + Math.sin(t * 2) * 0.1), 3, 0, Math.PI, TAU);
       ctx.stroke();
       drawCube();
-      for (const w of waves) {             // the wall: a moving hump of arcs
-        w.x += w.dir * 150 * dt; w.life -= dt * 0.55;
+      const J = D.joints, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substeps: the lip's spring is the stiffest
+      for (const w of waves) {
+        w.x += w.dir * D.speed * dt; w.life -= dt * D.fade; w.age += dt;
         if (w.life <= 0) continue;
-        const hgt = C.s * 1.3 * Math.min(1, w.life * 1.6);
-        for (let k = 0; k < 4; k++) {
+        const curl = D.curl * Math.min(1, w.age * D.steepen);   // the steepening: what each joint is asked to add
+        for (let q = 0; q < sub; q++) {
+          let below = D.lean, kj = D.k;
+          for (let j = 0; j < J; j++) {                         // each joint chases the one below, plus the curl
+            kj *= D.tip;
+            const dj = D.damp * 2 * Math.sqrt(kj);              // a fraction of THIS joint's critical damping
+            w.om[j] += (kj * (below + curl - w.a[j]) - dj * w.om[j]) * h;
+            w.a[j] = Math.max(-1, Math.min(2.6, w.a[j] + w.om[j] * h));
+            below = w.a[j];
+          }
+        }
+        // walk the chain from the toe: each segment leans its angle forward (in the travel direction)
+        const hgt = C.s * D.height * Math.min(1, w.life * 1.6), seg = hgt / J;
+        const pts = [[w.x, G]];
+        let px = w.x, py = G;
+        for (let j = 0; j < J; j++) { px += w.dir * Math.sin(w.a[j]) * seg; py -= Math.cos(w.a[j]) * seg; pts.push([px, py]); }
+        for (let k = 0; k < 4; k++) {                           // the body: the face repeated back into the wave
           ctx.strokeStyle = "rgba(120,190,240," + (0.6 - k * 0.12) * w.life + ")";
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.ellipse(w.x - w.dir * k * 5, G, 14 + k * 4, Math.max(0.5, hgt - k * 5), 0, Math.PI, TAU);
+          for (let j = 0; j < pts.length; j++) {
+            const x = pts[j][0] - w.dir * k * 5, y = Math.min(G, pts[j][1] + k * 3);
+            if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
           ctx.stroke();
         }
-        if (Math.random() < 0.5)
-          foam.push({ x: w.x + rand(-8, 8), y: G - hgt, vx: w.dir * 40, vy: rand(-40, 0), life: 0.7 });
+        const breaking = w.a[J - 1] > D.breakAt;               // the lip past horizontal: it spills
+        if (Math.random() < (breaking ? 0.9 : 0.2))
+          foam.push({ x: px + rand(-3, 3), y: py, vx: w.dir * (breaking ? D.speed * 0.6 + rand(0, 40) : 40),
+                      vy: breaking ? rand(-30, 30) : rand(-40, 0), life: 0.7 });
       }
       waves = waves.filter(w => w.life > 0);
       for (const f of foam) {
-        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 160 * dt; f.life -= dt * 1.6;
-        if (f.life > 0) { ctx.fillStyle = "rgba(220,240,255," + f.life + ")"; ctx.fillRect(f.x, f.y, 2, 2); }
+        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += D.foamG * dt; f.life -= dt * 1.6;
+        if (f.life > 0) { ctx.fillStyle = "rgba(220,240,255," + f.life + ")"; ctx.fillRect(f.x, Math.min(f.y, G), 2, 2); }
       }
       foam = foam.filter(f => f.life > 0);
     }
@@ -2225,31 +2292,75 @@ def("Parry flash", "impact", "press: the one-frame white flash every fighting ga
   };
 });
 
-def("Knockback", "impact", "press: something hits IT — tumble, skid, and a proud recovery", function (u) {
+def("Knockback", "impact", "press: something hits IT — flung back and off its feet with a spin, one bounce, a skid, a squash on landing, and a wobbling proud recovery", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let tumble = -1, stars = [];
+  const D = { vx: 220,        // the hit: speed away from where it was looking, px/s
+              vy: 180,        // the hit: upward speed, px/s — it leaves its feet
+              spin: 14,       // the hit: angular speed, rad/s — set once by the blow, then only ever damped
+              g: 620,         // gravity, px/s²
+              bounce: 0.35,   // restitution: the fraction of the landing speed that comes back up
+              skid: 0.1,      // ground friction: the fraction of horizontal speed left after one second on the floor
+              airSpin: 0.6,   // the fraction of spin left after a second in the air (nothing up there to stop it)
+              floorSpin: 0.02,   // …and after a second on the floor (the floor stops it)
+              kUp: 80,        // the recovery: a spring that rights it to the nearest upright, rad/s² per radian
+              kSq: 400,       // the landing squash: a stiff, under-damped spring on the body's aspect
+              sqHit: 0.03 };  // squash injected per px/s of landing speed
+  // the hit sets two velocities — one linear, one angular — and never a
+  // position. in the air the cube is ballistic and keeps most of its spin;
+  // meeting the floor faster than a threshold it BOUNCES (restitution), the
+  // spin halves, and the impact speed is injected into a squash spring whose
+  // aspect is drawn as a scale about its feet — its overshoot is the stretch
+  // that follows every squash. on the floor the skid is friction, and a
+  // righting spring pulls the spin to the nearest full turn: under-damped,
+  // so the recovery pose is a wobble, not a snap.
+  let hit = false, air = false, vy = 0, om = 0, sq = 0, sqv = 0, age = 0, stars = [];
   return {
     press() {
-      if (tumble < 0) {
-        tumble = 0;
+      if (!hit) {
+        hit = true; air = true; age = 0;
         C.pace = false;
-        C.vx = -C.face * 220;              // knocked the way it wasn't looking
+        C.vx = -C.face * D.vx;             // knocked the way it wasn't looking…
+        vy = -D.vy; om = -C.face * D.spin; // …and up, and over
         for (let i = 0; i < 5; i++)
           stars.push({ a: rand(0, TAU), life: 1.4 });
       }
     },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (tumble >= 0) {
-        tumble += dt;
-        C.vx *= Math.pow(0.1, dt);         // the skid
-        C.spin = -C.face * Math.min(1, tumble * 2) * TAU;   // the tumble
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the squash spring is stiff: substep coarse frames
+      const dUp = 0.4 * 2 * Math.sqrt(D.kUp), dSq = 0.3 * 2 * Math.sqrt(D.kSq);
+      if (hit) {
+        age += dt;
+        for (let q = 0; q < sub; q++) {
+          if (air) {                       // ballistic, spinning freely
+            vy += D.g * h; C.y += vy * h;
+            om *= Math.pow(D.airSpin, h); C.spin += om * h;
+            if (C.y >= G) {                // the floor
+              C.y = G;
+              sqv += vy * D.sqHit;         // the landing: impact speed into the squash spring
+              if (vy > 90) { vy = -vy * D.bounce; om *= 0.5; }   // fast enough to bounce
+              else { vy = 0; air = false; }
+            }
+          } else {                         // on the floor: friction, and a spring to the nearest way up
+            C.vx *= Math.pow(D.skid, h);
+            om *= Math.pow(D.floorSpin, h);
+            const upright = Math.round(C.spin / TAU) * TAU;
+            om += (D.kUp * (upright - C.spin) - dUp * om) * h;
+            C.spin += om * h;
+          }
+          sqv += (-D.kSq * sq - dSq * sqv) * h;   // the squash rings and settles
+          sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+        }
         C.x = Math.max(C.s, Math.min(W - C.s, C.x));
-        if (tumble > 1.1) {                // the recovery pose
-          tumble = -1; C.spin = 0; C.pace = true;
+        const off = C.spin - Math.round(C.spin / TAU) * TAU;
+        if (age > 3 || (!air && Math.abs(C.vx) < 4 && Math.abs(om) < 0.3 && Math.abs(off) < 0.03)) {
+          hit = false; C.spin = 0; C.vx = 0; C.y = G; C.pace = true;   // the proud recovery
         }
       }
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);   // the squash, about its feet
       drawCube();
+      ctx.restore();
       for (const s of stars) {             // dizzy stars orbit the poor head
         s.a += 5 * dt; s.life -= dt;
         if (s.life > 0) {
@@ -2479,23 +2590,57 @@ def("Vine snare", "earth", "press: three vines lying flat where you click get ki
   };
 });
 
-def("Leaf whirl", "earth", "leaves orbit like a green satellite belt; press for the storm", function (u) {
+def("Leaf whirl", "earth", "leaves orbit like a green satellite belt — a real one, held by a spring on the radius; press for the storm: a kick outward and a spin-up, and the orbit reels them back with an overshoot", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { k: 30,          // the orbit spring: pull back toward the resting radius, per px of stretch (per unit mass)
+              damp: 0.25,     // radial damping as a fraction of critical — under 1, so a kicked leaf overshoots on the way home
+              drive: 1.2,     // the motor: how fast the tangential speed chases its resting value, per second
+              kick: 8,        // the press: outward impulse, in cube-sides per second
+              spinUp: 3,      // the press: extra tangential speed, as a multiple of the resting orbit speed
+              flat: 0.55 };   // the orbit plane seen nearly edge-on: y is squashed by this
+  // each leaf is a point mass in the orbit plane, relative to the cube's
+  // chest, with a velocity of its own. two forces hold the belt: a SPRING on
+  // the radius (toward the resting radius, not the centre — a leaf at rest
+  // feels nothing) and a MOTOR nudging the tangential speed toward its
+  // resting value. the press scales nothing: it injects velocity, an outward
+  // kick and a spin-up. the spring reels the leaf back and, under-damped,
+  // overshoots; and the faster spin widens the orbit on its own, because a
+  // central spring must stretch further to bend a faster path (v²/r = k·Δr)
+  // — the storm's wide belt is centripetal arithmetic, not a dial.
   const leaves = [];
-  for (let i = 0; i < 8; i++)
-    leaves.push({ a: rand(0, TAU), r: rand(0.9, 1.3), v: rand(1, 1.8), burst: 0 });
+  for (let i = 0; i < 8; i++) {
+    const a = rand(0, TAU), R = rand(0.9, 1.3), w = rand(1, 1.8), r0 = C.s * R;
+    leaves.push({ px: Math.cos(a) * r0, py: Math.sin(a) * r0,            // in the orbit plane, about the chest
+                  vx: -Math.sin(a) * w * r0, vy: Math.cos(a) * w * r0,  // already on its circle
+                  R: R, w: w });                                        // resting radius (cube-sides) and angular speed (rad/s)
+  }
   return {
-    press() { for (const l of leaves) l.burst = 1; },
+    press() {
+      for (const l of leaves) {          // a radial kick plus a spin-up — velocity, never position
+        const r = Math.max(1e-3, Math.hypot(l.px, l.py)), ux = l.px / r, uy = l.py / r;
+        const boost = l.w * C.s * l.R * D.spinUp;
+        l.vx += ux * D.kick * C.s - uy * boost;
+        l.vy += uy * D.kick * C.s + ux * boost;
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // substep so a coarse frame stays stable
+      const damp = D.damp * 2 * Math.sqrt(D.k);
       for (const l of leaves) {
-        l.burst = Math.max(0, l.burst - dt * 0.7);
-        l.a += l.v * (1 + l.burst * 3) * dt;
-        const r = C.s * l.r * (1 + l.burst * 1.4);
-        const x = C.x + Math.cos(l.a) * r;
-        const y = C.y - C.s * 0.5 + Math.sin(l.a) * r * 0.55;
+        const R0 = C.s * l.R;
+        for (let q = 0; q < sub; q++) {
+          const r = Math.max(1e-3, Math.hypot(l.px, l.py)), ux = l.px / r, uy = l.py / r;
+          const vr = l.vx * ux + l.vy * uy;            // the velocity split: along the radius…
+          const vt = -l.vx * uy + l.vy * ux;           // …and around it
+          const ar = -D.k * (r - R0) - damp * vr;      // the spring on the radius, damped
+          const at = D.drive * (l.w * R0 - vt);        // the motor on the tangential speed
+          l.vx += (ar * ux - at * uy) * h; l.vy += (ar * uy + at * ux) * h;
+          l.px += l.vx * h; l.py += l.vy * h;
+        }
+        const x = C.x + l.px, y = C.y - C.s * 0.5 + l.py * D.flat;
         ctx.save();
-        ctx.translate(x, y); ctx.rotate(l.a + t);
+        ctx.translate(x, y); ctx.rotate(Math.atan2(l.vy * D.flat, l.vx));   // a leaf flies along its velocity
         ctx.fillStyle = "rgba(120,185,110,0.85)";
         ctx.beginPath(); ctx.ellipse(0, 0, 4, 1.8, 0, 0, TAU); ctx.fill();
         ctx.restore();
@@ -2593,21 +2738,36 @@ def("Sand kick", "earth", "press: a spray of sand, straight at the opponent's ey
   };
 });
 
-def("Quake slam", "earth", "press: fists down — a hump of ground ROLLS away from it", function (u) {
+def("Quake slam", "earth", "press: fists down — a hump of ground ROLLS away, and the hero rides it on a contact spring: thrown off the crest, ballistic, landing with a squash", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  let humps = [];
+  const D = { amp: 12,        // the hump's height, px
+              width: 30,      // half the hump's footprint, px
+              speed: 120,     // the hump's travel, px/s
+              rise: 16,       // per second: how fast the hump swells at birth (full in 1/rise s)
+              fade: 0.8,      // per second: the hump's life ticks down at this rate
+              g: 620,         // gravity on the hero, px/s²
+              k: 900,         // the contact spring: how hard the ground pushes back, per px the feet sink in
+              damp: 0.5,      // its damping as a fraction of critical
+              sqRate: 0.05 }; // squash drawn per px of sink — the same spring, made visible
+  // groundAt(x) is a surface, not a rail. the hero's feet have a height and a
+  // velocity of their own; gravity always pulls, and the ground pushes back
+  // ONLY while the feet are below it — a one-sided spring. so a hump swelling
+  // underfoot compresses that spring and the spring throws the hero up; when
+  // the crest rolls on and the ground drops away faster than gravity can
+  // follow, the hero is simply ballistic, and lands on the same spring, whose
+  // compression on impact is drawn as the squash.
+  let humps = [], hy = G, hvy = 0;
   return {
     press() {
-      humps.push({ x: C.x, dir: C.face, life: 1 });
+      humps.push({ x: C.x, dir: C.face, life: 1, age: 0 });
     },
     frame(dt, t) {
       // draw our own floor line so it can DEFORM
-      const bumps = humps.filter(hh => hh.life > 0);
       const groundAt = function (x) {
         let y = G;
-        for (const hh of bumps) {
+        for (const hh of humps) {
           const d = Math.abs(x - hh.x);
-          y -= Math.max(0, 10 - d * 0.4) * hh.life;    // the travelling hump
+          y -= Math.max(0, 1 - d / D.width) * D.amp * hh.life * Math.min(1, hh.age * D.rise);   // the travelling hump, swelling in
         }
         return y;
       };
@@ -2626,11 +2786,25 @@ def("Quake slam", "earth", "press: fists down — a hump of ground ROLLS away fr
       }
       ctx.stroke();
       tickCube(dt);
-      C.y = groundAt(C.x);                 // the hero rides its own quake
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the contact spring is stiff: substep coarse frames
+      const damp = D.damp * 2 * Math.sqrt(D.k);
+      let sink = 0;
+      for (let q = 0; q < sub; q++) {
+        for (const hh of humps) { hh.x += hh.dir * D.speed * h; hh.age += h; hh.life -= D.fade * h; }   // the ground moves with the feet, step for step
+        const gy = groundAt(C.x);
+        let a = D.g;                                     // gravity, always
+        if (hy > gy) a += -D.k * (hy - gy) - damp * hvy; // in contact: the ground pushes back, and only then
+        hvy += a * h; hy += hvy * h;
+        sink = Math.max(0, hy - gy);
+      }
+      humps = humps.filter(hh => hh.life > 0 && hh.x > -D.width && hh.x < W + D.width);
+      const sq = Math.min(0.4, sink * D.sqRate);
+      C.y = Math.min(hy, groundAt(C.x));   // the feet are drawn at the surface; the sink-in shows as the squash
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       C.y = G;
-      for (const hh of humps) { hh.x += hh.dir * 120 * dt; hh.life -= dt * 0.8; }
-      humps = humps.filter(hh => hh.life > 0 && hh.x > -20 && hh.x < W + 20);
     }
   };
 });
@@ -2730,13 +2904,29 @@ def("Beam blast", "shot", "press: the full-width beam, with charge motes while i
   };
 });
 
-def("Homing orbs", "shot", "three orbs idle in orbit; press and they spiral out, then chase forward", function (u) {
+def("Homing orbs", "shot", "three orbs idle in orbit; press: they peel away, then STEER for the line ahead — a capped turn, so they cross it, swing back, and settle into the chase", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { speed: 240,     // cruising speed, px/s — steering may only bend this, never add to it
+              turn: 900,      // the most steering acceleration an orb can muster, px/s² — its tightest turn radius is speed²/turn
+              look: 30,       // the point it aims for sits this far ahead on the line, px — shorter aims tighter and wobbles longer
+              peel: 0.6,      // seconds spent spiralling away before the chase
+              rate: 9 };      // how fast the peel's heading turns, rad/s
+  // an orb has a velocity and a steering budget, nothing else. its heading is
+  // never assigned: it asks for a velocity toward where it wants to be, and
+  // the steering force is the difference, CAPPED — a projectile that can only
+  // bend its path so hard. phase 1 wants a heading that keeps turning (the
+  // peel); phase 2 wants a point a little ahead on the chase line. because
+  // the cap limits the bend, an orb coming off the peel crosses the line
+  // before it can level out, then swings back: the wobble you watch settle
+  // is the turn radius.
   let flying = [];
   return {
     press() {
-      for (let i = 0; i < 3; i++)
-        flying.push({ x: C.x, y: C.y - C.s * 0.5, a: i / 3 * TAU, spiral: 0.6, dir: C.face, life: 2 });
+      for (let i = 0; i < 3; i++) {
+        const a = i / 3 * TAU;
+        flying.push({ x: C.x, y: C.y - C.s * 0.5, vx: Math.cos(a) * D.speed * 0.4, vy: Math.sin(a) * D.speed * 0.3,
+                      a: a, spiral: D.peel, dir: C.face, life: 2 });
+      }
     },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
@@ -2746,15 +2936,24 @@ def("Homing orbs", "shot", "three orbs idle in orbit; press and they spiral out,
         glow(C.x + Math.cos(a) * C.s * 0.95, C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.55,
              4, "rgba(255,180,220,0.8)");
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const lineY = C.y - C.s * 0.5;       // the chase line: chest height
       for (const f of flying) {
-        if (f.spiral > 0) {                // phase 1: peel away in a spiral
-          f.spiral -= dt;
-          f.a += 9 * dt;
-          f.x += Math.cos(f.a) * 90 * dt;
-          f.y += Math.sin(f.a) * 60 * dt;
-        } else {                           // phase 2: lock forward and GO
-          f.x += f.dir * 240 * dt;
-          f.y += (C.y - C.s * 0.5 - f.y) * dt * 2;
+        f.spiral -= dt;
+        for (let q = 0; q < sub; q++) {
+          let wx, wy;                      // the velocity it wants
+          if (f.spiral > 0) {              // phase 1: a heading that keeps turning — the peel
+            f.a += D.rate * h;
+            wx = Math.cos(f.a) * D.speed * 0.4; wy = Math.sin(f.a) * D.speed * 0.3;
+          } else {                         // phase 2: aim at a point ahead on the line
+            const dx = f.dir * D.look, dy = lineY - f.y, d = Math.max(1e-3, Math.hypot(dx, dy));
+            wx = dx / d * D.speed; wy = dy / d * D.speed;
+          }
+          let sx = wx - f.vx, sy = wy - f.vy;   // the steering: wanted minus have, capped
+          const m = Math.hypot(sx, sy);
+          if (m > D.turn) { sx *= D.turn / m; sy *= D.turn / m; }
+          f.vx += sx * h; f.vy += sy * h;
+          f.x += f.vx * h; f.y += f.vy * h;
         }
         f.life -= dt;
         if (f.life > 0) glow(f.x, f.y, 6, "rgba(255,190,225,0.9)");
@@ -3022,18 +3221,38 @@ def("Freeze stomp", "ice", "press: ice crystallises across the floor from its fe
   };
 });
 
-def("Snow aura", "ice", "its own private snowfall; press for the flurry", function (u) {
+def("Snow aura", "ice", "its own private snowfall — every flake falls at its own terminal speed and rides a wind that lags toward the cube, so the snow bends after it a beat late; press for the flurry", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { g: 90,          // gravity, px/s²
+              dragMin: 2.2,   // the least air drag a flake can have, per second — its terminal speed is g/drag: 41 px/s
+              dragMax: 3.8,   // …and the most: 24 px/s. every flake draws its own between them
+              follow: 0.5,    // the wind wants to carry a flake toward the cube at this fraction of the offset per second
+              lag: 2.5,       // how fast the wind catches up with what it wants, per second — the laggy part
+              turb: 60,       // turbulence: random sideways kicks, px/s²
+              flurry: 1.4 };  // the press: seconds of thickened snowfall
+  // a flake's fall is gravity against drag: they balance at g/drag, and each
+  // flake gets its own drag, so the snowfall has fast heavy flakes and slow
+  // light ones instead of one speed. sideways it is carried by AIR, not by a
+  // rule: each flake's wind is a first-order lag toward "drift to the cube",
+  // so when the hero turns the snow keeps going the old way for a moment and
+  // then bends. turbulence is random kicks the drag soon forgets.
   let flakes = [], flurry = 0;
   return {
-    press() { flurry = 1.4; },
+    press() { flurry = D.flurry; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.25 + (flurry > 0 ? 0.6 : 0))
-        flakes.push({ x: C.x + rand(-C.s * 1.4, C.s * 1.4), y: C.y - C.s * 2, ph: rand(0, 9), life: 1 });
+        flakes.push({ x: C.x + rand(-C.s * 1.4, C.s * 1.4), y: C.y - C.s * 2, vx: 0, vy: 0,
+                      w: 0, drag: rand(D.dragMin, D.dragMax), life: 1 });   // its own wind, its own drag
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of flakes) {
-        f.y += 32 * dt;
-        f.x += Math.sin(t * 2 + f.ph) * 10 * dt + (C.x - f.x) * dt * 0.4;   // it follows, loosely
+        const kick = rand(-1, 1) * D.turb;   // this frame's turbulence
+        for (let q = 0; q < sub; q++) {
+          f.w += ((C.x - f.x) * D.follow - f.w) * D.lag * h;   // the wind: lags toward carrying the flake to the cube
+          f.vx += (f.drag * (f.w - f.vx) + kick) * h;          // the flake is dragged along by its wind
+          f.vy += (D.g - f.drag * f.vy) * h;                   // and falls until drag balances gravity
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
         f.life -= dt * 0.5;
         if (f.life > 0 && f.y < G) {
           ctx.fillStyle = "rgba(235,245,255," + f.life * 0.8 + ")";
@@ -3460,11 +3679,29 @@ def("Shadow clone", "dark", "a dark twin mimics it, a beat late; press sends the
   };
 });
 
-def("Void grasp", "dark", "its shadow writhes; press and a dark hand rises where you click", function (u) {
+def("Void grasp", "dark", "its shadow writhes; press and a dark hand rises where you click — the wrist on a spring that overshoots, the fingers two-joint chains that lag it and curl a beat late", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { k: 60,          // the wrist's rise: spring stiffness toward its target height (per unit mass)
+              damp: 0.4,      // its damping as a fraction of critical — under 1, so the rise overshoots and settles
+              reach: 1.1,     // the target height, in cube-sides
+              hold: 1,        // seconds the hand stays up before it is called back down
+              curl: 0.9,      // how far each finger joint curls, radians, once the hand is up
+              kj: 90,         // the knuckle joint's spring
+              tip: 1.5,       // the tip joint's stiffness as a multiple of the knuckle's — lighter, so quicker
+              jdamp: 0.32,    // the joints' damping as a fraction of their own critical — low: they whip
+              inertia: 0.02,  // how hard the wrist's motion flings the fingers back, rad/s² per px/s
+              dirn: -1 };     // the hand grows this way: −1 up out of the floor, +1 down from the sky
+  // the wrist is one spring: it rises toward reach, overshoots because the
+  // damping is under critical, and is called back when hold runs out. every
+  // finger is a CHAIN of two joints, each a spring toward its curl — and the
+  // curl is only asked for once the hand is up (grip = clamp(rise)), so the
+  // fingers come up straight and close a beat after the wrist arrives. a
+  // moving wrist also flings them: inertia · wrist speed is a torque away
+  // from the motion, which is why they trail on the way up and flare on the
+  // way back down.
   let hands = [];
   return {
-    press(x) { hands.push({ x: x || C.x + C.face * C.s * 2, life: 1.6 }); },
+    press(x) { hands.push({ x: x || C.x + C.face * C.s * 2, age: 0, up: 0, vup: 0, fj: new Float32Array(20) }); },   // per finger: θ knuckle, ω, θ tip, ω
     frame(dt, t) {
       stage(); tickCube(dt);
       // the writhing shadow: its ellipse breathes wrong
@@ -3474,27 +3711,48 @@ def("Void grasp", "dark", "its shadow writhes; press and a dark hand rises where
                   C.s * (0.6 + Math.sin(t * 2.3) * 0.15), 4 + Math.sin(t * 3.7) * 1.5, 0, 0, TAU);
       ctx.fill();
       drawCube();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // the tip joint is stiff: substep coarse frames
+      const damp = D.damp * 2 * Math.sqrt(D.k), kj2 = D.kj * D.tip;
+      const dj1 = D.jdamp * 2 * Math.sqrt(D.kj), dj2 = D.jdamp * 2 * Math.sqrt(kj2);
+      const base = D.dirn < 0 ? G : 0, L1 = C.s * 0.3, L2 = C.s * 0.22;
       for (const hd of hands) {
-        hd.life -= dt * 0.7;
-        if (hd.life <= 0) continue;
-        const up = Math.sin(Math.min(1, (1.6 - hd.life) * 2) * Math.PI * 0.5) * Math.min(1, hd.life * 2);
-        ctx.strokeStyle = "rgba(30,18,50," + Math.min(1, hd.life * 1.5) + ")";
+        hd.age += dt;
+        const target = hd.age < D.hold ? 1 : 0;   // up, then called home
+        const fj = hd.fj;
+        for (let q = 0; q < sub; q++) {
+          hd.vup += (D.k * (target - hd.up) - damp * hd.vup) * h;
+          hd.up += hd.vup * h;
+          const grip = Math.max(0, Math.min(1, hd.up));   // the fingers curl only once the hand is up
+          for (let f = 0; f < 5; f++) {
+            const i = f * 4, out = f < 2 ? -1 : 1;        // which way is "outward" for this finger
+            const fling = D.inertia * hd.vup * out;       // a rising wrist drags the fingertips back, i.e. outward
+            fj[i + 1] += (D.kj * (-out * D.curl * grip - fj[i]) - dj1 * fj[i + 1] + fling) * h;        // the knuckle: toward its curl
+            fj[i] = Math.max(-2.2, Math.min(2.2, fj[i] + fj[i + 1] * h));
+            fj[i + 3] += (kj2 * (-out * D.curl * 1.2 * grip - fj[i + 2]) - dj2 * fj[i + 3] + fling) * h;   // the tip: further, relative to the knuckle
+            fj[i + 2] = Math.max(-2.4, Math.min(2.4, fj[i + 2] + fj[i + 3] * h));
+          }
+        }
+        if (hd.age > 4 || (hd.age > D.hold && hd.up < 0.02 && Math.abs(hd.vup) < 0.05)) { hd.done = true; continue; }
+        const rise = Math.max(0, hd.up), wy = base + D.dirn * C.s * D.reach * rise;
+        const alpha = Math.min(1, rise * 2);
+        ctx.strokeStyle = "rgba(30,18,50," + alpha + ")";
         ctx.lineWidth = 5;
         ctx.lineCap = "round";
         ctx.beginPath();                   // the wrist
-        ctx.moveTo(hd.x, G);
-        ctx.lineTo(hd.x, G - C.s * 1.1 * up);
+        ctx.moveTo(hd.x, base);
+        ctx.lineTo(hd.x, wy);
         ctx.stroke();
         ctx.lineWidth = 2.5;
-        for (let f = -2; f <= 2; f++) {    // five grasping fingers
+        for (let f = 0; f < 5; f++) {      // five grasping fingers: the chain, walked
+          const i = f * 4, a1 = (f - 2) * 0.35 + fj[i], a2 = a1 + fj[i + 2];   // fan angle + knuckle, then + tip
+          const x1 = hd.x + Math.sin(a1) * L1, y1 = wy + D.dirn * Math.cos(a1) * L1;
+          const x2 = x1 + Math.sin(a2) * L2, y2 = y1 + D.dirn * Math.cos(a2) * L2;
           ctx.beginPath();
-          ctx.moveTo(hd.x, G - C.s * 1.1 * up);
-          ctx.quadraticCurveTo(hd.x + f * 5, G - C.s * (1.1 + 0.3) * up,
-                               hd.x + f * 6, G - C.s * (1.1 + 0.15) * up + Math.sin(t * 6 + f) * 2);
+          ctx.moveTo(hd.x, wy); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2);
           ctx.stroke();
         }
       }
-      hands = hands.filter(hd => hd.life > 0);
+      hands = hands.filter(hd => !hd.done);
     }
   };
 });
@@ -3561,25 +3819,54 @@ def("Smoke vanish", "dark", "press: a poof of smoke — and no cube until it cle
   };
 });
 
-def("Black hole", "dark", "press: a void opens ahead — everything leans toward it", function (u) {
+def("Black hole", "dark", "press: a void opens ahead — motes FALL in on 1/d², slowest far out and fastest at the lip, spiralling because they start with a sideways drift", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { Gm: 480000,     // the pull's strength, px³/s² — a = Gm/d², so 300 px/s² at 40 px out
+              dmin: 6,        // the 1/d² is capped below this radius, px — no infinite kick at the centre
+              tang: 0.6,      // a mote's sideways start, as a fraction of the circular-orbit speed there — under 1, so it spirals in, not round
+              drag: 0.4,      // a whisper of drag, per second — the void's medium
+              vmax: 700,      // a speed cap, px/s, for the coarsest frames
+              lip: 8,         // motes closer than this are swallowed, px
+              streak: 0.03 }; // the tail drawn behind a mote is this many seconds of its velocity
+  // gravity, honestly: a mote's acceleration is Gm/d² toward the hole, capped
+  // at dmin so the maths never divides by nothing. born at rest it would fall
+  // straight in; born with a sideways drift smaller than the circular speed
+  // at its radius (tang < 1) it spirals, and because 1/d² grows as it closes
+  // it moves SLOWEST far out and fastest at the lip — the reverse of an
+  // ease-in, and the reason a streak drawn along the velocity reads as infall
+  // rather than a shrink.
   let hole = null, motes = [];
   return {
     press() { if (!hole) hole = { x: C.x + C.face * C.s * 2.4, y: C.y - C.s * 0.7, life: 2 }; },
     frame(dt, t) {
       stage(); tickCube(dt);
       if (hole) {
-        if (Math.random() < 0.5)
-          motes.push({ x: hole.x + rand(-C.s * 2, C.s * 2), y: hole.y + rand(-C.s, C.s), life: 1 });
+        if (Math.random() < 0.5) {
+          const dx = rand(-C.s * 2, C.s * 2), dy = rand(-C.s, C.s), d = Math.max(D.dmin, Math.hypot(dx, dy));
+          const vc = Math.sqrt(D.Gm / d) * D.tang;   // sideways: a fraction of the circular speed at this radius
+          motes.push({ x: hole.x + dx, y: hole.y + dy, vx: -dy / d * vc, vy: dx / d * vc, life: 1 });
+        }
         C.lean = Math.sign(hole.x - C.x) * 0.12;   // even the hero leans in
       }
       drawCube();
       if (hole) {
+        const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;   // 1/d² is stiff near the lip: substep coarse frames
         for (const m of motes) {           // the infall
-          m.x += (hole.x - m.x) * dt * 4;
-          m.y += (hole.y - m.y) * dt * 4;
-          m.life -= dt * 1.3;
-          if (m.life > 0) { ctx.fillStyle = "rgba(170,140,220," + m.life * 0.7 + ")"; ctx.fillRect(m.x, m.y, 1.8, 1.8); }
+          for (let q = 0; q < sub; q++) {
+            const dx = hole.x - m.x, dy = hole.y - m.y, d = Math.max(1e-3, Math.hypot(dx, dy));
+            const dc = Math.max(d, D.dmin), a = D.Gm / (dc * dc);   // the pull, capped
+            m.vx += (dx / d * a - D.drag * m.vx) * h; m.vy += (dy / d * a - D.drag * m.vy) * h;
+            const v = Math.hypot(m.vx, m.vy);
+            if (v > D.vmax) { m.vx *= D.vmax / v; m.vy *= D.vmax / v; }
+            m.x += m.vx * h; m.y += m.vy * h;
+            if (Math.hypot(hole.x - m.x, hole.y - m.y) < D.lip) { m.life = 0; break; }   // swallowed
+          }
+          m.life -= dt * 0.6;
+          if (m.life > 0) {                // a streak along the velocity: the speed made visible
+            ctx.strokeStyle = "rgba(170,140,220," + m.life * 0.7 + ")";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * D.streak, m.y - m.vy * D.streak); ctx.stroke();
+          }
         }
         motes = motes.filter(m => m.life > 0);
         ctx.fillStyle = "#050308";         // the void itself
@@ -3704,53 +3991,99 @@ def("Floating lanterns", "decor", "lanterns climb the night; press to release a 
   };
 });
 
-def("Petal fall", "decor", "cherry petals cross the stage; press for a spiral flurry", function (u) {
+def("Petal fall", "decor", "cherry petals fall through the air — drag sets the speed and a tilt spring rocks them side to side; press: a whirl of wind spins them round the hero, and they fall out of it when it dies", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { g: 60,          // gravity, px/s² — light, because a petal is mostly air
+              drag: 2.7,      // air drag, per second: terminal speed is g/drag ≈ 22 px/s
+              wind: 14,       // the breeze the petals ride, px/s, left to right
+              lift: 0.5,      // a tilted petal slips sideways: lateral push per radian of tilt per px/s of fall
+              kt: 12,         // the tilt spring: the air rights a petal toward flat (stiffness per unit inertia)
+              kd: 0.6,        // the tilt's damping — low, so the rocking rings for a few swings
+              couple: 0.25,   // sideways motion tips a petal into it (the see-saw's other half), rad/s² per px/s
+              gust: 90,       // turbulence: random sideways kicks, px/s² — what keeps the rocking alive
+              swirl: 200,     // the press: tangential push round the hero, px/s²
+              pull: 120 };    // the press: the whirl's inward push, px/s²
+  // a petal falls at terminal speed because drag balances gravity, and it
+  // ROCKS because of a two-way coupling: a tilted petal slips sideways
+  // through the air (lift · θ · fall speed) and slipping sideways tips it the
+  // other way (couple · vx) while the air tries to flatten it (kt). that loop
+  // is a lightly damped oscillator — the see-saw descent of a real petal —
+  // kept ringing by turbulence. the flurry is not a circle to sit on: it is
+  // two forces, one tangential and one inward, with the same drag bounding
+  // the speed; when the press dies the forces vanish and gravity has the
+  // petals again, mid-swing.
   let petals = [], spiral = 0;
   return {
     press() { spiral = 1.2; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.15 + (spiral > 0 ? 0.5 : 0))
-        petals.push({ x: rand(-10, W), y: -4, ph: rand(0, 9), rot: rand(0, TAU) });
+        petals.push({ x: rand(-10, W), y: -4, vx: D.wind, vy: 0, th: rand(-0.4, 0.4), om: 0 });   // tilt θ and its rate
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const cx = C.x, cy = C.y - C.s;      // the whirl's eye: the hero's head
       for (const p of petals) {
-        if (spiral > 0) {                  // the flurry: petals orbit the hero
-          const a = Math.atan2(p.y - (C.y - C.s), p.x - C.x) + dt * 4;
-          const d = Math.hypot(p.x - C.x, p.y - (C.y - C.s));
-          p.x = C.x + Math.cos(a) * d * (1 - dt * 0.3);
-          p.y = (C.y - C.s) + Math.sin(a) * d * (1 - dt * 0.3);
-        } else {
-          p.y += 22 * dt;
-          p.x += (14 + Math.sin(t * 2 + p.ph) * 10) * dt;
+        const gx = rand(-1, 1) * D.gust;   // this frame's turbulence
+        for (let q = 0; q < sub; q++) {
+          let ax = -D.drag * (p.vx - D.wind) - D.lift * p.th * p.vy + gx;   // drag toward the breeze, the tilt's slip, the gust
+          let ay = D.g - D.drag * p.vy;
+          if (spiral > 0) {                // the whirl: tangential + inward, both bounded by the drag
+            const dx = p.x - cx, dy = p.y - cy, d = Math.max(4, Math.hypot(dx, dy));
+            ax += -dy / d * D.swirl - dx / d * D.pull;
+            ay += dx / d * D.swirl - dy / d * D.pull;
+          }
+          p.om += (-D.kt * p.th - D.kd * p.om + D.couple * p.vx) * h;   // the tilt: righted by the air, tipped by the slip
+          p.th = Math.max(-2, Math.min(2, p.th + p.om * h));
+          p.vx += ax * h; p.vy += ay * h;
+          p.x += p.vx * h; p.y += p.vy * h;
         }
-        p.rot += dt * 2;
         ctx.save();
         ctx.translate(p.x, p.y);
-        ctx.rotate(p.rot);
+        ctx.rotate(p.th);                  // the rocking IS the drawn tilt
         ctx.fillStyle = "rgba(255,190,210,0.85)";
         ctx.beginPath(); ctx.ellipse(0, 0, 3, 1.8, 0, 0, TAU); ctx.fill();
         ctx.restore();
       }
-      petals = petals.filter(p => p.y < G && p.x < W + 14);
+      petals = petals.filter(p => p.y < G && p.x < W + 14 && p.x > -20);
       spiral = Math.max(0, spiral - dt);
     }
   };
 });
 
-def("Fireflies at dusk", "decor", "they gather near whoever stands still; press = one shared flash", function (u) {
+def("Fireflies at dusk", "decor", "they gather near whoever stands still — each on a wandering heading, drawn home by a weak pull, slowed by drag, banking round after the hero on its own momentum; press = one shared flash", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
+  const D = { wander: 60,     // the wandering push, px/s² — always on, in a direction that random-walks
+              jitter: 4,      // how fast that heading wanders, rad/√s
+              attract: 1,     // the pull home, sideways: px/s² per px of offset — weak, so home is a neighbourhood, not a point
+              attractY: 1,    // the pull home, vertically — the same, unless the air is rising
+              rise: 0,        // buoyancy, px/s² upward — none for a firefly
+              drag: 1.5,      // air drag, per second: cruising speed is wander/drag = 40 px/s
+              n: 9 };         // how many
+  // a firefly is a velocity under three forces: a constant-size WANDER whose
+  // direction random-walks (so it meanders rather than jitters), a weak
+  // spring toward its own home spot near the cube, and drag. wander against
+  // drag sets the cruise; wander against attract sets how far it strays —
+  // about wander/attract px. no lerp: when the hero moves, the homes move,
+  // and the flies bank round after them on the momentum they already have.
   let sync = 0;
   const flies = [];
-  for (let i = 0; i < 9; i++)
-    flies.push({ x: rand(0, 200), y: rand(20, 100), ph: rand(0, TAU), sp: rand(0.6, 1.3), wx: rand(0, 9) });
+  for (let i = 0; i < D.n; i++)
+    flies.push({ x: rand(0, W), y: rand(20, G - 30), vx: 0, vy: 0, wa: rand(0, TAU),
+                 ph: rand(0, TAU), sp: rand(0.6, 1.3), wx: rand(0, 9) });
   return {
     press() { sync = 1; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       ctx.globalCompositeOperation = "lighter";
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of flies) {
-        f.x += (C.x + Math.sin(f.wx * 3) * C.s * 2 - f.x) * dt * 0.4 + Math.sin(t + f.wx) * 10 * dt;
-        f.y += (C.y - C.s + Math.cos(f.wx * 2) * C.s - f.y) * dt * 0.4 + Math.cos(t * 1.3 + f.wx) * 8 * dt;
+        const hx = C.x + Math.sin(f.wx * 3) * C.s * 2, hy = C.y - C.s + Math.cos(f.wx * 2) * C.s;   // its home spot, near the hero
+        for (let q = 0; q < sub; q++) {
+          f.wa += rand(-1, 1) * D.jitter * Math.sqrt(h);   // the heading random-walks
+          f.vx += (Math.cos(f.wa) * D.wander + (hx - f.x) * D.attract - D.drag * f.vx) * h;
+          f.vy += (Math.sin(f.wa) * D.wander + (hy - f.y) * D.attractY - D.rise - D.drag * f.vy) * h;
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
+        if (f.y > G - 4) { f.y = G - 4; f.vy = -Math.abs(f.vy) * 0.5; }   // the floor: it pulls up
         let blink = Math.pow(Math.max(0, Math.sin(t * f.sp * 2 + f.ph)), 3);
         blink = Math.max(blink, sync);
         if (blink > 0.05)
@@ -4359,32 +4692,47 @@ rhymeOf("Water whip", "Vine whip", "the same ten-joint chain grown green — a s
 
 rhymeOf("Geyser", "Mud pot", "the same eruption gone lazy and brown — half the height, twice the plop", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: column height ÷2, speed ÷2 · palette water→mud · blorp blobs bigger
-  let gx = 0, geysers = [];
+  // dials moved: height 2.8 → 1.4 · rate 40 → 20, size ×1.4 (fewer, fatter blobs) · run 1.4 → 2 · palette water→mud
+  const D = { height: 1.4,   // the jet's full height, in cube-sides — it sets the launch speed: v0 = √(2·g·height)
+              g: 500,        // gravity on a blob, px/s²
+              rate: 20,      // blobs thrown per second while the jet runs
+              ramp: 0.3,     // seconds for the jet to come up to full speed
+              run: 2,        // seconds the eruption lasts
+              spread: 10,    // sideways scatter at the vent, px/s
+              size: 1.4 };   // blob size multiplier
+  let gx = 0, geysers = [], blobs = [];
   return {
-    press(x) { geysers.push({ x: x || gx, life: 1.4 }); },
+    press(x) { geysers.push({ x: x || gx, age: 0, emit: 0 }); },
     frame(dt, t) {
       stage();
       gx = W / 2 + Math.sin(t * 0.3 + 2) * W * 0.3;
-      if (Math.random() < 0.1) {
+      if (Math.random() < 0.3) {           // twice the plop
         ctx.strokeStyle = "rgba(180,150,110,0.5)";
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(gx + rand(-6, 6), G - 1, rand(2, 4), Math.PI, TAU); ctx.stroke();
       }
       tickCube(dt); drawCube();
+      const v0 = Math.sqrt(2 * D.g * C.s * D.height);
       for (const g of geysers) {
-        g.life -= dt * 0.5;
-        if (g.life <= 0) continue;
-        const hgt = Math.sin(Math.min(1, (1.4 - g.life) * 2) * Math.PI * 0.5) * C.s * 1.4 * Math.min(1, g.life * 2);
-        for (let i = 0; i < 6; i++) {
-          const q = i / 6;
-          ctx.fillStyle = "rgba(150,120,85," + (0.7 - q * 0.3) + ")";
-          ctx.beginPath();
-          ctx.ellipse(g.x + Math.sin(t * 8 + i) * 3, G - hgt * q, 8 - q * 2, 7, 0, 0, TAU);
-          ctx.fill();
+        g.age += dt;
+        const power = Math.min(1, g.age / D.ramp) * Math.max(0, Math.min(1, (D.run - g.age) * 2));
+        if (power <= 0) continue;
+        g.emit += dt * D.rate;
+        while (g.emit >= 1) {
+          g.emit -= 1;
+          blobs.push({ x: g.x + rand(-2, 2), y: G - 1, vx: rand(-D.spread, D.spread),
+                       vy: -v0 * rand(0.85, 1) * power, age: 0 });
         }
       }
-      geysers = geysers.filter(g => g.life > 0);
+      geysers = geysers.filter(g => g.age < D.run);
+      for (const b of blobs) {
+        b.vy += D.g * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.age += dt;
+        if (b.y >= G) continue;
+        const r = Math.max(2, (6 - b.age * 2.5) * D.size);
+        ctx.fillStyle = "rgba(150,120,85," + (b.vy < 0 ? 0.7 : 0.45) + ")";
+        ctx.beginPath(); ctx.ellipse(b.x, b.y, r, r * 1.2, 0, 0, TAU); ctx.fill();
+      }
+      blobs = blobs.filter(b => b.y < G);
     }
   };
 });
@@ -4414,12 +4762,27 @@ rhymeOf("Mist veil", "Shadow veil", "the same vanish, dressed in darkness — th
   };
 });
 
-rhymeOf("Tidal push", "Slow surge", "the same wall of water at half speed and half again the height", function (u) {
+rhymeOf("Tidal push", "Slow surge", "the same wall of water at half speed and half again the height — it steepens at half the rate, so it breaks later and further out", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: travel 150 → 70 · height ×1.5 · decay slower — a patient wave
+  // dials moved: speed 150 → 70 · height ×1.5 · fade 0.55 → 0.3 · steepen 1.2 → 0.6 · foam gravity 160 → 120 — a patient wave
+  const D = { speed: 70,     // the wave's travel, px/s
+              height: 1.95,  // the wall's full height, in cube-sides
+              fade: 0.3,     // per second: the wave's life ticks down at this rate
+              joints: 5,     // the face is a chain of this many segments, toe to lip
+              k: 40,         // the toe segment's spring: stiffness toward its resting lean
+              tip: 1.3,      // each segment up the face is this much stiffer than the one below (lighter water)
+              damp: 0.3,     // the joints' damping as a fraction of their own critical — under 1, so the lip whips past its rest
+              lean: -0.25,   // the toe's resting lean, radians — back, into the wave
+              curl: 0.42,    // each joint's extra forward bend at full steepness, radians
+              steepen: 0.6,  // how fast that bend is asked for, per second — the wave steepens as it runs
+              breakAt: 1.6,  // a lip past this angle from vertical is breaking: it sheds foam
+              foamG: 120 };  // gravity on the foam, px/s²
   let waves = [], foam = [];
   return {
-    press() { waves.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, life: 1 }); },
+    press() {
+      waves.push({ x: C.x + C.face * C.s * 0.7, dir: C.face, life: 1, age: 0,
+                   a: new Float32Array(D.joints), om: new Float32Array(D.joints) });
+    },
     frame(dt, t) {
       stage(); tickCube(dt);
       ctx.strokeStyle = "rgba(130,190,235,0.35)";
@@ -4428,24 +4791,44 @@ rhymeOf("Tidal push", "Slow surge", "the same wall of water at half speed and ha
       ctx.ellipse(C.x, G + 1, C.s * (0.8 + Math.sin(t * 2) * 0.1), 3, 0, Math.PI, TAU);
       ctx.stroke();
       drawCube();
+      const J = D.joints, sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const w of waves) {
-        w.x += w.dir * 70 * dt; w.life -= dt * 0.3;
+        w.x += w.dir * D.speed * dt; w.life -= dt * D.fade; w.age += dt;
         if (w.life <= 0) continue;
-        const hgt = C.s * 1.95 * Math.min(1, w.life * 1.6);
+        const curl = D.curl * Math.min(1, w.age * D.steepen);
+        for (let q = 0; q < sub; q++) {
+          let below = D.lean, kj = D.k;
+          for (let j = 0; j < J; j++) {
+            kj *= D.tip;
+            const dj = D.damp * 2 * Math.sqrt(kj);
+            w.om[j] += (kj * (below + curl - w.a[j]) - dj * w.om[j]) * h;
+            w.a[j] = Math.max(-1, Math.min(2.6, w.a[j] + w.om[j] * h));
+            below = w.a[j];
+          }
+        }
+        const hgt = C.s * D.height * Math.min(1, w.life * 1.6), seg = hgt / J;
+        const pts = [[w.x, G]];
+        let px = w.x, py = G;
+        for (let j = 0; j < J; j++) { px += w.dir * Math.sin(w.a[j]) * seg; py -= Math.cos(w.a[j]) * seg; pts.push([px, py]); }
         for (let k = 0; k < 4; k++) {
           ctx.strokeStyle = "rgba(120,190,240," + (0.6 - k * 0.12) * w.life + ")";
           ctx.lineWidth = 3;
           ctx.beginPath();
-          ctx.ellipse(w.x - w.dir * k * 5, G, 14 + k * 4, Math.max(0.5, hgt - k * 5), 0, Math.PI, TAU);
+          for (let j = 0; j < pts.length; j++) {
+            const x = pts[j][0] - w.dir * k * 5, y = Math.min(G, pts[j][1] + k * 3);
+            if (j === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
           ctx.stroke();
         }
-        if (Math.random() < 0.3)
-          foam.push({ x: w.x + rand(-8, 8), y: G - hgt, vx: w.dir * 20, vy: rand(-30, 0), life: 0.9 });
+        const breaking = w.a[J - 1] > D.breakAt;
+        if (Math.random() < (breaking ? 0.6 : 0.12))
+          foam.push({ x: px + rand(-3, 3), y: py, vx: w.dir * (breaking ? D.speed * 0.6 + rand(0, 20) : 20),
+                      vy: breaking ? rand(-20, 20) : rand(-30, 0), life: 0.9 });
       }
       waves = waves.filter(w => w.life > 0);
       for (const f of foam) {
-        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += 120 * dt; f.life -= dt * 1.2;
-        if (f.life > 0) { ctx.fillStyle = "rgba(220,240,255," + f.life + ")"; ctx.fillRect(f.x, f.y, 2, 2); }
+        f.x += f.vx * dt; f.y += f.vy * dt; f.vy += D.foamG * dt; f.life -= dt * 1.2;
+        if (f.life > 0) { ctx.fillStyle = "rgba(220,240,255," + f.life + ")"; ctx.fillRect(f.x, Math.min(f.y, G), 2, 2); }
       }
       foam = foam.filter(f => f.life > 0);
     }
@@ -5914,32 +6297,70 @@ rhymeOf("Parry flash", "Crimson counter", "the same one-frame flash in danger re
   };
 });
 
-rhymeOf("Knockback", "Launcher", "the same helpless physics aimed UP — juggle-state, then the landing", function (u) {
+rhymeOf("Knockback", "Launcher", "the same helpless physics aimed UP — juggle-state, the bounce, then the landing kicks dust", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: knock direction back→up · tumble in the air · dust on landing
-  let vy = 0, launched = false, stars = [], dust = [];
+  // dials moved: knock vx 220 → 40, vy 180 → 320 (up, not back) · spin 14 → 9 · dust on the landing
+  const D = { vx: 40,         // the hit: speed away from where it was looking, px/s
+              vy: 320,        // the hit: upward speed, px/s — it leaves its feet
+              spin: 9,        // the hit: angular speed, rad/s — set once by the blow, then only ever damped
+              g: 620,         // gravity, px/s²
+              bounce: 0.35,   // restitution: the fraction of the landing speed that comes back up
+              skid: 0.1,      // ground friction: the fraction of horizontal speed left after one second on the floor
+              airSpin: 0.6,   // the fraction of spin left after a second in the air (nothing up there to stop it)
+              floorSpin: 0.02,   // …and after a second on the floor (the floor stops it)
+              kUp: 80,        // the recovery: a spring that rights it to the nearest upright, rad/s² per radian
+              kSq: 400,       // the landing squash: a stiff, under-damped spring on the body's aspect
+              sqHit: 0.03 };  // squash injected per px/s of landing speed
+  let hit = false, air = false, vy = 0, om = 0, sq = 0, sqv = 0, age = 0, stars = [], dust = [];
   return {
     press() {
-      if (!launched) {
-        launched = true; vy = -320;
-        C.pace = false; C.vx = -C.face * 40;
+      if (!hit) {
+        hit = true; air = true; age = 0;
+        C.pace = false;
+        C.vx = -C.face * D.vx;
+        vy = -D.vy; om = -C.face * D.spin;
         for (let i = 0; i < 5; i++)
           stars.push({ a: rand(0, TAU), life: 1.6 });
       }
     },
     frame(dt, t) {
       stage(); tickCube(dt);
-      if (launched) {
-        vy += 620 * dt;
-        C.y += vy * dt;
-        C.spin += dt * 9;
-        if (C.y >= G) {
-          C.y = G; launched = false; C.spin = 0; C.pace = true; vy = 0;
-          for (let i = 0; i < 8; i++)
-            dust.push({ x: C.x + rand(-4, 4), y: G, vx: rand(-60, 60), vy: rand(-30, -8), life: 1 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const dUp = 0.4 * 2 * Math.sqrt(D.kUp), dSq = 0.3 * 2 * Math.sqrt(D.kSq);
+      if (hit) {
+        age += dt;
+        for (let q = 0; q < sub; q++) {
+          if (air) {
+            vy += D.g * h; C.y += vy * h;
+            om *= Math.pow(D.airSpin, h); C.spin += om * h;
+            if (C.y >= G) {
+              C.y = G;
+              sqv += vy * D.sqHit;
+              for (let i = 0; i < 8; i++)  // the landing kicks dust — more of it the harder the fall
+                dust.push({ x: C.x + rand(-4, 4), y: G, vx: rand(-60, 60) * Math.min(1, vy / 200), vy: rand(-30, -8), life: 1 });
+              if (vy > 90) { vy = -vy * D.bounce; om *= 0.5; }
+              else { vy = 0; air = false; }
+            }
+          } else {
+            C.vx *= Math.pow(D.skid, h);
+            om *= Math.pow(D.floorSpin, h);
+            const upright = Math.round(C.spin / TAU) * TAU;
+            om += (D.kUp * (upright - C.spin) - dUp * om) * h;
+            C.spin += om * h;
+          }
+          sqv += (-D.kSq * sq - dSq * sqv) * h;
+          sq = Math.max(-0.5, Math.min(0.5, sq + sqv * h));
+        }
+        C.x = Math.max(C.s, Math.min(W - C.s, C.x));
+        const off = C.spin - Math.round(C.spin / TAU) * TAU;
+        if (age > 3 || (!air && Math.abs(C.vx) < 4 && Math.abs(om) < 0.3 && Math.abs(off) < 0.03)) {
+          hit = false; C.spin = 0; C.vx = 0; C.y = G; C.pace = true;
         }
       }
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
       drawCube();
+      ctx.restore();
       for (const s of stars) {
         s.a += 5 * dt; s.life -= dt;
         if (s.life > 0)
@@ -6159,22 +6580,46 @@ rhymeOf("Vine snare", "Chain snare", "the same kicked-upright chains in cold iro
   };
 });
 
-rhymeOf("Leaf whirl", "Stone belt", "the same orbit with pebbles — heavier, lower, slower", function (u) {
+rhymeOf("Leaf whirl", "Stone belt", "the same orbit with pebbles — heavier, lower, slower: a softer spring per stone, half the spin, and a kick that barely lifts them", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: leaves → pebbles · orbit ÷1.6 and flattened · burst throws them out
+  // dials moved: leaves → pebbles · orbit speed ÷2 · k 30 → 18 (heavier: the same pull moves more mass) · kick 8 → 5 · belt flattened and lowered
+  const D = { k: 18,          // the orbit spring: pull back toward the resting radius, per px of stretch (per unit mass)
+              damp: 0.25,     // radial damping as a fraction of critical — under 1, so a kicked stone overshoots on the way home
+              drive: 1.2,     // the motor: how fast the tangential speed chases its resting value, per second
+              kick: 5,        // the press: outward impulse, in cube-sides per second
+              spinUp: 3,      // the press: extra tangential speed, as a multiple of the resting orbit speed
+              flat: 0.35 };   // the orbit plane seen nearly edge-on: y is squashed by this
   const stones = [];
-  for (let i = 0; i < 8; i++)
-    stones.push({ a: rand(0, TAU), r: rand(0.9, 1.3), v: rand(0.6, 1.1), burst: 0 });
+  for (let i = 0; i < 8; i++) {
+    const a = rand(0, TAU), R = rand(0.9, 1.3), w = rand(0.5, 0.9), r0 = C.s * R;
+    stones.push({ px: Math.cos(a) * r0, py: Math.sin(a) * r0,
+                  vx: -Math.sin(a) * w * r0, vy: Math.cos(a) * w * r0, R: R, w: w });
+  }
   return {
-    press() { for (const s of stones) s.burst = 1; },
+    press() {
+      for (const s of stones) {
+        const r = Math.max(1e-3, Math.hypot(s.px, s.py)), ux = s.px / r, uy = s.py / r;
+        const boost = s.w * C.s * s.R * D.spinUp;
+        s.vx += ux * D.kick * C.s - uy * boost;
+        s.vy += uy * D.kick * C.s + ux * boost;
+      }
+    },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const damp = D.damp * 2 * Math.sqrt(D.k);
       for (const s of stones) {
-        s.burst = Math.max(0, s.burst - dt * 0.7);
-        s.a += s.v * (1 + s.burst * 3) * dt;
-        const r = C.s * s.r * (1 + s.burst * 1.4);
-        const x = C.x + Math.cos(s.a) * r;
-        const y = C.y - C.s * 0.35 + Math.sin(s.a) * r * 0.35;
+        const R0 = C.s * s.R;
+        for (let q = 0; q < sub; q++) {
+          const r = Math.max(1e-3, Math.hypot(s.px, s.py)), ux = s.px / r, uy = s.py / r;
+          const vr = s.vx * ux + s.vy * uy;
+          const vt = -s.vx * uy + s.vy * ux;
+          const ar = -D.k * (r - R0) - damp * vr;
+          const at = D.drive * (s.w * R0 - vt);
+          s.vx += (ar * ux - at * uy) * h; s.vy += (ar * uy + at * ux) * h;
+          s.px += s.vx * h; s.py += s.vy * h;
+        }
+        const x = C.x + s.px, y = C.y - C.s * 0.35 + s.py * D.flat;
         ctx.fillStyle = "rgba(122,110,94,0.9)";
         ctx.beginPath();
         ctx.moveTo(x - 3, y + 1); ctx.lineTo(x - 1, y - 3); ctx.lineTo(x + 3, y - 1); ctx.lineTo(x + 2, y + 2);
@@ -6270,19 +6715,27 @@ rhymeOf("Sand kick", "Snow kick", "the same dirty trick in winter — powder han
   };
 });
 
-rhymeOf("Quake slam", "Wave slam", "the same rolling hump made of water — taller, softer, with spray", function (u) {
+rhymeOf("Quake slam", "Wave slam", "the same rolling hump made of water — taller, softer, with spray: a higher crest on a gentler contact spring, so the hero is lifted rather than thrown", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: floor hump → water swell (+spray) · height ×1.6 · palette earth→sea
-  let humps = [], spray = [];
+  // dials moved: floor hump → water swell (+spray) · amp 12 → 19 · speed 120 → 100 · k 900 → 500 (softer) · palette earth→sea
+  const D = { amp: 19,        // the hump's height, px
+              width: 30,      // half the hump's footprint, px
+              speed: 100,     // the hump's travel, px/s
+              rise: 16,       // per second: how fast the hump swells at birth (full in 1/rise s)
+              fade: 0.7,      // per second: the hump's life ticks down at this rate
+              g: 620,         // gravity on the hero, px/s²
+              k: 500,         // the contact spring: how hard the water pushes back, per px the feet sink in
+              damp: 0.5,      // its damping as a fraction of critical
+              sqRate: 0.05 }; // squash drawn per px of sink — the same spring, made visible
+  let humps = [], spray = [], hy = G, hvy = 0;
   return {
-    press() { humps.push({ x: C.x, dir: C.face, life: 1 }); },
+    press() { humps.push({ x: C.x, dir: C.face, life: 1, age: 0 }); },
     frame(dt, t) {
-      const bumps = humps.filter(hh => hh.life > 0);
       const groundAt = function (x) {
         let y = G;
-        for (const hh of bumps) {
+        for (const hh of humps) {
           const d = Math.abs(x - hh.x);
-          y -= Math.max(0, 16 - d * 0.4) * hh.life;
+          y -= Math.max(0, 1 - d / D.width) * D.amp * hh.life * Math.min(1, hh.age * D.rise);
         }
         return y;
       };
@@ -6294,15 +6747,28 @@ rhymeOf("Quake slam", "Wave slam", "the same rolling hump made of water — tall
       ctx.lineTo(W, H);
       ctx.closePath(); ctx.fill();
       tickCube(dt);
-      C.y = groundAt(C.x);
-      drawCube();
-      C.y = G;
-      for (const hh of humps) {
-        hh.x += hh.dir * 100 * dt; hh.life -= dt * 0.7;
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const damp = D.damp * 2 * Math.sqrt(D.k);
+      let sink = 0;
+      for (let q = 0; q < sub; q++) {
+        for (const hh of humps) { hh.x += hh.dir * D.speed * h; hh.age += h; hh.life -= D.fade * h; }
+        const gy = groundAt(C.x);
+        let a = D.g;
+        if (hy > gy) a += -D.k * (hy - gy) - damp * hvy;
+        hvy += a * h; hy += hvy * h;
+        sink = Math.max(0, hy - gy);
+      }
+      for (const hh of humps)
         if (Math.random() < 0.4)
           spray.push({ x: hh.x + rand(-6, 6), y: groundAt(hh.x), vx: hh.dir * 30, vy: rand(-50, -15), life: 0.7 });
-      }
-      humps = humps.filter(hh => hh.life > 0 && hh.x > -20 && hh.x < W + 20);
+      humps = humps.filter(hh => hh.life > 0 && hh.x > -D.width && hh.x < W + D.width);
+      const sq = Math.min(0.4, sink * D.sqRate);
+      C.y = Math.min(hy, groundAt(C.x));
+      ctx.save();
+      ctx.translate(C.x, C.y); ctx.scale(1 + sq, 1 - sq); ctx.translate(-C.x, -C.y);
+      drawCube();
+      ctx.restore();
+      C.y = G;
       for (const s of spray) {
         s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 200 * dt; s.life -= dt * 1.6;
         if (s.life > 0) { ctx.fillStyle = "rgba(200,230,250," + s.life + ")"; ctx.fillRect(s.x, s.y, 1.6, 1.6); }
@@ -6412,14 +6878,22 @@ rhymeOf("Beam blast", "Ice beam", "the same beam crusted cold — slower flicker
   };
 });
 
-rhymeOf("Homing orbs", "Homing embers", "the same spiral-then-chase, on fire and one orb lighter", function (u) {
+rhymeOf("Homing orbs", "Homing embers", "the same peel-then-steer, on fire and one orb lighter — faster, so the same turn budget makes a wider swing across the line", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: count 3 → 2 · palette pink→ember · chase speed ×1.2
+  // dials moved: count 3 → 2 · palette pink→ember · speed 240 → 290 (the turn cap stays: a wider wobble)
+  const D = { speed: 290,     // cruising speed, px/s — steering may only bend this, never add to it
+              turn: 900,      // the most steering acceleration an ember can muster, px/s² — its tightest turn radius is speed²/turn
+              look: 30,       // the point it aims for sits this far ahead on the line, px — shorter aims tighter and wobbles longer
+              peel: 0.6,      // seconds spent spiralling away before the chase
+              rate: 9 };      // how fast the peel's heading turns, rad/s
   let flying = [];
   return {
     press() {
-      for (let i = 0; i < 2; i++)
-        flying.push({ x: C.x, y: C.y - C.s * 0.5, a: i * Math.PI, spiral: 0.6, dir: C.face, life: 2 });
+      for (let i = 0; i < 2; i++) {
+        const a = i * Math.PI;
+        flying.push({ x: C.x, y: C.y - C.s * 0.5, vx: Math.cos(a) * D.speed * 0.4, vy: Math.sin(a) * D.speed * 0.3,
+                      a: a, spiral: D.peel, dir: C.face, life: 2 });
+      }
     },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
@@ -6429,15 +6903,24 @@ rhymeOf("Homing orbs", "Homing embers", "the same spiral-then-chase, on fire and
         glow(C.x + Math.cos(a) * C.s * 0.95, C.y - C.s * 0.5 + Math.sin(a) * C.s * 0.55,
              4, "rgba(255,170,90,0.8)");
       }
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const lineY = C.y - C.s * 0.5;
       for (const f of flying) {
-        if (f.spiral > 0) {
-          f.spiral -= dt;
-          f.a += 9 * dt;
-          f.x += Math.cos(f.a) * 90 * dt;
-          f.y += Math.sin(f.a) * 60 * dt;
-        } else {
-          f.x += f.dir * 290 * dt;
-          f.y += (C.y - C.s * 0.5 - f.y) * dt * 2;
+        f.spiral -= dt;
+        for (let q = 0; q < sub; q++) {
+          let wx, wy;
+          if (f.spiral > 0) {
+            f.a += D.rate * h;
+            wx = Math.cos(f.a) * D.speed * 0.4; wy = Math.sin(f.a) * D.speed * 0.3;
+          } else {
+            const dx = f.dir * D.look, dy = lineY - f.y, d = Math.max(1e-3, Math.hypot(dx, dy));
+            wx = dx / d * D.speed; wy = dy / d * D.speed;
+          }
+          let sx = wx - f.vx, sy = wy - f.vy;
+          const m = Math.hypot(sx, sy);
+          if (m > D.turn) { sx *= D.turn / m; sy *= D.turn / m; }
+          f.vx += sx * h; f.vy += sy * h;
+          f.x += f.vx * h; f.y += f.vy * h;
         }
         f.life -= dt;
         if (f.life > 0) glow(f.x, f.y, 6, "rgba(255,180,100,0.9)");
@@ -6710,19 +7193,33 @@ rhymeOf("Freeze stomp", "Burn stomp", "the same spreading floor-front, scorched 
   };
 });
 
-rhymeOf("Snow aura", "Ash aura", "the same private weather after the fire — grey flakes that smear, not melt", function (u) {
+rhymeOf("Snow aura", "Ash aura", "the same private weather after the fire — grey flakes, less gravity for the same drag, half the turbulence, and they smear on the floor instead of melting", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: palette snow→ash · sway ÷2 · flakes leave a smudge at the floor
+  // dials moved: palette snow→ash · g 90 → 72 (slower fall) · turb 60 → 30 · flakes leave a smudge at the floor
+  const D = { g: 72,          // gravity, px/s²
+              dragMin: 2.2,   // the least air drag a flake can have, per second — its terminal speed is g/drag: 33 px/s
+              dragMax: 3.8,   // …and the most: 19 px/s. every flake draws its own between them
+              follow: 0.5,    // the wind wants to carry a flake toward the cube at this fraction of the offset per second
+              lag: 2.5,       // how fast the wind catches up with what it wants, per second — the laggy part
+              turb: 30,       // turbulence: random sideways kicks, px/s²
+              flurry: 1.4 };  // the press: seconds of thickened ashfall
   let flakes = [], smudges = [], flurry = 0;
   return {
-    press() { flurry = 1.4; },
+    press() { flurry = D.flurry; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.2 + (flurry > 0 ? 0.5 : 0))
-        flakes.push({ x: C.x + rand(-C.s * 1.4, C.s * 1.4), y: C.y - C.s * 2, ph: rand(0, 9), life: 1 });
+        flakes.push({ x: C.x + rand(-C.s * 1.4, C.s * 1.4), y: C.y - C.s * 2, vx: 0, vy: 0,
+                      w: 0, drag: rand(D.dragMin, D.dragMax), life: 1 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of flakes) {
-        f.y += 26 * dt;
-        f.x += Math.sin(t + f.ph) * 5 * dt + (C.x - f.x) * dt * 0.4;
+        const kick = rand(-1, 1) * D.turb;
+        for (let q = 0; q < sub; q++) {
+          f.w += ((C.x - f.x) * D.follow - f.w) * D.lag * h;
+          f.vx += (f.drag * (f.w - f.vx) + kick) * h;
+          f.vy += (D.g - f.drag * f.vy) * h;
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
         f.life -= dt * 0.5;
         if (f.y >= G - 1) { smudges.push({ x: f.x, life: 1.6 }); f.life = 0; }
         if (f.life > 0) {
@@ -7156,39 +7653,69 @@ rhymeOf("Shadow clone", "Golden double", "the same delayed twin in triumph gold 
   };
 });
 
-rhymeOf("Void grasp", "Angel hand", "the same grasp descending FROM ABOVE in light — direction and palette", function (u) {
+rhymeOf("Void grasp", "Angel hand", "the same grasp descending FROM ABOVE in light — direction and palette, twice the reach, and fingers that barely close", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: rise-from-floor → descend-from-sky · shadow→light · fingers open
+  // dials moved: dirn −1 → +1 (down from the sky) · reach 1.1 → 2.2 · curl 0.9 → 0.35 (fingers open) · shadow→light, additive
+  const D = { k: 60,          // the wrist's descent: spring stiffness toward its target depth (per unit mass)
+              damp: 0.4,      // its damping as a fraction of critical — under 1, so the descent overshoots and settles
+              reach: 2.2,     // the target depth, in cube-sides
+              hold: 1,        // seconds the hand stays down before it is called back up
+              curl: 0.35,     // how far each finger joint curls, radians, once the hand has arrived
+              kj: 90,         // the knuckle joint's spring
+              tip: 1.5,       // the tip joint's stiffness as a multiple of the knuckle's — lighter, so quicker
+              jdamp: 0.32,    // the joints' damping as a fraction of their own critical — low: they whip
+              inertia: 0.02,  // how hard the wrist's motion flings the fingers back, rad/s² per px/s
+              dirn: 1 };      // the hand grows this way: −1 up out of the floor, +1 down from the sky
   let hands = [];
   return {
-    press(x) { hands.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), life: 1.6 }); },
+    press(x) { hands.push({ x: Math.max(10, Math.min(W - 10, x || C.x)), age: 0, up: 0, vup: 0, fj: new Float32Array(20) }); },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       ctx.globalCompositeOperation = "lighter";
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const damp = D.damp * 2 * Math.sqrt(D.k), kj2 = D.kj * D.tip;
+      const dj1 = D.jdamp * 2 * Math.sqrt(D.kj), dj2 = D.jdamp * 2 * Math.sqrt(kj2);
+      const base = D.dirn < 0 ? G : 0, L1 = C.s * 0.3, L2 = C.s * 0.22;
       for (const hd of hands) {
-        hd.life -= dt * 0.7;
-        if (hd.life <= 0) continue;
-        const down = Math.sin(Math.min(1, (1.6 - hd.life) * 2) * Math.PI * 0.5) * Math.min(1, hd.life * 2);
-        const wristY = down * G * 0.5;
-        ctx.strokeStyle = "rgba(255,245,215," + Math.min(1, hd.life * 1.2) * 0.7 + ")";
+        hd.age += dt;
+        const target = hd.age < D.hold ? 1 : 0;
+        const fj = hd.fj;
+        for (let q = 0; q < sub; q++) {
+          hd.vup += (D.k * (target - hd.up) - damp * hd.vup) * h;
+          hd.up += hd.vup * h;
+          const grip = Math.max(0, Math.min(1, hd.up));
+          for (let f = 0; f < 5; f++) {
+            const i = f * 4, out = f < 2 ? -1 : 1;
+            const fling = D.inertia * hd.vup * out;
+            fj[i + 1] += (D.kj * (-out * D.curl * grip - fj[i]) - dj1 * fj[i + 1] + fling) * h;
+            fj[i] = Math.max(-2.2, Math.min(2.2, fj[i] + fj[i + 1] * h));
+            fj[i + 3] += (kj2 * (-out * D.curl * 1.2 * grip - fj[i + 2]) - dj2 * fj[i + 3] + fling) * h;
+            fj[i + 2] = Math.max(-2.4, Math.min(2.4, fj[i + 2] + fj[i + 3] * h));
+          }
+        }
+        if (hd.age > 4 || (hd.age > D.hold && hd.up < 0.02 && Math.abs(hd.vup) < 0.05)) { hd.done = true; continue; }
+        const rise = Math.max(0, hd.up), wy = base + D.dirn * C.s * D.reach * rise;
+        const alpha = Math.min(1, rise * 2) * 0.7;
+        ctx.strokeStyle = "rgba(255,245,215," + alpha + ")";
         ctx.lineWidth = 5;
         ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo(hd.x, 0);
-        ctx.lineTo(hd.x, wristY);
+        ctx.moveTo(hd.x, base);
+        ctx.lineTo(hd.x, wy);
         ctx.stroke();
         ctx.lineWidth = 2.5;
-        for (let f = -2; f <= 2; f++) {
+        for (let f = 0; f < 5; f++) {
+          const i = f * 4, a1 = (f - 2) * 0.35 + fj[i], a2 = a1 + fj[i + 2];
+          const x1 = hd.x + Math.sin(a1) * L1, y1 = wy + D.dirn * Math.cos(a1) * L1;
+          const x2 = x1 + Math.sin(a2) * L2, y2 = y1 + D.dirn * Math.cos(a2) * L2;
           ctx.beginPath();
-          ctx.moveTo(hd.x, wristY);
-          ctx.quadraticCurveTo(hd.x + f * 6, wristY + 10,
-                               hd.x + f * 9, wristY + 16 + Math.sin(t * 4 + f) * 2);
+          ctx.moveTo(hd.x, wy); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2);
           ctx.stroke();
         }
-        glow(hd.x, wristY, 14, "rgba(255,245,215," + Math.min(1, hd.life) * 0.3 + ")");
+        glow(hd.x, wy, 14, "rgba(255,245,215," + Math.min(1, rise) * 0.3 + ")");
       }
       ctx.globalCompositeOperation = "source-over";
-      hands = hands.filter(hd => hd.life > 0);
+      hands = hands.filter(hd => !hd.done);
     }
   };
 });
@@ -7256,28 +7783,48 @@ rhymeOf("Smoke vanish", "Flash vanish", "the same disappearing act by LIGHT — 
   };
 });
 
-rhymeOf("Black hole", "Sun spot", "the same summoned singularity, inverted — it SHINES and pushes away", function (u) {
+rhymeOf("Black hole", "Sun spot", "the same summoned singularity, inverted — it SHINES and pushes away on the same 1/d², so motes leave fast and coast as the push thins", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: pull → push · void-dark → miniature sun · lean flips outward
+  // dials moved: Gm 480000 → −120000 (a push, a quarter the strength) · motes born at the lip, no sideways start · void-dark → miniature sun · the lean flips outward
+  const D = { Gm: -120000,    // the push's strength, px³/s² — negative: a = Gm/d² points AWAY
+              dmin: 6,        // the 1/d² is capped below this radius, px — no infinite kick at the centre
+              tang: 0,        // a mote's sideways start, as a fraction of the circular-orbit speed there — none: they leave radially
+              drag: 0.4,      // a whisper of drag, per second — the sun's medium
+              vmax: 300,      // a speed cap, px/s, for the coarsest frames
+              lip: 0,         // nothing is swallowed by a sun
+              streak: 0.03 }; // the tail drawn behind a mote is this many seconds of its velocity
   let spot = null, motes = [];
   return {
     press() { if (!spot) spot = { x: C.x + C.face * C.s * 2.4, y: C.y - C.s * 0.7, life: 2 }; },
     frame(dt, t) {
       stage(); tickCube(dt);
       if (spot) {
-        if (Math.random() < 0.5)
-          motes.push({ x: spot.x + rand(-6, 6), y: spot.y + rand(-5, 5), life: 1 });
+        if (Math.random() < 0.5) {
+          const dx = rand(-6, 6), dy = rand(-5, 5), d = Math.max(D.dmin, Math.hypot(dx, dy));
+          const vc = Math.sqrt(Math.abs(D.Gm) / d) * D.tang;
+          motes.push({ x: spot.x + dx, y: spot.y + dy, vx: -dy / d * vc, vy: dx / d * vc, life: 1 });
+        }
         C.lean = -Math.sign(spot.x - C.x) * 0.12;        // it leans AWAY now
       }
       drawCube();
       ctx.globalCompositeOperation = "lighter";
       if (spot) {
+        const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
         for (const m of motes) {
-          const dx = m.x - spot.x, dy = m.y - spot.y;
-          const d = Math.max(3, Math.hypot(dx, dy));
-          m.x += dx / d * 90 * dt; m.y += dy / d * 60 * dt;
+          for (let q = 0; q < sub; q++) {
+            const dx = spot.x - m.x, dy = spot.y - m.y, d = Math.max(1e-3, Math.hypot(dx, dy));
+            const dc = Math.max(d, D.dmin), a = D.Gm / (dc * dc);
+            m.vx += (dx / d * a - D.drag * m.vx) * h; m.vy += (dy / d * a - D.drag * m.vy) * h;
+            const v = Math.hypot(m.vx, m.vy);
+            if (v > D.vmax) { m.vx *= D.vmax / v; m.vy *= D.vmax / v; }
+            m.x += m.vx * h; m.y += m.vy * h;
+          }
           m.life -= dt * 1.3;
-          if (m.life > 0) { ctx.fillStyle = "rgba(255,230,170," + m.life * 0.8 + ")"; ctx.fillRect(m.x, m.y, 1.8, 1.8); }
+          if (m.life > 0) {
+            ctx.strokeStyle = "rgba(255,230,170," + m.life * 0.8 + ")";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * D.streak, m.y - m.vy * D.streak); ctx.stroke();
+          }
         }
         motes = motes.filter(m => m.life > 0);
         glow(spot.x, spot.y, 14, "rgba(255,230,160,0.9)");
@@ -7397,52 +7944,82 @@ rhymeOf("Floating lanterns", "Party balloons", "the same gentle ascent in bright
   };
 });
 
-rhymeOf("Petal fall", "First snow", "the same drifting descent as the season's first flakes — slower, whiter", function (u) {
+rhymeOf("Petal fall", "First snow", "the same drifting descent as the season's first flakes — slower, whiter: less gravity for the same drag, a fainter breeze, a gentler whirl", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: petals → flakes · sideways drift ÷2 · spiral gentler
+  // dials moved: petals → flakes · g 60 → 43 (terminal 22 → 16 px/s) · wind 14 → 6 · gust 90 → 45 · swirl 200 → 120, pull 120 → 80
+  const D = { g: 43,          // gravity, px/s² — light, because a flake is mostly air
+              drag: 2.7,      // air drag, per second: terminal speed is g/drag ≈ 16 px/s
+              wind: 6,        // the breeze the flakes ride, px/s, left to right
+              lift: 0.5,      // a tilted flake slips sideways: lateral push per radian of tilt per px/s of fall
+              kt: 12,         // the tilt spring: the air rights a flake toward flat (stiffness per unit inertia)
+              kd: 0.6,        // the tilt's damping — low, so the rocking rings for a few swings
+              couple: 0.25,   // sideways motion tips a flake into it (the see-saw's other half), rad/s² per px/s
+              gust: 45,       // turbulence: random sideways kicks, px/s² — what keeps the rocking alive
+              swirl: 120,     // the press: tangential push round the hero, px/s²
+              pull: 80 };     // the press: the whirl's inward push, px/s²
   let flakes = [], spiral = 0;
   return {
     press() { spiral = 1.2; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       if (Math.random() < 0.12 + (spiral > 0 ? 0.4 : 0))
-        flakes.push({ x: rand(-10, W), y: -4, ph: rand(0, 9) });
+        flakes.push({ x: rand(-10, W), y: -4, vx: D.wind, vy: 0, th: rand(-0.4, 0.4), om: 0 });
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
+      const cx = C.x, cy = C.y - C.s;
       for (const p of flakes) {
-        if (spiral > 0) {
-          const ctr = { x: C.x, y: C.y - C.s };
-          const d = Math.hypot(p.x - ctr.x, p.y - ctr.y);
-          const a = Math.atan2(p.y - ctr.y, p.x - ctr.x) + dt * 2.5;
-          p.x = ctr.x + Math.cos(a) * d * (1 - dt * 0.2);
-          p.y = ctr.y + Math.sin(a) * d * (1 - dt * 0.2);
-        } else {
-          p.y += 16 * dt;
-          p.x += (6 + Math.sin(t * 2 + p.ph) * 6) * dt;
+        const gx = rand(-1, 1) * D.gust;
+        for (let q = 0; q < sub; q++) {
+          let ax = -D.drag * (p.vx - D.wind) - D.lift * p.th * p.vy + gx;
+          let ay = D.g - D.drag * p.vy;
+          if (spiral > 0) {
+            const dx = p.x - cx, dy = p.y - cy, d = Math.max(4, Math.hypot(dx, dy));
+            ax += -dy / d * D.swirl - dx / d * D.pull;
+            ay += dx / d * D.swirl - dy / d * D.pull;
+          }
+          p.om += (-D.kt * p.th - D.kd * p.om + D.couple * p.vx) * h;
+          p.th = Math.max(-2, Math.min(2, p.th + p.om * h));
+          p.vx += ax * h; p.vy += ay * h;
+          p.x += p.vx * h; p.y += p.vy * h;
         }
-        ctx.fillStyle = "rgba(240,246,255,0.9)";
+        ctx.fillStyle = "rgba(240,246,255,0.9)";   // a flake shows no tilt — only the sway it causes
         ctx.beginPath(); ctx.arc(p.x, p.y, 1.6, 0, TAU); ctx.fill();
       }
-      flakes = flakes.filter(p => p.y < G && p.x < W + 14);
+      flakes = flakes.filter(p => p.y < G && p.x < W + 14 && p.x > -20);
       spiral = Math.max(0, spiral - dt);
     }
   };
 });
 
-rhymeOf("Fireflies at dusk", "Embers at dusk", "the same gathering lights, blown off a campfire — they rise as they blink", function (u) {
+rhymeOf("Fireflies at dusk", "Embers at dusk", "the same gathering lights, blown off a campfire — buoyant, so they climb as they blink, with nothing pulling them back down", function (u) {
   const { ctx, W, H, G, C, rand, TAU, stage, tickCube, drawCube, glow, twinkle } = u;
-  // dials moved: palette green→ember · added upward drift · blink shorter
+  // dials moved: palette green→ember · rise 0 → 36 (buoyancy) · attractY 1 → 0 (no pull back down) · blink shorter
+  const D = { wander: 60,     // the wandering push, px/s² — always on, in a direction that random-walks
+              jitter: 4,      // how fast that heading wanders, rad/√s
+              attract: 1,     // the pull home, sideways: px/s² per px of offset — weak, so home is a neighbourhood, not a point
+              attractY: 0,    // the pull home, vertically — none: the air carries them up
+              rise: 36,       // buoyancy, px/s² upward — against drag, a climb of 24 px/s
+              drag: 1.5,      // air drag, per second: cruising speed is wander/drag = 40 px/s
+              n: 9 };         // how many
   let sync = 0;
   const flies = [];
-  for (let i = 0; i < 9; i++)
-    flies.push({ x: rand(0, 200), y: rand(40, 110), ph: rand(0, TAU), sp: rand(0.8, 1.6), wx: rand(0, 9) });
+  for (let i = 0; i < D.n; i++)
+    flies.push({ x: rand(0, W), y: rand(40, G - 20), vx: 0, vy: 0, wa: rand(0, TAU),
+                 ph: rand(0, TAU), sp: rand(0.8, 1.6), wx: rand(0, 9) });
   return {
     press() { sync = 1; },
     frame(dt, t) {
       stage(); tickCube(dt); drawCube();
       ctx.globalCompositeOperation = "lighter";
+      const sub = Math.max(1, Math.ceil(dt * 50)), h = dt / sub;
       for (const f of flies) {
-        f.x += (C.x + Math.sin(f.wx * 3) * C.s * 2 - f.x) * dt * 0.4 + Math.sin(t + f.wx) * 10 * dt;
-        f.y += -6 * dt + Math.cos(t * 1.3 + f.wx) * 8 * dt;
-        if (f.y < 14) f.y = G - 10;
+        const hx = C.x + Math.sin(f.wx * 3) * C.s * 2, hy = C.y - C.s + Math.cos(f.wx * 2) * C.s;
+        for (let q = 0; q < sub; q++) {
+          f.wa += rand(-1, 1) * D.jitter * Math.sqrt(h);
+          f.vx += (Math.cos(f.wa) * D.wander + (hx - f.x) * D.attract - D.drag * f.vx) * h;
+          f.vy += (Math.sin(f.wa) * D.wander + (hy - f.y) * D.attractY - D.rise - D.drag * f.vy) * h;
+          f.x += f.vx * h; f.y += f.vy * h;
+        }
+        if (f.y < 14) { f.y = G - 10; f.vy = 0; }        // off the top: born again at the floor
         let blink = Math.pow(Math.max(0, Math.sin(t * f.sp * 2 + f.ph)), 5);
         blink = Math.max(blink, sync);
         if (blink > 0.05)

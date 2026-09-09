@@ -17,6 +17,8 @@ static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "icicle":
 		b.shake = 0.0
+	if b.id == "snow_aura":
+		b.D.merge({ "g": 72.0, "turb": 30.0 }, true)   # dials: g 90 → 72 (a slower fall for the same drag) · turbulence ÷2
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub

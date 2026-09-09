@@ -13,7 +13,7 @@ const DEFS := [
 	{ "id": "water_whip", "name": "Water whip", "hint": "a ten-joint chain hangs from its fist; press swings the arm — the crack falls out of the chain" },
 	{ "id": "geyser", "name": "Geyser", "hint": "the ground bubbles somewhere; press to erupt it where you click" },
 	{ "id": "mist_veil", "name": "Mist veil", "hint": "fog clings to it; press to vanish into the mist a moment" },
-	{ "id": "tidal_push", "name": "Tidal push", "hint": "press: a wall of water rolls forward off the stage" },
+	{ "id": "tidal_push", "name": "Tidal push", "hint": "press: a wall of water rolls forward, steepens, curls, and BREAKS" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -85,10 +85,33 @@ static func init(b: Dictionary) -> void:
 			b.swing = -1.0
 		"geyser":
 			b.gx = 0.0
+			b.blobs = []
+			b.D = {
+				"height": 2.8,    # the jet's full height, in cube-sides — it sets the launch speed: v0 = √(2·g·height)
+				"g": 500.0,       # gravity on a blob, px/s²
+				"rate": 40.0,     # blobs thrown per second while the jet runs
+				"ramp": 0.3,      # seconds for the jet to come up to full speed
+				"run": 1.4,       # seconds the eruption lasts
+				"spread": 18.0,   # sideways scatter at the vent, px/s
+				"size": 1.0 }     # blob size multiplier
 		"mist_veil":
 			b.wisps = []
 			for i in 6:
 				b.wisps.append({ "a": randf_range(0, TAU), "v": randf_range(0.3, 0.7), "r": randf_range(8, 14) })
+		"tidal_push":
+			b.D = {
+				"speed": 150.0,   # the wave's travel, px/s
+				"height": 1.3,    # the wall's full height, in cube-sides
+				"fade": 0.55,     # per second: the wave's life ticks down at this rate
+				"joints": 5,      # the face is a chain of this many segments, toe to lip
+				"k": 40.0,        # the toe segment's spring: stiffness toward its resting lean
+				"tip": 1.3,       # each segment up the face is this much stiffer than the one below (lighter water)
+				"damp": 0.3,      # the joints' damping as a fraction of their own critical — under 1, so the lip whips past its rest
+				"lean": -0.25,    # the toe's resting lean, radians — back, into the wave
+				"curl": 0.42,     # each joint's extra forward bend at full steepness, radians
+				"steepen": 1.2,   # how fast that bend is asked for, per second — the wave steepens as it runs
+				"breakAt": 1.6,   # a lip past this angle from vertical is breaking: it sheds foam
+				"foamG": 160.0 }  # gravity on the foam, px/s²
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -115,9 +138,13 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 				b.swing = 0.0
 		"geyser":
 			var r: Rect2 = b.rect
-			b.parts.append({ "kind": "geyser", "x": clampf(pos.x, r.position.x + 8, r.position.x + r.size.x - 8), "life": 1.0 })
+			b.parts.append({ "kind": "geyser", "x": clampf(pos.x, r.position.x + 8, r.position.x + r.size.x - 8), "age": 0.0, "emit": 0.0 })
 		"tidal_push":
-			b.parts.append({ "kind": "wave", "x": c.x + c.face * c.s * 0.7, "dir": c.face, "life": 1.0 })
+			var a := PackedFloat32Array()     # the face's joint angles from vertical, toe to lip, and their rates
+			var om := PackedFloat32Array()
+			a.resize(int(b.D.joints))
+			om.resize(int(b.D.joints))
+			b.parts.append({ "kind": "wave", "x": c.x + c.face * c.s * 0.7, "dir": c.face, "life": 1.0, "age": 0.0, "a": a, "om": om })
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var c: Dictionary = b.cub
@@ -258,25 +285,81 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 1.8
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"geyser":
+			# the column is not drawn — it IS the blobs. each leaves the vent with an
+			# upward speed (ramping in, dying out with the eruption) and then obeys
+			# gravity alone, so the top of the column is where a blob's rise runs
+			# out, v0²/2g, and the crown falling back is those same blobs coming down
 			var r: Rect2 = b.rect
+			var D: Dictionary = b.D
 			b.gx = r.get_center().x + sin(t * 0.3 + 2.0) * r.size.x * 0.3
+			var v0: float = sqrt(2.0 * float(D.g) * c.s * float(D.height))   # the launch speed that reaches the full height
 			for p in b.parts:
-				p.life -= dt * 0.7
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
+				p.age += dt
+				var power: float = minf(1.0, p.age / float(D.ramp)) * clampf((float(D.run) - p.age) * 2.0, 0.0, 1.0)   # ramps in, dies out
+				if power <= 0.0:
+					continue
+				p.emit += dt * float(D.rate)
+				while p.emit >= 1.0:              # a fixed rate, whatever the frame length
+					p.emit -= 1.0
+					b.blobs.append({ "pos": Vector2(p.x + randf_range(-2, 2), b.G - 1.0),
+						"vel": Vector2(randf_range(-float(D.spread), float(D.spread)), -v0 * randf_range(0.85, 1.0) * power), "age": 0.0 })
+			b.parts = b.parts.filter(func(p): return p.age < float(D.run))
+			for bl in b.blobs:                    # ballistic: gravity alone, then the floor
+				bl.vel.y += float(D.g) * dt
+				bl.pos += bl.vel * dt
+				bl.age += dt
+			b.blobs = b.blobs.filter(func(bl): return bl.pos.y < b.G)
 		"mist_veil":
 			c.alpha = 0.15 if b.press_v > 0.25 else 1.0
 			for w in b.wisps:
 				w.a += w.v * dt
 		"tidal_push":
+			# the wall is a chain of angles like the almanac's grass, stood on its toe:
+			# every segment is a spring toward "the one below, plus a little more
+			# forward", and that "more" ramps up as the wave travels — the steepening
+			# of a wave running into the shallows. each joint chases the one below on
+			# an UNDER-damped spring, so the lip lags the body and then whips past it;
+			# beyond breakAt the wave is breaking, and foam leaves the lip at the
+			# wave's speed and falls under gravity
+			var D: Dictionary = b.D
+			var J: int = int(D.joints)
+			var sub := maxi(1, ceili(dt * 50.0))   # substeps: the lip's spring is the stiffest
+			var h := dt / float(sub)
+			var foam := []
 			for p in b.parts:
 				if p.kind == "wave":
-					p.x += p.dir * 150.0 * dt
-					p.life -= dt * 0.55
+					p.x += p.dir * float(D.speed) * dt
+					p.life -= dt * float(D.fade)
+					p.age += dt
+					if p.life <= 0.0:
+						continue
+					var a: PackedFloat32Array = p.a
+					var om: PackedFloat32Array = p.om
+					var curl: float = float(D.curl) * minf(1.0, p.age * float(D.steepen))   # the steepening: what each joint is asked to add
+					for _q in sub:
+						var below: float = D.lean
+						var kj: float = D.k
+						for j in J:                       # each joint chases the one below, plus the curl
+							kj *= float(D.tip)
+							var dj: float = float(D.damp) * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
+							om[j] += (kj * (below + curl - a[j]) - dj * om[j]) * h
+							a[j] = clampf(a[j] + om[j] * h, -1.0, 2.6)
+							below = a[j]
+					var hgt: float = c.s * float(D.height) * minf(1.0, p.life * 1.6)
+					var lip := Vector2(p.x, b.G)          # walk the chain to the lip
+					for j in J:
+						lip += Vector2(p.dir * sin(a[j]), -cos(a[j])) * (hgt / J)
+					var breaking: bool = a[J - 1] > float(D.breakAt)   # the lip past horizontal: it spills
+					if randf() < (0.9 if breaking else 0.2):
+						foam.append({ "kind": "foam", "pos": lip + Vector2(randf_range(-3, 3), 0),
+							"vel": Vector2(p.dir * (float(D.speed) * 0.6 + randf_range(0, 40) if breaking else 40.0),
+								randf_range(-30, 30) if breaking else randf_range(-40, 0)), "life": 0.7 })
 				else:
 					p.pos += p.vel * dt
-					p.vel.y += 160.0 * dt
+					p.vel.y += float(D.foamG) * dt
 					p.life -= dt * 1.6
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
+			b.parts.append_array(foam)
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var c: Dictionary = b.cub
@@ -327,14 +410,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				CubeKit.ellipse(n, Vector2(b.gx + randf_range(-6, 6), b.G - 1.0), randf_range(1.5, 3.0), 1.5,
 					Color(0.59, 0.82, 0.96, 0.5), 1.0, PI, TAU, 8)
 			CubeKit.draw_cube(n, b)
-			for p in b.parts:
-				var hgt: float = sin(minf(1.0, (1.0 - p.life) * 3.0) * PI * 0.5) * c.s * 2.8 * minf(1.0, p.life * 2.0)
-				for i in 8:
-					var q := i / 8.0
-					n.draw_set_transform(Vector2(p.x + sin(t * 20.0 + i) * 2.0, b.G - hgt * q), 0.0, Vector2(1.0, 1.5))
-					n.draw_circle(Vector2.ZERO, 6.0 - q * 2.0, Color(0.55, 0.8, 0.96, 0.55 - q * 0.3))
-					n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-				CubeKit.glow(n, Vector2(p.x, b.G - hgt), 10.0, Color(0.75, 0.9, 0.98, 0.5), 2)
+			var D: Dictionary = b.D
+			var top := Vector2(0, 1e9)
+			for bl in b.blobs:
+				if bl.pos.y < top.y:
+					top = bl.pos
+				var rr: float = maxf(1.5, (6.0 - bl.age * 2.5) * float(D.size))
+				n.draw_set_transform(bl.pos, 0.0, Vector2(1.0, 1.5))
+				n.draw_circle(Vector2.ZERO, rr, Color(0.55, 0.8, 0.96, 0.55 if bl.vel.y < 0.0 else 0.3))   # rising water is denser than falling spray
+				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			if top.y < 1e8:
+				CubeKit.glow(n, top, 10.0, Color(0.75, 0.9, 0.98, 0.5), 2)   # the crown: the highest blob, wherever gravity put it
 		"mist_veil":
 			CubeKit.draw_cube(n, b)
 			for w in b.wisps:
@@ -345,10 +431,22 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			CubeKit.ellipse(n, Vector2(c.x, b.G + 1.0), c.s * (0.8 + sin(t * 2.0) * 0.1), 3.0,
 				Color(0.51, 0.75, 0.92, 0.35), 1.5, PI, TAU, 10)
 			CubeKit.draw_cube(n, b)
+			var D: Dictionary = b.D
+			var J: int = int(D.joints)
 			for p in b.parts:
 				if p.kind != "wave":
+					n.draw_rect(Rect2(Vector2(p.pos.x, minf(p.pos.y, b.G)), Vector2(2, 2)), Color(0.86, 0.94, 1.0, p.life))
 					continue
-				var hgt: float = c.s * 1.3 * minf(1.0, p.life * 1.6)
-				for k in 4:
-					CubeKit.ellipse(n, Vector2(p.x - p.dir * k * 5.0, b.G), 14.0 + k * 4.0,
-						maxf(0.5, hgt - k * 5.0), Color(0.47, 0.75, 0.94, (0.6 - k * 0.12) * p.life), 3.0, PI, TAU, 12)
+				var a: PackedFloat32Array = p.a
+				var hgt: float = c.s * float(D.height) * minf(1.0, p.life * 1.6)
+				var pts := PackedVector2Array()          # walk the chain from the toe: each segment leans its angle forward
+				var pt := Vector2(p.x, b.G)
+				pts.append(pt)
+				for j in J:
+					pt += Vector2(p.dir * sin(a[j]), -cos(a[j])) * (hgt / J)
+					pts.append(pt)
+				for k in 4:                              # the body: the face repeated back into the wave
+					var back := PackedVector2Array()
+					for q in pts:
+						back.append(Vector2(q.x - p.dir * k * 5.0, minf(b.G, q.y + k * 3.0)))
+					n.draw_polyline(back, Color(0.47, 0.75, 0.94, (0.6 - k * 0.12) * p.life), 3.0)

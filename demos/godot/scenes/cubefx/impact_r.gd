@@ -18,7 +18,9 @@ const RHYMES := {
 static func init(b: Dictionary) -> void:
 	Base.init(b)
 	if b.id == "knockback":
-		b.vy = 0.0
+		# dials: knock vx 220 → 40, vy 180 → 320 (up, not back) · spin 14 → 9 · dust on the landing
+		b.D.merge({ "vx": 40.0, "vy": 320.0, "spin": 9.0 }, true)
+		b.dust = []
 	if b.id == "stomp":
 		# dial: wave 130 → 90 (rings roll slower) · the hop and squash untouched
 		b.D.merge({ "wave": 90.0 }, true)
@@ -48,15 +50,6 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 			b.shake = 0.0
 			b.parts.append({ "kind": "ring", "x": c.x + c.s * 0.9, "dir": 1.0, "r": 6.0, "life": 1.0 })
 			b.parts.append({ "kind": "ring", "x": c.x - c.s * 0.9, "dir": -1.0, "r": 6.0, "life": 1.0 })
-		"knockback":
-			# dial: the hit sends it UP, not back
-			if b.tumble < 0.0:
-				b.tumble = 0.0
-				c.pace = false
-				c.vx = -c.face * 40.0
-				b.vy = -260.0
-				for i in 5:
-					b.parts.append({ "kind": "dizzy", "a": randf_range(0, TAU), "life": 1.4 })
 		_:
 			Base.press(b, pos)
 
@@ -89,23 +82,16 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			# dial: the freeze decays at half rate
 			b.press_v = maxf(0.0, b.press_v - dt * 1.2)
 		"knockback":
-			var r: Rect2 = b.rect
-			if b.tumble >= 0.0:
-				b.tumble += dt
-				c.vx *= pow(0.1, dt)
-				b.vy += 620.0 * dt
-				c.y = minf(b.G, c.y + b.vy * dt)
-				c.spin = -c.face * minf(1.0, b.tumble * 2.0) * TAU
-				c.x = clampf(c.x, r.position.x + c.s, r.position.x + r.size.x - c.s)
-				if c.y >= b.G and b.tumble > 0.4:
-					b.tumble = -1.0
-					b.vy = 0.0
-					c.spin = 0.0
-					c.pace = true
-			for p in b.parts:
-				p.a += 5.0 * dt
-				p.life -= dt
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
+			# dial: the same physics; the landing kicks dust — more of it the harder the fall
+			Base.tick(b, dt, t)
+			if b.land_v > 0.0:
+				for i in 8:
+					b.dust.append({ "pos": Vector2(c.x + randf_range(-4, 4), b.G),
+						"vel": Vector2(randf_range(-60, 60) * minf(1.0, b.land_v / 200.0), randf_range(-30, -8)), "life": 1.0 })
+			for d in b.dust:
+				d.pos += d.vel * dt
+				d.life -= dt * 1.8
+			b.dust = b.dust.filter(func(d): return d.life > 0.0)
 		"ground_crack":
 			# dial: heal 0.25 → 0.5
 			for p in b.parts:
@@ -201,6 +187,14 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var rr: float = (1.0 - pv) * c.s * 1.6 + 6.0
 				CubeKit.ellipse(n, Vector2(c.x + c.face * c.s * 0.6, c.y - c.s * 0.55),
 					rr, rr * 1.2, Color(1, 0.39, 0.35, pv), 2.5)
+		"knockback":
+			CubeKit.stage(n, b)
+			Base._draw_cube_squashed(n, b, b.sq)
+			for p in b.parts:
+				CubeKit.twinkle(n, Vector2(c.x + cos(p.a) * c.s * 0.7, c.y - c.s * 1.25 + sin(p.a) * 4.0),
+					3.0, Color(1, 0.92, 0.59, minf(1.0, p.life)))
+			for d in b.dust:
+				n.draw_circle(Vector2(d.pos.x, minf(d.pos.y, b.G)), 3.0, Color(0.63, 0.59, 0.71, d.life * 0.5))
 		"ground_crack":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
