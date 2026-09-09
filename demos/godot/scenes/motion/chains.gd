@@ -60,19 +60,23 @@ const DEFS := [
 		"rhyme": { "name": "Quail", "hint": "twelve followers at half the spacing and a slower stroll — a quail and her chicks, tight on her tail",
 			"dials": { "followers": 12, "spacing": 4, "speed": 55 } } },
 	{ "id": "octopus", "letter": "O", "name": "Octopus",
-		"hint": "Tentacle ×8 behind a body that swims by jet pulses — Dash's decay for the mantle, a sprung chain per arm: each joint chases the one before it plus a resting curl, and speed straightens the curl, so a jet makes the arms stream out and, as it fades, swing back and curl up again — press to send it off",
-		"dials": { "arms": 8, "links": 7, "link": 6,          # chains, joints per chain, joint spacing (px)
-			"spread": 2.4,                                   # how wide the arms fan across the back (radians)
+		"hint": "Tentacle ×8 behind a body that swims by jet pulses — Dash's decay for the mantle, a sprung chain per arm: each joint chases the one before it plus a resting bend the arm decides for itself — a coil that tightens toward the tip and slowly reverses, a writhe that travels down the arm — so the arms coil, uncoil, cross and untangle while it hangs, and speed straightens them, so a jet makes the arms stream out and, as it fades, swing back and twist up again — press to send it off",
+		"dials": { "arms": 8, "links": 9, "link": 6,          # chains, joints per chain, joint spacing (px) — arms a few body-lengths long, as an octopus's are
+			"spread": 2.9,                                   # how wide the arms fan across the back (radians)
 			"pulseEvery": 1.3, "jet": 170, "drag": 1.6,      # seconds between jets, the impulse (px/s), the decay rate
-			"curl": 0.22,                                    # each joint's resting bend past the one before it (rad) — the arm's curl when the mantle is still
+			"curl": 0.3,                                     # the coil: a joint's resting bend past the one before it (rad), growing toward the tip — the arm's spiral when the mantle is still
+			"writhe": 0.3,                                   # a bend wave that travels down each arm (rad) — the muscle ripple of a tentacle
+			"twist": 0.9,                                    # the wave's pitch: radians of phase per joint — how many S-bends fit along an arm
+			"reach": 0.7,                                    # how far an arm's first joint wanders from its slot in the fan (rad)
+			"wander": 0.45,                                  # how fast each arm's intents drift (noise rate, 1/s) — its coil sense reverses now and then
 			"stream": 90,                                    # the mantle speed (px/s) at which the arms are fully straight and trailing
 			"k": 60,                                         # the first joint's stiffness (rad/s² per rad)
-			"tip": 1.3,                                      # each joint's k as a multiple of the one before: lighter, quicker
-			"tipdamp": 0.45,                                 # a joint's damping as a fraction of ITS OWN critical — under 1, so the arms overshoot when they swing back
+			"tip": 1.15,                                     # each joint's k as a multiple of the one before: a little quicker, but the tips stay floppy
+			"tipdamp": 0.35,                                 # a joint's damping as a fraction of ITS OWN critical — well under 1, so the arms overshoot and the tips wobble on
 			"bodyR": 11, "sticky": 4,
-			"label": "jet: v += J·dir, then v ·= e^(−drag·dt) · arm: θⱼ'' = kⱼ·(θⱼ₋₁ + curl·(1 − |v|/stream) − θⱼ) − dⱼ·θⱼ'" },
-		"rhyme": { "name": "Oracle", "hint": "a jet every three seconds, gentler, with twice the resting curl — a deep-sea oracle whose arms coil into tight spirals between its slow thoughts, and unwind only while it moves",
-			"dials": { "pulseEvery": 2.8, "jet": 120, "curl": 0.45 } } },
+			"label": "arm: θⱼ'' = kⱼ·(θⱼ₋₁ + bendⱼ·(1 − |v|/stream) − θⱼ) − dⱼ·θⱼ' · bendⱼ = coil·curl·(⅓ + i/n) + writhe·sin(φ − i·twist) · coil, reach, φ drift by noise" },
+		"rhyme": { "name": "Oracle", "hint": "a jet every three seconds, gentler, with twice the coil and intents that drift at half the pace — a deep-sea oracle whose arms wind into tight spirals between its slow thoughts, and unwind only while it moves",
+			"dials": { "pulseEvery": 2.8, "jet": 120, "curl": 0.6, "wander": 0.22 } } },
 	{ "id": "vine", "letter": "V", "name": "Vine",
 		"hint": "a chain that grows: each new joint bends from its parent toward the light, plus noise — and every joint is a spring holding its grown bend, so a gust on the tip bows the whole stem and it springs back, tip last — press to move the sun",
 		"dials": { "seg": 0.05,                               # joint length (of H)
@@ -281,13 +285,19 @@ static func init(b: Dictionary) -> void:
 			# between pulses only drag — v ·= e^(−k·dt) — so each squirt eases out
 			# by itself. the eight arms are Tentacle's sprung chain, rooted around
 			# the back of the mantle: every joint is an angular spring toward the
-			# joint before it PLUS a resting curl, so a still octopus holds its arms
-			# in eight lazy spirals. the curl is scaled by the mantle's SPEED — at
-			# full stream it is zero and the first joint's rest swings from its
-			# place in the fan to the trail — so a jet straightens the arms and
-			# streams them behind, and as the drag eats the speed the rest returns,
-			# the springs swing the arms back, overshoot (damping under critical),
-			# and curl them up again. no clock in the arms at all.
+			# joint before it PLUS a resting bend. that bend is what makes an arm a
+			# TENTACLE rather than a wing: each arm has its own slow intents, read
+			# off noise so no two agree — a coil sense in −1..1 that drifts through
+			# zero (the arm uncoils and winds up the other way), a coil that tightens
+			# toward the tip (a spiral, not an arc), a reach that swings the first
+			# joint away from its slot in the fan, and a writhe: a bend wave whose
+			# phase creeps down the arm, the muscle ripple of a real tentacle. the
+			# springs chase these rests with lag and overshoot, and because the
+			# intents disagree the arms cross, tangle and untangle. all of it is
+			# scaled by the mantle's SPEED — at full stream the bend is zero and the
+			# first joint's rest is the trail — so a jet straightens the arms and
+			# streams them behind, and as the drag eats the speed the intents return
+			# and the springs twist the arms up again.
 			var arms: int = int(D.arms)
 			var links: int = int(D.links)
 			b.p = Vector2(b.w * 0.4, b.h * 0.5)
@@ -655,6 +665,11 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			var tip: float = D.tip
 			var tipdamp: float = D.tipdamp
 			var curl0: float = D.curl
+			var writhe0: float = D.writhe
+			var twist: float = D.twist
+			var reach0: float = D.reach
+			var wander: float = D.wander
+			var still: float = 1.0 - streaming
 			var sub := maxi(1, ceili(dt * 50.0))         # substeps of at most 0.02 s: √k·h < 2 keeps the step stable
 			var hh := dt / float(sub)
 			for a in arms:
@@ -662,8 +677,12 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				var fan: float = (a + 0.5) / float(arms) - 0.5
 				var root: float = h + PI + fan * D.spread   # rooted on the back
 				chain[0] = p + Vector2(cos(root), sin(root)) * D.bodyR * 0.8
-				var rest: float = root + wrapf(trail - root, -PI, PI) * streaming   # the first joint: its place in the fan, or the trail at speed
-				var curl: float = (-1.0 if fan < 0.0 else 1.0) * curl0 * (1.0 - streaming)   # outward, and straightened by speed
+				# this arm's intents: slow noise on its own seeds, so the eight never agree
+				var coil: float = Kit.noise(t * wander + a * 7.3 + 40.0) * curl0 * still           # −curl..curl: which way it winds, and how tightly
+				var reach: float = Kit.noise(t * wander * 0.8 + a * 11.7 + 90.0) * reach0 * still  # where the first joint wants to point, off its slot
+				var phase: float = t * (0.7 + 0.4 * float((a * 5) % 3)) + a * 2.1                  # the writhe's clock: each arm ripples at its own pace
+				var rest: float = root + wrapf(trail - root, -PI, PI) * streaming + reach          # the first joint: its place in the fan (± its reach), or the trail at speed
+				var writhe: float = writhe0 * still
 				for _s in sub:
 					var below: float = rest
 					var kj: float = kk / tip
@@ -671,7 +690,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 						kj = minf(kj * tip, 2500.0)
 						var dj := tipdamp * 2.0 * sqrt(kj)   # a fraction of THIS joint's critical damping
 						var idx := a * links + i
-						om[idx] += (kj * wrapf(below + curl - ang[idx], -PI, PI) - dj * om[idx]) * hh
+						var bend: float = coil * (0.25 + 0.75 * float(i) / links) + writhe * sin(phase - i * twist)   # the coil tightens toward the tip (a hook, not a ball); the writhe travels down
+						om[idx] += (kj * wrapf(below + bend - ang[idx], -PI, PI) - dj * om[idx]) * hh
 						ang[idx] = wrapf(ang[idx] + om[idx] * hh, -PI, PI)   # kept in −π..π
 						below = ang[idx]
 				for i in range(1, links):                # the constraint, kept by construction
