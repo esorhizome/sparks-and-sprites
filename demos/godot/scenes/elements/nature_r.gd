@@ -5,19 +5,34 @@ const Base := preload("res://scenes/elements/nature.gd")
 ## NATURE & GROWTH — the rhymes. Dials named per branch; the rest delegates.
 
 const RHYMES := {
-	"vine": { "name": "Frost vine", "hint": "grown in ice — faster, blooms crystals" },
+	"vine": { "name": "Frost vine", "hint": "grown in ice — faster, stiff ringing stalks that barely feel the wind, blooms crystals" },
 	"pollen": { "name": "Spore drift", "hint": "darker, and SINKING — the press still scatters" },
 	"mycelium": { "name": "Ore veins", "hint": "amber, pulsing at half tempo" },
-	"swarm": { "name": "Orbitals", "hint": "wobble dialled to zero — an atom, not a hive" },
+	"swarm": { "name": "Orbitals", "hint": "buzz dialled to zero, spring tightened — an atom; the press lifts the orbit a shell" },
 	"rainforest": { "name": "Autumn woods", "hint": "fall colours — more leaves, fewer drips" },
 	"sea_sparkle": { "name": "Ember wake", "hint": "the current leaves embers — warm, hurried" },
 }
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	match b.id:
+		"vine":
+			b.k = 90.0                  # a rime spar's stalk: stiff
+			b.damp = 0.12               # ice rings, so the damping is low
+			b.wind = 0.05               # frost barely stirs in the wind
+		"swarm":
+			b.k = 60.0                  # tight steering (ζ 0.39 with the drag below)
+			b.drag = 6.0
+			b.buzz = 0.0                # an orbital is a clean thing
+			b.scatter = 0.0             # the press moves the TARGET instead (see press)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
-	Base.press(b, pos)
+	match b.id:
+		"swarm":
+			for bee in b.bees:          # excitation: the target shell moves up; the spring does the rest
+				bee.panic = 1.0
+		_:
+			Base.press(b, pos)
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
@@ -89,10 +104,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var nd: Dictionary = nodes[i]
 				if not nd.leaf:
 					continue
-				ElemKit.twinkle(n, o + nd.pos, 3.0, Color(0.86, 0.95, 1.0, 0.7 + 0.3 * sin(t * 2.0 + nd.la)))
+				var la: float = nd.la + nd.th   # the spar's angle: its stalk spring's answer
+				n.draw_line(o + nd.pos, o + nd.pos + Vector2(cos(la), sin(la)) * 6.0, Color(0.86, 0.95, 1.0, 0.85), 1.2)
 				if pv > 0.0:               # six ice spars instead of petals
 					for pt in 6:
-						var pa: float = nd.la + pt * TAU / 6.0
+						var pa: float = la + pt * TAU / 6.0
 						n.draw_line(o + nd.pos, o + nd.pos + Vector2(cos(pa), sin(pa)) * 5.0 * pv,
 							Color(0.9, 0.97, 1.0, pv * 0.8), 1.0)
 		"pollen":
@@ -116,14 +132,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					n.draw_line(o + pts[i - 1], o + pts[i], Color(1, 0.78, 0.39, a), 1.2)
 			ElemKit.label(n, r, "MOTHERLODE", Color(0.97, 0.9, 0.78, 0.8))
 		"swarm":
-			# dials: wobble 0 · panic → excitation ring jump (drawn tighter)
+			# dials: buzz 0, spring tight (init) · scatter → a shell jump of the target (press)
 			ElemKit.face(n, r, Color(0.047, 0.063, 0.1, 0.94), Color(0.55, 0.75, 0.96, 0.5))
 			ElemKit.label(n, r, "NUCLEUS", Color(0.85, 0.92, 1.0))
 			n.draw_circle(c, 3.0, Color(0.86, 0.93, 1.0, 0.9))
 			for bee in b.bees:
-				var rr: float = (r.size.x * 0.34) * (1.0 + bee.panic * 1.1)
-				var pos := c + Vector2(cos(bee.a) * rr * 1.25, sin(bee.a) * rr * 0.55)
-				n.draw_circle(pos, 1.6, Color(0.63, 0.86, 1.0, 0.9))
+				n.draw_circle(o + bee.pos, 1.6, Color(0.63, 0.86, 1.0, 0.9))
 			ElemKit.ellipse(n, c, r.size.x * 0.425, r.size.y * 0.33, Color(0.55, 0.78, 1.0, 0.2), 1.0)
 		"rainforest":
 			# dial: canopy green → fall colours

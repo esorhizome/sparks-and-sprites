@@ -7,12 +7,12 @@ const TITLE := "Earth & stone"
 const BLURB := "cracks, crumbles, sand, and tectonic grudges"
 const DEFS := [
 	{ "id": "fault_line", "name": "Fault line", "hint": "a glowing crack crosses the face; press for the earthquake" },
-	{ "id": "crumble", "name": "Crumble", "hint": "press and the face collapses into rubble — then rebuilds itself" },
+	{ "id": "crumble", "name": "Crumble", "hint": "press and the face collapses into rubble — then each shard springs home, clacks past its slot, and settles" },
 	{ "id": "sandstorm", "name": "Sandstorm", "hint": "grains stream past and gnaw the edges; press for a gust" },
 	{ "id": "landslide", "name": "Landslide", "hint": "pebbles trickle down the face; press to let the whole slope go" },
 	{ "id": "geode", "name": "Geode", "hint": "plain rock outside; press and the halves crack apart on a spring — past the stop, rocking back — then close on the sparkle" },
 	{ "id": "tectonic", "name": "Tectonic", "hint": "three plates creep on a slow drive, stick while the seam loads, then slip in a jerk — the grind is stress building and letting go; press to shove the outer plates in" },
-	{ "id": "quicksand", "name": "Quicksand", "hint": "the caption is slowly sinking; press to pull it back out" },
+	{ "id": "quicksand", "name": "Quicksand", "hint": "the caption sinks with velocity through thick sand; press to yank it — it surges, the drag stops it, it sinks back" },
 	{ "id": "boulder", "name": "Boulder", "hint": "a boulder patrols overhead; press and it drops on the button" },
 ]
 
@@ -31,6 +31,15 @@ static func init(b: Dictionary) -> void:
 				y = clampf(y + randf_range(-6, 6), 8, r.size.y - 8)
 			b.crack.append(Vector2(r.size.x, y))
 		"crumble":
+			# the collapse was always honest ballistics; the rebuild used to lerp
+			# home. now every shard keeps a velocity all the way: the rise is a
+			# damped spring toward its slot, under critical, so the rubble flies
+			# past the face and clacks back, and the spin unwinds on the same spring
+			b.grav = 240.0                 # the fall, px/s²
+			b.fall = 1.1                   # seconds of free fall before the rebuild takes hold
+			b.k_home = 45.0                # the rebuild spring: px/s² per px from home
+			b.damp_home = 0.55             # as a fraction of critical (2√k): under 1, so rubble overshoots its slot
+			b.settle = 2.6                 # the longest the rebuild may take before it's declared solid
 			b.mode = "solid"
 			b.mode_t = 0.0
 			b.shards = []
@@ -90,7 +99,14 @@ static func init(b: Dictionary) -> void:
 			b.stress = zero.duplicate()     # each plate's load as a fraction of stick
 			b.dir = PackedFloat32Array([1.0, 0.0, -1.0])   # which way each drive is walking
 		"quicksand":
+			# the caption has a VELOCITY: the sand pulls down and drags with speed,
+			# so left alone it creeps at a terminal sink; the press is an impulse,
+			# and the drag decides how far the surge carries
+			b.pull = 9.6                   # the sand's pull, px/s²
+			b.drag = 6.0                   # its viscous drag, per second: terminal sink = pull / drag = 1.6 px/s
+			b.yank = 84.0                  # the press: an upward impulse, px/s (about 12 px before the sand wins)
 			b.sink = 0.0
+			b.v = 0.0
 		"boulder":
 			b.bx = -12.0
 			b.by = -22.0
@@ -116,8 +132,11 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 					s.vel = Vector2(randf_range(-20, 20), randf_range(-40, 10))
 					s.rot = 0.0
 					s.vr = randf_range(-3, 3)
-		"sandstorm", "quicksand":
+		"sandstorm":
 			b.press_v = 1.0
+		"quicksand":
+			b.press_v = 1.0
+			b.v -= float(b.yank)           # yanked: velocity in, the drag decides how far it goes
 		"landslide":
 			b.press_v = 1.0
 			for i in 18:
@@ -157,18 +176,26 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.mode == "falling":
 				for s in b.shards:
 					s.pos += s.vel * dt
-					s.vel.y += 240.0 * dt
+					s.vel.y += float(b.grav) * dt
 					s.rot += s.vr * dt
-				if b.mode_t > 1.1:
+				if b.mode_t > float(b.fall):
 					b.mode = "rising"
 					b.mode_t = 0.0
-			elif b.mode == "rising":
-				var k: float = minf(1.0, b.mode_t / 0.8)
-				var e := 1.0 - pow(1.0 - k, 3.0)   # ease-out — repentant rubble
+			elif b.mode == "rising":       # every shard springs home, keeping its velocity
+				var k: float = b.k_home
+				var d: float = b.damp_home * 2.0 * sqrt(k)
+				var sub := maxi(1, ceili(dt * 50.0))
+				var h := dt / float(sub)
+				var settled := true
 				for s in b.shards:
-					s.pos += (s.home - s.pos) * e
-					s.rot *= (1.0 - e)
-				if k >= 1.0:
+					for _s in sub:
+						s.vel += (k * (s.home - s.pos) - d * s.vel) * h
+						s.pos += s.vel * h
+						s.vr += (k * (0.0 - s.rot) - d * s.vr) * h
+						s.rot += s.vr * h
+					if (s.pos - s.home).length() > 0.4 or s.vel.length() > 3.0:
+						settled = false
+				if settled or b.mode_t > float(b.settle):
 					b.mode = "solid"
 		"sandstorm":
 			var wind: float = 1.0 + b.press_v * 3.0
@@ -255,8 +282,14 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 0.9
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"quicksand":
-			b.sink = minf(r.size.y * 0.75, b.sink + dt * 1.6 - b.press_v * dt * 30.0)
-			b.sink = maxf(-6.0, b.sink)
+			b.v += (float(b.pull) - float(b.drag) * b.v) * dt   # the sand always wins, slowly
+			b.sink += b.v * dt
+			if b.sink < -8.0:              # as far out as it comes
+				b.sink = -8.0
+				b.v = maxf(0.0, b.v)
+			if b.sink > r.size.y * 0.75:   # as deep as it goes
+				b.sink = r.size.y * 0.75
+				b.v = minf(0.0, b.v)
 		"boulder":
 			if not b.falling:
 				b.bx += 40.0 * dt

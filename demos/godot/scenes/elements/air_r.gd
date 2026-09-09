@@ -9,10 +9,10 @@ const RHYMES := {
 	"cyclone": { "name": "Water spout", "hint": "open sea: blue, with spray — spin 6 → 4, the amble spring ÷4" },
 	"smoke_signal": { "name": "Bubble signal", "hint": "underwater — puffs rise fast, pop at the rim" },
 	"fog_bank": { "name": "Night fog", "hint": "darker, drift ÷2 — the press GLOWS instead of parting (gust → 0)" },
-	"updraft": { "name": "Ember updraft", "hint": "the thermal carries embers, faster and hotter" },
+	"updraft": { "name": "Ember updraft", "hint": "embers: lift ×1.6, no glide (a speck can't tilt), turbulence ×2" },
 	"vacuum": { "name": "Repulsor", "hint": "the field's sign flipped (G → −G) — everything pushed AWAY" },
 	"sonic_boom": { "name": "Quiet ripple", "hint": "violence dialled out — see-through, serene" },
-	"windsock": { "name": "Kite tail", "hint": "festival colours, tied to a stiffer breeze" },
+	"windsock": { "name": "Kite tail", "hint": "festival colours, root spring ×1.9, the wind resting at 2.2" },
 }
 
 ## Turn dials the original already has — a rhyme never invents a key.
@@ -33,8 +33,16 @@ static func init(b: Dictionary) -> void:
 			_turn(b, { "drift": 0.5, "gust": 0.0 })
 		"vacuum":                       # dial: the pull's sign flipped — a push of the same strength
 			_turn(b, { "G": -20000.0 })
+		"updraft":
+			b.lift = 224.0              # ×1.6: a chimney pushes harder
+			b.glide = 0.0               # a speck can't tilt, so no glide and no coupling…
+			b.couple = 0.0
+			b.gust = 440.0              # …but twice the turbulence
 		"windsock":
-			b.wind = 2.2                # a stiffer resting breeze
+			b.k = 130.0                 # a stiffer root spring
+			b.wind_rest = 2.2           # a steadier breeze
+			b.wind = 2.2
+			(b.th as PackedFloat32Array).fill(atan(float(b.droop) / 2.2))
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -81,18 +89,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 						break
 			if b.press_v > 0.0:
 				b.ring = b.ring + 200.0 * dt   # the ring runs outward too
-		"windsock":
-			# dial: wind relaxes toward 2.2, not 1.0
-			b.press_v = maxf(0.0, b.press_v - dt * 1.3)
-			b.wind += (2.2 - b.wind) * dt * 0.8
-			var pts: Array = b.pts
-			pts[0] = Vector2(r.size.x - 2, 8)
-			for i in range(1, pts.size()):
-				var target: Vector2 = pts[i - 1] + Vector2(6.0 * b.wind,
-					sin(t * (6.0 + b.wind * 2.0) + i * 0.9) * (2.2 + b.wind))
-				pts[i] = (pts[i] as Vector2).lerp(target, minf(1.0, dt * 14.0))
 		_:
-			Base.tick(b, dt, t)
+			Base.tick(b, dt, t)         # windsock and updraft: the dials moved in init, the same chain and loop run
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect
@@ -156,7 +154,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.face(n, r, Color(0.11, 0.07, 0.04, 0.92), Color(1, 0.71, 0.39, 0.5))
 			ElemKit.label(n, r, "CHIMNEY", Color(1, 0.9, 0.78))
 			for p in b.parts:
-				var pos: Vector2 = o + p.pos + Vector2(0, -p.v * 0.1)
+				var pos: Vector2 = o + p.pos
 				n.draw_rect(Rect2(pos, Vector2(2.2, 2.2)), Color(1, 0.7, 0.31, 0.9))
 				n.draw_rect(Rect2(pos + Vector2(0.4, 2.2), Vector2(1.4, 3.0)), Color(1, 0.5, 0.2, 0.35))
 		"vacuum":
@@ -180,7 +178,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"windsock":
 			ElemKit.face(n, r, Color(0.078, 0.094, 0.118, 0.92), Color(0.75, 0.8, 0.88, 0.5))
 			ElemKit.label(n, r, "FESTIVAL", Color(0.89, 0.92, 0.96))
-			var pts: Array = b.pts
+			var pts: PackedVector2Array = b.pts
 			var cols := [Color(1, 0.45, 0.45), Color(1, 0.78, 0.31), Color(0.47, 0.86, 0.55),
 				Color(0.43, 0.7, 1.0), Color(0.8, 0.55, 0.95)]
 			for i in range(1, pts.size()):

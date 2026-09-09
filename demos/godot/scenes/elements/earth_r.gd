@@ -6,12 +6,12 @@ const Base := preload("res://scenes/elements/earth.gd")
 
 const RHYMES := {
 	"fault_line": { "name": "Ley line", "hint": "violet hum, the quake becomes a chime-ripple" },
-	"crumble": { "name": "Gentle collapse", "hint": "gravity ÷3, spin ×2 — same grid" },
+	"crumble": { "name": "Gentle collapse", "hint": "gravity ÷3, spin ×2, a softer slower spring home — same grid" },
 	"sandstorm": { "name": "Pollen wind", "hint": "slow and green-gold — spring, not desert" },
 	"landslide": { "name": "Bubble rise", "hint": "gravity flipped: pebbles become climbing bubbles" },
 	"geode": { "name": "Furnace door", "hint": "the interior is molten instead of crystal — a heavier door: spring 60 → 30" },
 	"tectonic": { "name": "Ice floes", "hint": "pale blue open water — creep and range ×2, the grip a quarter of stone's" },
-	"quicksand": { "name": "Snow sink", "hint": "softened to powder — half the pull" },
+	"quicksand": { "name": "Snow sink", "hint": "softened to powder — pull ÷3, drag lighter, so the yank carries further" },
 	"boulder": { "name": "Beach ball", "hint": "bounce dial cranked, gravity eased" },
 }
 
@@ -30,6 +30,15 @@ static func init(b: Dictionary) -> void:
 		_turn(b, { "k": 30.0 })         # dial: a furnace door is heavier — half the spring, a slower swing
 	if b.id == "tectonic":              # dials: floes drift twice as far, and ice barely grips
 		_turn(b, { "creep": 4.0, "range": 10.0, "stick": 50.0, "slide": 15.0 })
+	if b.id == "crumble":
+		b.grav = 80.0                   # a third of gravity
+		b.fall = 1.8                    # a longer fall
+		b.k_home = 18.0                 # a softer spring home…
+		b.damp_home = 0.45              # …floatier past it
+		b.settle = 4.0
+	if b.id == "quicksand":
+		b.pull = 3.2                    # powder's pull: terminal sink 0.8 px/s
+		b.drag = 4.0                    # lighter drag: the yank carries ~21 px
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -59,26 +68,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.r += 34.0 * dt
 				p.life -= dt * 1.1
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"crumble":
-			# dials: gravity 240 → 80 · spin ×2
-			b.press_v = maxf(0.0, b.press_v - dt * 1.4)
-			b.mode_t += dt
-			if b.mode == "falling":
-				for s in b.shards:
-					s.pos += s.vel * dt
-					s.vel.y += 80.0 * dt
-					s.rot += s.vr * 2.0 * dt
-				if b.mode_t > 1.6:
-					b.mode = "rising"
-					b.mode_t = 0.0
-			elif b.mode == "rising":
-				var k: float = minf(1.0, b.mode_t / 0.8)
-				var e := 1.0 - pow(1.0 - k, 3.0)
-				for s in b.shards:
-					s.pos += (s.home - s.pos) * e
-					s.rot *= (1.0 - e)
-				if k >= 1.0:
-					b.mode = "solid"
 		"landslide":
 			# dial: gravity +60 → buoyancy −45, wobble kept
 			b.press_v = maxf(0.0, b.press_v - dt * 0.5)
@@ -90,11 +79,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.vel.y -= 45.0 * dt
 				p.pos.x += sin(p.pos.y * 0.3) * 6.0 * dt
 			b.parts = b.parts.filter(func(p): return p.pos.y > -40.0)
-		"quicksand":
-			# dial: pull 1.6 → 0.8 (powder is kinder)
-			b.press_v = maxf(0.0, b.press_v - dt * 1.4)
-			b.sink = minf(r.size.y * 0.75, b.sink + dt * 0.8 - b.press_v * dt * 30.0)
-			b.sink = maxf(-6.0, b.sink)
 		"boulder":
 			# dials: gravity 500 → 180 · restitution 0.4 → 0.78
 			b.press_v = maxf(0.0, b.press_v - dt * 1.4)
@@ -123,7 +107,7 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 1.8
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		_:
-			Base.tick(b, dt, t)
+			Base.tick(b, dt, t)         # crumble and quicksand: the dials moved in init, the same springs run
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect

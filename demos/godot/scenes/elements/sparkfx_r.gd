@@ -10,7 +10,7 @@ const RHYMES := {
 	"flint": { "name": "Wet strike", "hint": "count starved — six reluctant sparks, a sad puff" },
 	"welding": { "name": "Solder line", "hint": "half heat — cool tones, twice the patience" },
 	"fountain": { "name": "Ember fall", "hint": "inverted — the fireworks pour DOWN" },
-	"pixie": { "name": "Soot motes", "hint": "chimney grey — falls faster, swirls less" },
+	"pixie": { "name": "Soot motes", "hint": "chimney grey — settles ×2 faster, a weaker stir (half the spiral), fewer puffs" },
 }
 
 ## Turn dials the original already has — a rhyme never invents a key.
@@ -25,6 +25,10 @@ static func init(b: Dictionary) -> void:
 		_turn(b, { "grav": 140.0 })     # dial: spark gravity 300 → 140 (they arc higher and hang)
 	if b.id == "flint":
 		b.puff = 0.0
+	if b.id == "pixie":
+		b.settle = 30.0                    # soot settles faster
+		b.stir = 540.0                     # a weaker push: a slower orbit at the same pull is a tighter one
+		b.flutter = 20.0                   # fewer puffs
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var r: Rect2 = b.rect
@@ -83,24 +87,8 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					bs.vel.y += 60.0 * dt
 					bs.life -= dt * 1.2
 			b.rockets = b.rockets.filter(func(rk): return rk.fuse > 0.0 or rk.burst.any(func(bs): return bs.life > 0.0))
-		"pixie":
-			# dials: fall 14 → 34 · swirl amplitude 5 → 1.5 · stir orbit ÷2
-			b.press_v = maxf(0.0, b.press_v - dt * 0.7)
-			if randf() < 0.35:
-				b.parts.append({ "pos": r.size / 2.0 + Vector2(randf_range(-34, 34), randf_range(-6, 6)),
-					"a": randf_range(0, TAU), "life": 1.0, "tw": randf_range(4, 9) })
-			for p in b.parts:
-				if b.press_v > 0.0:
-					p.a += 2.0 * dt
-					var rr: float = 16.0 + (1.0 - p.life) * 22.0
-					p.pos = r.size / 2.0 + Vector2(cos(p.a) * rr * 1.6, sin(p.a) * rr * 0.8)
-				else:
-					p.pos.y += 34.0 * dt
-					p.pos.x += sin(t * 3.0 + p.tw) * 1.5 * dt
-				p.life -= dt * 0.5
-			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		_:
-			Base.tick(b, dt, t)
+			Base.tick(b, dt, t)         # pixie: the dials moved in init, the same forces run
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect

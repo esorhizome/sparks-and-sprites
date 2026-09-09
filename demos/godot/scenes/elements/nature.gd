@@ -6,10 +6,10 @@ const ElemKit := preload("res://scenes/elements/kit.gd")
 const TITLE := "Nature & growth"
 const BLURB := "vines, spores, swarms, and glowing tides"
 const DEFS := [
-	{ "id": "vine", "name": "Vine growth", "hint": "vines wind along the border, leafing as they go; press to bloom" },
+	{ "id": "vine", "name": "Vine growth", "hint": "vines wind along the border, every leaf on its own stalk spring leaning with the wind; press to bloom — the pop kicks each leaf" },
 	{ "id": "pollen", "name": "Pollen field", "hint": "spores hang in the light; press to puff them everywhere" },
 	{ "id": "mycelium", "name": "Mycelium", "hint": "threads creep across the dark; press to pulse light down the network" },
-	{ "id": "swarm", "name": "Swarm", "hint": "a loose swarm orbits the hive; press to scatter it" },
+	{ "id": "swarm", "name": "Swarm", "hint": "every bee a body with velocity steering for its orbit through drag and buzz; press to scatter them, and they spiral back" },
 	{ "id": "rainforest", "name": "Rainforest", "hint": "drips and falling leaves; press for the downpour" },
 	{ "id": "sea_sparkle", "name": "Sea sparkle", "hint": "an unseen current wakes glowing algae; press to stir the water" },
 ]
@@ -20,12 +20,20 @@ static func init(b: Dictionary) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
 		"vine":
+			# each leaf is one ANGLE on a damped spring. the wind (two slow sines per
+			# leaf, an input like weather) moves the rest, so the leaves lean and
+			# recover with lag; the bloom's pop hands every leaf a random angular
+			# velocity and the stalk rings it down. nothing is placed by the clock
+			b.k = 30.0                     # a leaf's stalk: torque per radian of twist from its rest, s⁻²
+			b.damp = 0.3                   # its damping as a fraction of critical (2√k): under 1, so a kicked leaf swings
+			b.wind = 0.2                   # how far the wind can lean a leaf, radians — the wind moves the REST
+			b.pop = 6.0                    # the bloom's kick: angular velocity handed to each leaf, rad/s (±)
 			b.nodes = []
 			for i in 41:
 				var a := -PI / 2.0 + i / 40.0 * TAU
 				b.nodes.append({ "pos": r.size / 2.0 + Vector2(cos(a) * r.size.x * 0.54 + sin(i * 2.2) * 2.0,
 					sin(a) * r.size.y * 0.72 + cos(i * 1.7) * 2.0),
-					"leaf": i % 5 == 2, "la": randf_range(0, TAU) })
+					"leaf": i % 5 == 2, "la": randf_range(0, TAU), "th": 0.0, "om": 0.0 })
 		"pollen":
 			b.motes = []
 			for i in 18:
@@ -38,10 +46,21 @@ static func init(b: Dictionary) -> void:
 			_branch(b, Vector2(0, randf_range(6, r.size.y - 6)), randf_range(-0.3, 0.3), 0)
 			b.pulse = -1.0
 		"swarm":
+			# each bee is a POSITION with a VELOCITY. its orbit spot moves round the
+			# ellipse; the bee is pulled toward it by a steering spring and slowed by
+			# drag — under-damped, so it loops around the spot rather than sitting on
+			# it. the buzz is random force; the scatter an impulse straight out, and
+			# because the spot keeps moving the return is a spiral
+			b.k = 25.0                     # steering: pull toward the orbit spot, px/s² per px of error
+			b.drag = 3.0                   # air drag per second — with k it sets the spiral (ζ = drag / 2√k, here 0.3)
+			b.buzz = 400.0                 # random jitter force, px/s² — the wobble is a force, not a sine
+			b.scatter = 260.0              # the press: an outward impulse, px/s
 			b.bees = []
 			for i in 18:
-				b.bees.append({ "a": randf_range(0, TAU), "va": randf_range(0.8, 1.6),
-					"wob": randf_range(0, 9), "panic": 0.0 })
+				var a := randf_range(0, TAU)
+				var rr := r.size.x * 0.34
+				b.bees.append({ "a": a, "va": randf_range(0.8, 1.6), "panic": 0.0,
+					"pos": r.size / 2.0 + Vector2(cos(a) * rr * 1.25, sin(a) * rr * 0.55), "vel": Vector2.ZERO })
 		"sea_sparkle":
 			b.wake = []
 
@@ -64,8 +83,13 @@ static func _branch(b: Dictionary, from: Vector2, angle: float, depth: int) -> v
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
-		"vine", "rainforest":
+		"rainforest":
 			b.press_v = 1.0
+		"vine":
+			b.press_v = 1.0
+			for nd in b.nodes:             # the pop: a kick, no teleport
+				if nd.leaf:
+					nd.om += randf_range(-b.pop, b.pop)
 		"pollen":
 			for m in b.motes:
 				var d: Vector2 = m.pos - r.size / 2.0
@@ -73,8 +97,11 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 		"mycelium":
 			b.pulse = 0.0
 		"swarm":
-			for bee in b.bees:
-				bee.panic = 1.0 + randf_range(0.0, 0.5)
+			for bee in b.bees:             # the scatter: an impulse away from the hive, in the ellipse's frame
+				var d := Vector2((bee.pos.x - r.size.x / 2.0) / 1.25, (bee.pos.y - r.size.y / 2.0) / 0.55)
+				var len := maxf(4.0, d.length())
+				var s: float = b.scatter * randf_range(0.7, 1.3)
+				bee.vel += Vector2(d.x / len * s * 1.25, d.y / len * s * 0.55)
 		"sea_sparkle":
 			for i in 14:
 				var th := randf_range(0, TAU)
@@ -84,6 +111,19 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 	b.press_v = maxf(0.0, b.press_v - dt * (0.35 if b.id == "vine" else 0.6))
 	var r: Rect2 = b.rect
 	match b.id:
+		"vine":
+			var k: float = b.k
+			var d: float = b.damp * 2.0 * sqrt(k)
+			var wind: float = b.wind
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for nd in b.nodes:
+				if not nd.leaf:
+					continue
+				var rest: float = (sin(t * 0.7 + nd.la) + 0.4 * sin(t * 1.9 + nd.la * 2.0)) * wind   # the wind's ask
+				for _s in sub:
+					nd.om += (k * (rest - nd.th) - d * nd.om) * h
+					nd.th = clampf(nd.th + nd.om * h, -1.2, 1.2)
 		"pollen":
 			for m in b.motes:
 				m.pos += (m.vel + Vector2(sin(t * 0.8 + m.ph) * 4.0, cos(t * 0.6 + m.ph) * 3.0 - 2.0)) * dt
@@ -96,9 +136,21 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				if b.pulse > 1.4:
 					b.pulse = -1.0
 		"swarm":
+			var k: float = b.k
+			var drag: float = b.drag
+			var buzz: float = b.buzz
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			for bee in b.bees:
 				bee.panic = maxf(0.0, bee.panic - dt * 0.6)
-				bee.a += bee.va * (1.0 + bee.panic * 2.5) * dt
+				bee.a += bee.va * (1.0 + bee.panic * 1.5) * dt
+				var lift: float = 0.4 if bee.panic > 0.5 else 0.0      # the orbitals rhyme: a jump to the next shell
+				var rr: float = r.size.x * 0.34 * (1.0 + lift)
+				var spot := r.size / 2.0 + Vector2(cos(bee.a) * rr * 1.25, sin(bee.a) * rr * 0.55)   # where it's steering for
+				bee.vel += Vector2(randf_range(-1, 1), randf_range(-1, 1)) * buzz * dt
+				for _s in sub:
+					bee.vel += (k * (spot - bee.pos) - drag * bee.vel) * h
+					bee.pos += bee.vel * h
 		"rainforest":
 			if randf() < 0.06 + b.press_v * 0.6:
 				b.parts.append({ "kind": "drip", "pos": Vector2(randf_range(0, r.size.x), r.size.y),
@@ -144,13 +196,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				var nd: Dictionary = nodes[i]
 				if not nd.leaf:
 					continue
-				var sway: float = sin(t * 1.5 + nd.la) * 0.2
-				n.draw_set_transform(o + nd.pos, nd.la + sway, Vector2(1.0, 0.5))
+				n.draw_set_transform(o + nd.pos, nd.la + nd.th, Vector2(1.0, 0.5))   # the spring's angle, not a sine
 				n.draw_circle(Vector2(4, 0), 3.4, Color(0.55, 0.78, 0.39, 0.85))
 				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 				if pv > 0.0:                 # five petals, conjured by the press
 					for pt in 5:
-						var pa: float = nd.la + pt * TAU / 5.0 + t * 0.2
+						var pa: float = nd.la + nd.th + pt * TAU / 5.0
 						n.draw_circle(o + nd.pos + Vector2(cos(pa), sin(pa)) * 3.4 * pv, 1.7,
 							Color(1, 0.75, 0.86, pv))
 		"pollen":
@@ -175,12 +226,9 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.face(n, r, Color(0.118, 0.094, 0.04, 0.92), Color(0.9, 0.75, 0.35, 0.5))
 			ElemKit.label(n, r, "HIVE", Color(0.96, 0.9, 0.75))
 			for bee in b.bees:
-				var wob: float = sin(t * 7.0 + bee.wob) * 3.0
-				var rr: float = (r.size.x * 0.34) * (1.0 + bee.panic * 1.1) + wob
-				var pos := c + Vector2(cos(bee.a) * rr * 1.25, sin(bee.a) * rr * 0.55)
+				var pos: Vector2 = o + bee.pos
 				n.draw_rect(Rect2(pos, Vector2(2.4, 1.8)), Color(0.94, 0.78, 0.31, 0.9))
-				n.draw_line(pos - Vector2(cos(bee.a) * 4.0, sin(bee.a) * 2.0), pos,
-					Color(0.94, 0.78, 0.31, 0.25), 1.0)
+				n.draw_line(pos - bee.vel * 0.06, pos, Color(0.94, 0.78, 0.31, 0.25), 1.0)   # a hint of flight path: where it just was
 		"rainforest":
 			ElemKit.face(n, r, Color(0.055, 0.1, 0.07, 0.96), Color(0.47, 0.75, 0.55, 0.5))
 			ElemKit.label(n, r, "CANOPY", Color(0.85, 0.93, 0.87))

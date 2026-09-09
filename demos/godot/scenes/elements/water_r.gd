@@ -12,7 +12,7 @@ const RHYMES := {
 	"waterline": { "name": "Oil line", "hint": "dark iridescent liquid, spring ÷4" },
 	"whirlpool": { "name": "Galaxy pool", "hint": "motes turned to stars, drain ÷4" },
 	"spring_tide": { "name": "Ebb tide", "hint": "the surge dial reversed — a press throws the row DOWN, and the sea drains" },
-	"deep_sea": { "name": "Void drift", "hint": "reset in space: stars, a slow comet" },
+	"deep_sea": { "name": "Void drift", "hint": "reset in space: stars, and the jelly a comet — pulse → steady coast, no sink, tentacles → a tail along −velocity" },
 	"waterfall": { "name": "Light veil", "hint": "golden, at a third of the speed" },
 	"squirt": { "name": "Ink squirt", "hint": "droplets darkened, gravity ×2" },
 }
@@ -37,13 +37,27 @@ static func init(b: Dictionary) -> void:
 		"whirlpool":
 			for m in b.motes:               # drain ÷4
 				m.v *= 0.5
+		"deep_sea":
+			b.kick = 0.0                    # no pulse: a comet doesn't swim…
+			b.coast = 10.0                  # …it coasts, a steady push along its heading
+			b.drag = 0.6                    # thin, so it glides
+			b.sink = 0.0                    # no down in space
+			b.tents = 0                     # no tentacles: the tail is drawn from −velocity
+			b.jelly.head = randf_range(1.0, 2.0)
 		"waterfall":
 			pass
 		"squirt":
 			pass
 
 static func press(b: Dictionary, pos: Vector2) -> void:
-	Base.press(b, pos)
+	match b.id:
+		"deep_sea":
+			# dial: the startled pulse → a flare: a shove along the heading
+			b.press_v = 1.0
+			var J: Dictionary = b.jelly
+			J.vel += Vector2(sin(J.head), -cos(J.head)) * 20.0
+		_:
+			Base.press(b, pos)
 	if b.id == "spring_tide":
 		for p in b.parts:               # the foam falls with the ebb
 			p.vel.y = absf(p.vel.y) * 0.5
@@ -165,10 +179,10 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			for s in b.snow:
 				var a := 0.2 + 0.5 * maxf(0.0, sin(t * 3.0 + s.pos.x)) + pv * 0.3
 				n.draw_rect(Rect2(o + s.pos, Vector2(1.4, 1.4)), Color(0.88, 0.88, 0.98, minf(1.0, a)))
-			var jx := o.x + r.size.x * 0.5 + sin(t * 0.4) * r.size.x * 0.3
-			var jy := o.y + r.size.y * 0.3
-			ElemKit.glow(n, Vector2(jx, jy), 10.0 + pv * 8.0, Color(1, 0.94, 0.82, 0.6 + pv * 0.4), 3)
-			n.draw_line(Vector2(jx, jy), Vector2(jx - 24, jy - 9), Color(1, 0.88, 0.67, 0.3 + pv * 0.4), 1.5)
+			var J: Dictionary = b.jelly
+			var jp: Vector2 = o + J.pos
+			ElemKit.glow(n, jp, 10.0 + pv * 8.0, Color(1, 0.94, 0.82, 0.6 + pv * 0.4), 3)
+			n.draw_line(jp, jp - J.vel * 1.6, Color(1, 0.88, 0.67, 0.3 + pv * 0.4), 1.5)   # the tail: where it came from
 			ElemKit.label(n, r, "ADRIFT", Color(0.9, 0.88, 1.0, 0.8 + pv * 0.2))
 		"waterfall":
 			ElemKit.face(n, r, Color(0.094, 0.078, 0.047, 0.96), Color(1, 0.88, 0.63, 0.5))

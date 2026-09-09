@@ -11,7 +11,7 @@ const DEFS := [
 	{ "id": "flint", "name": "Flint", "hint": "dead still until struck — press for the strike" },
 	{ "id": "welding", "name": "Welding seam", "hint": "an arc crawls the border leaving cooling metal; press for spatter" },
 	{ "id": "fountain", "name": "Fountain", "hint": "a firework fountain plays over the button; press for three rockets" },
-	{ "id": "pixie", "name": "Pixie dust", "hint": "glitter sheds off the caption; press to stir a spiral of it" },
+	{ "id": "pixie", "name": "Pixie dust", "hint": "glitter settles, every grain a body with velocity and drag; press to stir — sideways push and inward pull bend what they have into a spiral" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -34,6 +34,17 @@ static func init(b: Dictionary) -> void:
 			# whatever it happens to be.
 			b.th = 0.0                  # the wheel's angle
 			b.om = float(b.D.motor) / float(b.D.fric)   # its spin, rad/s — starts at idle
+		"pixie":
+			# each grain has a VELOCITY the whole time: drag toward a settling speed
+			# plus random puffs. the stir used to lift every grain onto a circle; now
+			# it is two forces added to what the grain already has — a push sideways
+			# around the caption and a pull toward it — so it curves into orbit from
+			# wherever it was, and drops out again as the stir fades
+			b.settle = 14.0                # a grain's settling speed, px/s — gravity against drag
+			b.drag = 4.0                   # drag per second: every velocity relaxes toward the settle at this rate
+			b.stir = 760.0                 # the press: the whirl's sideways push, px/s² at full stir
+			b.draw_in = 1200.0             # and its inward pull, px/s² at full stir — what bends the push into a spiral
+			b.flutter = 60.0               # random puffs, px/s² — the idle drift
 		"sparkler":
 			b.second = 0.0
 		"welding":
@@ -106,15 +117,21 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 		"pixie":
 			if randf() < 0.35:
 				b.parts.append({ "pos": r.size / 2.0 + Vector2(randf_range(-34, 34), randf_range(-6, 6)),
-					"a": randf_range(0, TAU), "life": 1.0, "tw": randf_range(4, 9) })
+					"vel": Vector2(randf_range(-6, 6), randf_range(-4, 4)), "life": 1.0, "tw": randf_range(4, 9) })
+			var settle: float = b.settle
+			var drag: float = b.drag
+			var stir: float = b.stir * b.press_v
+			var draw_in: float = b.draw_in * b.press_v
+			var flutter: float = b.flutter
 			for p in b.parts:
-				if b.press_v > 0.0:          # the stir: everything orbits the centre
-					p.a += 4.0 * dt
-					var rr: float = 16.0 + (1.0 - p.life) * 22.0
-					p.pos = r.size / 2.0 + Vector2(cos(p.a) * rr * 1.6, sin(p.a) * rr * 0.8)
-				else:
-					p.pos.y += 14.0 * dt
-					p.pos.x += sin(t * 3.0 + p.tw) * 5.0 * dt
+				var acc := Vector2(randf_range(-1, 1) * flutter, 0.0)
+				if b.press_v > 0.0:          # the stir: sideways push + inward pull, in the ellipse's own frame
+					var d := Vector2((p.pos.x - r.size.x / 2.0) / 1.6, (p.pos.y - r.size.y / 2.0) / 0.8)
+					var len := maxf(6.0, d.length())
+					acc += Vector2((-d.y / len * stir - d.x / len * draw_in) * 1.6, (d.x / len * stir - d.y / len * draw_in) * 0.8)
+				p.vel.x += (acc.x - drag * p.vel.x) * dt
+				p.vel.y += (acc.y + drag * (settle - p.vel.y)) * dt
+				p.pos += p.vel * dt
 				p.life -= dt * 0.5
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 

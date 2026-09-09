@@ -12,7 +12,7 @@ const RHYMES := {
 	"forge": { "name": "Cryo forge", "hint": "heat cycle runs COLD, sparks → shards" },
 	"rivet": { "name": "Star studs", "hint": "glints random instead of in sequence" },
 	"liquid_chrome": { "name": "Liquid gold", "hint": "warmed, spring ÷2" },
-	"magnetite": { "name": "Compass grass", "hint": "green blades, pole ÷3, press = wind" },
+	"magnetite": { "name": "Compass grass", "hint": "green blades: k ÷5 (a stalk, not a needle), pole ÷3, press = a gust that kicks every blade" },
 }
 
 static func init(b: Dictionary) -> void:
@@ -22,9 +22,25 @@ static func init(b: Dictionary) -> void:
 			pass                            # speed dial in tick
 		"rivet":
 			b.glints = [0.0, 0.0, 0.0, 0.0]
+		"magnetite":
+			b.k = 30.0                      # a stalk's torque per radian of lean, s⁻²
+			b.damp = 0.35                   # under critical, so a gusted blade sways back and forth
+			b.jitter = 1.5                  # a meadow breathes, gently
+			b.rate = 0.15                   # the pole turns at a third of the speed
+			var fk: PackedFloat32Array = b.fk
+			for i in fk.size():             # re-spread the per-blade stiffness around the softer k
+				fk[i] = b.k * (1.0 + randf_range(-b.spread, b.spread))
 
 static func press(b: Dictionary, pos: Vector2) -> void:
-	Base.press(b, pos)
+	match b.id:
+		"magnetite":
+			# dial: pole flip → a gust: angular velocity handed to every blade, the spring brings it back
+			b.press_v = 1.0
+			var fw: PackedFloat32Array = b.fw
+			for i in fw.size():
+				fw[i] += randf_range(-8.0, 8.0)
+		_:
+			Base.press(b, pos)
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	match b.id:
@@ -57,6 +73,7 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				b.glints[i] = maxf(b.glints[i] - dt * 0.8, b.press_v)
 		"magnetite":
 			b.press_v = maxf(0.0, b.press_v - dt * 0.9)
+			Base._magnet_step(b, dt, t)     # the same springs, the softer dials
 		_:
 			Base.tick(b, dt, t)
 
@@ -150,18 +167,15 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.ring_face(n, r, Color(1, 0.9, 0.67, 0.7))
 			ElemKit.label(n, r, "GILD", Color(0.157, 0.11, 0.04, 0.85))
 		"magnetite":
-			# dials: iron→grass, pole rotation ÷3, press = gust jitter
+			# dials: iron→grass (the spring and pole dials in init, the gust in press)
 			ElemKit.face(n, r, Color(0.055, 0.078, 0.055, 0.95), Color(0.59, 0.78, 0.55, 0.5))
-			var fa: float = t * 0.15
-			var pp := r.size / 2.0 + Vector2(cos(fa) * r.size.x * 0.4, sin(fa) * r.size.y * 0.35)
-			var qq := r.size / 2.0 - Vector2(cos(fa) * r.size.x * 0.4, sin(fa) * r.size.y * 0.35)
-			for f in b.filings:
-				var local: Vector2 = f - o
-				var a1: float = (local - pp).angle()
-				var a2: float = (qq - local).angle()
-				var a := atan2(sin(a1) + sin(a2), cos(a1) + cos(a2)) + pv * sin(t * 8.0 + f.x * 0.2) * 0.4
+			var fa: PackedFloat32Array = b.fa
+			var filings: Array = b.filings
+			for i in filings.size():
+				var f: Vector2 = filings[i]
+				var a: float = fa[i]
 				var L := 2.6 + pv
-				n.draw_line(f - Vector2(cos(a), sin(a)) * L, f + Vector2(cos(a), sin(a)) * L,
+				n.draw_line(o + f - Vector2(cos(a), sin(a)) * L, o + f + Vector2(cos(a), sin(a)) * L,
 					Color(0.63, 0.84, 0.59, 0.5 + pv * 0.3), 1.0)
 			ElemKit.label(n, r, "MEADOW", Color(0.87, 0.94, 0.85))
 		_:

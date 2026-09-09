@@ -10,10 +10,10 @@ const DEFS := [
 	{ "id": "cyclone", "name": "Cyclone", "hint": "a pet tornado of nine stacked rings, each dragged round and sideways by the one below it, ambling on a spring toward wherever it fancies next; press to feed it and watch the spin climb" },
 	{ "id": "smoke_signal", "name": "Smoke signal", "hint": "one puff at a time drifts up; press to send three fast" },
 	{ "id": "fog_bank", "name": "Fog bank", "hint": "fog blobs ride a slow drift through the caption, each on a soft spring to its place in it; press and an outward gust throws them apart — they drift back and settle, a little late" },
-	{ "id": "updraft", "name": "Updraft", "hint": "leaves ride a thermal past the button; press for a flurry" },
+	{ "id": "updraft", "name": "Updraft", "hint": "leaves ride a thermal, each rocking on a spring and gliding as it rocks — the flutter loop; press for a flurry" },
 	{ "id": "vacuum", "name": "Vacuum", "hint": "dust falls toward the centre on an inverse-square pull, fighting drag — the near misses whip past and spiral in; press to slam the airlock" },
 	{ "id": "sonic_boom", "name": "Sonic boom", "hint": "speed lines shiver behind it; press to break the barrier" },
-	{ "id": "windsock", "name": "Windsock", "hint": "a ribbon streams from the corner; press to spike the wind" },
+	{ "id": "windsock", "name": "Windsock", "hint": "a ribbon of hinged segments, each a spring chasing the one before it, so the tip lags and whips; press to spike the wind" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -99,11 +99,45 @@ static func init(b: Dictionary) -> void:
 				m.pos = Vector2(randf_range(-20, r.size.x + 20), randf_range(-20, r.size.y + 20))
 				b.motes.append(m)
 			b.ring = 0.0
+		"updraft":
+			# the flutter loop's dials (the rhyme turns them in its init)
+			b.lift = 140.0                 # the thermal's push on a leaf, px/s², upward
+			b.drag = 3.5                   # air drag per second: the terminal rise is lift / drag (40 px/s)
+			b.krock = 30.0                 # the leaf's righting torque per radian of tilt, s⁻²
+			b.drock = 0.15                 # its damping as a fraction of critical: light, so it keeps rocking
+			b.glide = 130.0                # a tilted leaf slides sideways: px/s² per radian of tilt
+			b.couple = 0.25                # sideways motion tilts the leaf back: rad/s² per px/s — closes the loop
+			b.gust = 220.0                 # random sideways gusts, px/s² — what keeps the rocking fed
 		"windsock":
-			b.pts = []
-			for i in 11:
-				b.pts.append(r.size + Vector2(-2, -r.size.y + 8))
-			b.wind = 1.0
+			# the ribbon is a CHAIN of hinge angles from the wind's direction, each on
+			# a damped spring whose rest is the angle of the segment before it (the
+			# stagecraft Grass chain). the root's rest is where gravity's droop
+			# balances the wind; the flutter is not written in — a small vortex-
+			# shedding wobble at the mouth is the only drive, and the chain
+			# amplifies it toward the tip because that is what a chain does.
+			b.n = 11                       # hinged segments
+			b.seg = 6.5                    # length of each, px
+			b.k = 70.0                     # the root hinge's stiffness
+			b.damp = 0.5                   # the root's damping as a fraction of critical (2√k)
+			b.tip = 1.25                   # each hinge's k as a multiple of the one before it (lighter tail, same bend rights it faster)
+			b.tipdamp = 0.45               # a hinge's damping as a fraction of ITS OWN critical — under 1, so the tail whips
+			b.droop = 0.7                  # gravity's pull as a fraction of the wind at wind 1: rest = atan(droop / wind)
+			b.shed = 0.12                  # the vortex-shedding drive at the mouth, radians
+			b.shed_hz = 1.1                # its frequency per unit of wind
+			b.wind_rest = 1.0              # the wind the gust relaxes back to
+			b.wind = b.wind_rest
+			b.phase = 0.0
+			var th := PackedFloat32Array()
+			var om := PackedFloat32Array()
+			th.resize(b.n)
+			om.resize(b.n)
+			th.fill(atan(b.droop / b.wind))
+			b.th = th
+			b.om = om
+			var pts := PackedVector2Array()
+			pts.resize(b.n + 1)
+			pts.fill(Vector2(r.size.x - 2, 8))
+			b.pts = pts
 
 static func press(b: Dictionary, _pos: Vector2) -> void:
 	var r: Rect2 = b.rect
@@ -128,13 +162,13 @@ static func press(b: Dictionary, _pos: Vector2) -> void:
 			b.press_v = 1.0
 			b.ring = b.rect.size.x * 0.6
 		"windsock":
-			b.wind = 3.5
+			b.wind = b.wind_rest + 2.5     # a gust: the wind moves the ROOT's rest, nothing teleports
 
 static func _leaf(b: Dictionary, burst: bool) -> void:
 	var r: Rect2 = b.rect
 	b.parts.append({ "pos": Vector2(randf_range(-16, r.size.x + 16), r.size.y + 20.0),
-		"v": randf_range(26, 50) * (1.8 if burst else 1.0), "ph": randf_range(0, 9),
-		"rot": randf_range(0, 6), "vr": randf_range(-4, 4), "green": randf() < 0.5 })
+		"vel": Vector2(0, -randf_range(10, 30)), "th": randf_range(-0.6, 0.6), "om": randf_range(-2, 2),
+		"light": 1.8 if burst else 1.0, "green": randf() < 0.5 })
 
 ## A mote reborn at the rim with a little tangential speed — the seed of an orbit.
 static func _reset_mote(b: Dictionary, m: Dictionary) -> void:
@@ -262,10 +296,28 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 		"updraft":
 			if randf() < 0.05:
 				_leaf(b, false)
+			# a leaf FLUTTERS because two motions feed each other: a tilted leaf
+			# glides sideways, and a leaf gliding sideways is tilted back by the
+			# air over it. a rocking spring coupled both ways to a sideways
+			# velocity with drag; the thermal is a force against drag (so the rise
+			# has a terminal speed, not a fixed one); the gust is random force
+			var lift: float = b.lift
+			var drag: float = b.drag
+			var krock: float = b.krock
+			var dr: float = b.drock * 2.0 * sqrt(krock)
+			var glide: float = b.glide
+			var couple: float = b.couple
+			var gust: float = b.gust
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			for p in b.parts:
-				p.pos.y -= p.v * dt
-				p.pos.x += sin(t * 2.0 + p.ph) * 16.0 * dt
-				p.rot += p.vr * dt
+				p.vel.x += randf_range(-1, 1) * gust * dt
+				for _s in sub:
+					p.om += (krock * (0.0 - p.th) - dr * p.om + couple * p.vel.x) * h   # the air over a drifting leaf tilts it
+					p.th = clampf(p.th + p.om * h, -1.4, 1.4)
+					p.vel.x += (-glide * sin(p.th) - drag * p.vel.x) * h                # a tilted leaf glides
+					p.vel.y += (-lift * p.light - drag * p.vel.y) * h                   # the thermal, against drag
+					p.pos += p.vel * h
 			b.parts = b.parts.filter(func(p): return p.pos.y > -24.0)
 		"vacuum":
 			var D: Dictionary = b.D
@@ -282,13 +334,37 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.press_v > 0.0:
 				b.ring = maxf(0.0, b.ring - 300.0 * dt)
 		"windsock":
-			b.wind += (1.0 - b.wind) * dt * 0.8
-			var pts: Array = b.pts
-			pts[0] = Vector2(r.size.x - 2, 8)
-			for i in range(1, pts.size()):
-				var target: Vector2 = pts[i - 1] + Vector2(6.0 * b.wind,
-					sin(t * (6.0 + b.wind * 2.0) + i * 0.9) * (2.2 + b.wind))
-				pts[i] = (pts[i] as Vector2).lerp(target, minf(1.0, dt * 14.0))
+			b.wind += (b.wind_rest - b.wind) * dt * 0.8   # the gust dies down
+			b.phase += TAU * float(b.shed_hz) * b.wind * dt
+			var rest: float = atan(float(b.droop) / b.wind) + sin(b.phase) * float(b.shed)
+			var n: int = b.n
+			var th: PackedFloat32Array = b.th
+			var om: PackedFloat32Array = b.om
+			var k: float = b.k
+			var damp: float = b.damp
+			var tip: float = b.tip
+			var tipdamp: float = b.tipdamp
+			# a symplectic step is only stable while √k·h < 2, and the hinges up the
+			# ribbon are stiffer (k · tip each) — so a coarse frame is cut into
+			# substeps of at most 0.02 s (the lexicon's Substep)
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			for _s in sub:
+				var below := rest
+				var kj := k / tip
+				for i in n:
+					kj *= tip                                    # the root gets k, each hinge after it tip× more
+					var dj := (damp if i == 0 else tipdamp) * 2.0 * sqrt(kj)
+					om[i] += (kj * (below - th[i]) - dj * om[i]) * h
+					th[i] = clampf(th[i] + om[i] * h, -1.6, 1.6)
+					below = th[i]
+			var pts: PackedVector2Array = b.pts                  # walk the chain from the mast, for the draw
+			var seg: float = b.seg
+			var p := Vector2(r.size.x - 2, 8)
+			pts[0] = p
+			for i in n:
+				p += Vector2(cos(th[i]), sin(th[i])) * seg
+				pts[i + 1] = p
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect
@@ -346,7 +422,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.face(n, r, Color(0.07, 0.1, 0.078, 0.92), Color(0.67, 0.82, 0.59, 0.5))
 			ElemKit.label(n, r, "THERMAL", Color(0.89, 0.94, 0.85))
 			for p in b.parts:
-				n.draw_set_transform(o + p.pos, p.rot, Vector2(1.0, 0.47))
+				n.draw_set_transform(o + p.pos, p.th, Vector2(1.0, 0.47))   # the tilt IS the rock
 				n.draw_circle(Vector2.ZERO, 3.4, Color(0.59, 0.75, 0.35, 0.85) if p.green else Color(0.82, 0.63, 0.27, 0.85))
 				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"vacuum":
@@ -376,7 +452,8 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"windsock":
 			ElemKit.face(n, r, Color(0.078, 0.094, 0.118, 0.92), Color(0.75, 0.8, 0.88, 0.5))
 			ElemKit.label(n, r, "GALE", Color(0.89, 0.92, 0.96))
+			var pts: PackedVector2Array = b.pts
 			var poly := PackedVector2Array()
-			for p in b.pts:
+			for p in pts:
 				poly.append(o + p)
 			n.draw_polyline(poly, Color(1, 0.59, 0.35, 0.9), 3.0)
