@@ -8,7 +8,7 @@ const RHYMES := {
 	"frostbite": { "name": "Moss creep", "hint": "green, alive, growing 4× faster" },
 	"snowdrift": { "name": "Ash fall", "hint": "mourning grey, wearier shake" },
 	"ice_cracks": { "name": "Kintsugi", "hint": "cracks mended in gold, they LINGER" },
-	"glacier": { "name": "Cliff crumble", "hint": "sandstone, chunks drop hard" },
+	"glacier": { "name": "Cliff crumble", "hint": "sandstone: buoyancy 0 (nothing to float on), gravity ×1.8, free tumble" },
 	"aurora": { "name": "Ember aurora", "hint": "fire hues, shimmer ×2" },
 	"hailstorm": { "name": "Bubble rain", "hint": "soap bubbles: fall ÷3, bounce ×2" },
 	"frozen_core": { "name": "Warm hearth", "hint": "warmed, spikes softened into rays" },
@@ -17,9 +17,28 @@ const RHYMES := {
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	if b.id == "glacier":
+		b.grav = 220.0                     # a chunk falls harder…
+		b.kb = 0.0                         # …with no water to float on
+		b.kr = 0.0                         # and no righting: it keeps the spin it left with
+		b.current = 0.0
+
+## The cliff's version of calving: a chunk breaks out of the face and tumbles
+## off the edge, with dust — there is no line to drop toward.
+static func _crumble(b: Dictionary, count: int) -> void:
+	var r: Rect2 = b.rect
+	for i in count:
+		b.parts.append({ "kind": "berg", "pos": Vector2(r.size.x - 4, randf_range(4, r.size.y - 6)),
+			"vel": Vector2(randf_range(6, 16), 0.0), "rot": 0.0, "vr": randf_range(-2, 2),
+			"r": randf_range(3, 7 if count == 1 else 8), "wet": true, "life": 1.0 })
+	for i in 5 * count:                   # dust off the break
+		b.parts.append({ "kind": "splash", "pos": Vector2(r.size.x + randf_range(0, 8), r.size.y - 4),
+			"vel": Vector2(randf_range(0, 30), randf_range(-20, -4)), "life": 1.0 })
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
+		"glacier":
+			_crumble(b, 3)
 		"snowdrift":
 			# dial: the shake is wearier — half the scatter energy
 			var r: Rect2 = b.rect
@@ -47,19 +66,25 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.press_v = maxf(0.0, b.press_v - dt * 2.0)
 			b.freeze = maxf(0.0, b.freeze - dt * 0.1)
 		"glacier":
-			# dial: bergs drop hard (gravity on) instead of drifting out to sea
+			# dials: buoyancy and righting at zero, so the same step is plain ballistics
 			b.press_v = maxf(0.0, b.press_v - dt * 2.0)
 			b.timer -= dt
 			if b.timer <= 0.0:
-				Base._calve(b, 1)
+				_crumble(b, 1)
 				b.timer = randf_range(2.5, 5.0)
+			var grav: float = b.grav
+			var kb: float = b.kb
+			var kr: float = b.kr
+			var r: Rect2 = b.rect
 			for p in b.parts:
-				p.pos += p.vel * dt
 				if p.kind == "berg":
-					p.vel.y += 140.0 * dt
+					p.vel.y += (grav - kb * maxf(0.0, p.pos.y - r.size.y)) * dt
+					p.vr += kr * (0.0 - p.rot) * dt
+					p.pos += p.vel * dt
 					p.rot += p.vr * dt
 					p.life -= dt * 0.5
 				else:
+					p.pos += p.vel * dt
 					p.vel.y += 110.0 * dt
 					p.life -= dt * 1.6
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)

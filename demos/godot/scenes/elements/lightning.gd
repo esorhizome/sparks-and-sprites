@@ -10,10 +10,10 @@ const DEFS := [
 	{ "id": "tesla_ring", "name": "Tesla ring", "hint": "an arc dances between button and outer ring; press fires them all" },
 	{ "id": "storm_cloud", "name": "Storm cloud", "hint": "a cloud broods overhead, bobbing on a spring only its own mutters nudge; press and it strikes the button — and recoils from the bolt" },
 	{ "id": "circuit", "name": "Circuit trace", "hint": "pulses travel etched copper paths; press to send them all at once" },
-	{ "id": "plasma_globe", "name": "Plasma globe", "hint": "filaments wander from the core; press and they chase your finger" },
+	{ "id": "plasma_globe", "name": "Plasma globe", "hint": "filaments wander the rim, each tip a sprung point; press and they swing to your finger, overshoot, and settle" },
 	{ "id": "neon", "name": "Neon flicker", "hint": "a buzzing neon tube border; press to steady it for a moment" },
 	{ "id": "emp", "name": "EMP", "hint": "shockwave rings pulse outward; press for the big one" },
-	{ "id": "vandegraaff", "name": "Van de Graaff", "hint": "charged hairs wave off the top edge; press to discharge" },
+	{ "id": "vandegraaff", "name": "Van de Graaff", "hint": "hairs stand up as the dome charges, two-hinge spring chains; press to discharge — they drop, swing, and rise again" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -51,9 +51,17 @@ static func init(b: Dictionary) -> void:
 					seg.append(total)
 				b.paths.append({ "pts": pts, "seg": seg, "len": total, "d": randf_range(0, total), "v": randf_range(30, 60) })
 		"plasma_globe":
+			# each filament's tip is a POINT with velocity on a damped spring toward
+			# its target — a wandering spot on the rim, or the finger while held. it
+			# never jumps: it accelerates, overshoots (under-damped), and rings down
+			b.k = 90.0                     # the spring pulling each tip toward its target
+			b.damp = 0.3                   # as a fraction of critical (2√k): under 1, so the tip overshoots the finger
+			b.wander = 0.8                 # how fast the idle targets drift round the rim, radians/s (±)
 			b.fils = []
 			for i in 6:
-				b.fils.append({ "a": randf_range(0, TAU), "va": randf_range(-0.8, 0.8) })
+				var a := randf_range(0, TAU)
+				b.fils.append({ "a": a, "va": randf_range(-b.wander, b.wander),
+					"pos": r.size / 2.0 + Vector2(cos(a) * r.size.x * 0.48, sin(a) * r.size.y * 0.5), "vel": Vector2.ZERO })
 			b.target = Vector2.ZERO
 			b.hold = 0.0
 		"neon":
@@ -62,10 +70,28 @@ static func init(b: Dictionary) -> void:
 		"emp":
 			b.timer = 1.0
 		"vandegraaff":
+			# each hair is a CHAIN of two angles from vertical on a damped spring. the
+			# root's REST is where the charge says: flopped sideways with none,
+			# standing (spread from its neighbours — like charges repel) at full.
+			# the tip chases the root, quicker and less damped. charging moves the
+			# rest slowly; the discharge drops it at once and the hairs fall
+			# through their own springs, overshoot, and swing
+			b.k = 45.0                     # the root hinge's stiffness
+			b.damp = 0.35                  # its damping as a fraction of critical (2√k): under 1, so a dropped hair swings
+			b.tip = 1.6                    # the tip hinge's k as a multiple of the root's (lighter, so quicker)
+			b.tipdamp = 0.3                # the tip hinge's damping as a fraction of ITS OWN critical
+			b.flop = 1.25                  # where a limp hair lies, radians from vertical
+			b.spread = 0.3                 # where a fully charged hair stands, radians
+			b.charge_rate = 0.45           # how fast the dome charges back up, per second
+			b.crackle = 6.0                # random torque on a charged hair, rad/s² — the static's fizz
+			b.lean = 0.0                   # a current's lean on the rest, radians (the seagrass rhyme's dial)
+			b.charge = 0.0
 			b.hairs = []
 			var x := 8.0
 			while x < r.size.x - 6.0:
-				b.hairs.append({ "x": x, "len": randf_range(10, 20), "ph": randf_range(0, 9) })
+				var side := (-1.0 if x < r.size.x / 2.0 else 1.0) * randf_range(0.6, 1.4)   # which way it leans, and how much
+				b.hairs.append({ "x": x, "len": randf_range(10, 20), "side": side,
+					"th0": b.flop * side, "om0": 0.0, "th1": b.flop * side, "om1": 0.0 })
 				x += 9.0
 
 static func press(b: Dictionary, pos: Vector2) -> void:
@@ -86,6 +112,8 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 				b.dropout = 0.0
 			if b.id == "storm_cloud":
 				b.cvy -= float(b.D.kick)   # the recoil: the bolt throws the cloud upward
+			if b.id == "vandegraaff":
+				b.charge = 0.0             # the discharge: the rest drops, the hairs follow by spring
 		"circuit":
 			b.press_v = 1.0
 			for p in b.paths:
@@ -117,8 +145,10 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.d = 0.0
 		"plasma_globe":
 			b.hold = maxf(0.0, b.hold - dt)
-			for f in b.fils:
-				f.a += f.va * dt
+			_plasma_step(b, dt)
+		"vandegraaff":
+			b.charge = minf(1.0, b.charge + float(b.charge_rate) * dt)
+			_hair_step(b, dt, t)
 		"neon":
 			b.steady = maxf(0.0, b.steady - dt)
 			if b.steady <= 0.0 and b.dropout <= 0.0 and randf() < 0.02:
@@ -158,6 +188,45 @@ static func _cloud_spring(b: Dictionary, dt: float) -> void:
 	b.cy = clampf(cy, -60.0, 60.0)
 	b.cvy = cvy
 	b.flicker = maxf(0.0, float(b.flicker) - dt * 2.0)
+
+## The filaments' sprung tips: each chases its target (the rim spot, or the
+## finger while held) on a damped spring — the rhyme calls this with its dials.
+static func _plasma_step(b: Dictionary, dt: float) -> void:
+	var r: Rect2 = b.rect
+	var k: float = b.k
+	var d: float = b.damp * 2.0 * sqrt(k)
+	var chasing: bool = b.hold > 0.0
+	var sub := maxi(1, ceili(dt * 50.0))
+	var h := dt / float(sub)
+	for f in b.fils:
+		f.a += f.va * dt
+		var target: Vector2 = b.target if chasing else r.size / 2.0 + Vector2(cos(f.a) * r.size.x * 0.48, sin(f.a) * r.size.y * 0.5)
+		for _s in sub:
+			f.vel += (k * (target - f.pos) - d * f.vel) * h
+			f.pos += f.vel * h
+
+## The hair chain: root rest from charge (and any current's lean), tip chasing
+## the root. Shared with the seagrass rhyme, whose dials zero the charge.
+static func _hair_step(b: Dictionary, dt: float, t: float) -> void:
+	var k: float = b.k
+	var d0: float = b.damp * 2.0 * sqrt(k)
+	var k1: float = k * float(b.tip)
+	var d1: float = b.tipdamp * 2.0 * sqrt(k1)
+	var flop: float = b.flop
+	var spread: float = b.spread
+	var charge: float = b.charge
+	var crackle: float = b.crackle
+	var lean: float = b.lean
+	var sub := maxi(1, ceili(dt * 50.0))   # substep: √k·h must stay under 2
+	var h := dt / float(sub)
+	for hair in b.hairs:
+		var rest: float = hair.side * (flop - charge * (flop - spread)) + sin(t * 0.6 + hair.x * 0.04) * lean
+		hair.om0 += randf_range(-1, 1) * crackle * charge * dt      # the crackle: a little random torque while charged
+		for _s in sub:
+			hair.om0 += (k * (rest - hair.th0) - d0 * hair.om0) * h
+			hair.th0 = clampf(hair.th0 + hair.om0 * h, -1.6, 1.6)
+			hair.om1 += (k1 * (hair.th0 - hair.th1) - d1 * hair.om1) * h   # the tip chases the root
+			hair.th1 = clampf(hair.th1 + hair.om1 * h, -1.6, 1.6)
 
 static func _path_point(p: Dictionary, d: float) -> Vector2:
 	var pts: Array = p.pts
@@ -232,11 +301,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.glow(n, r.get_center(), 14.0, Color(1, 0.75, 1.0, 0.7), 3)
 			var chasing: bool = b.hold > 0.0
 			for f in b.fils:
-				var e: Vector2
-				if chasing:
-					e = o + b.target + Vector2(randf_range(-4, 4), randf_range(-4, 4))
-				else:
-					e = r.get_center() + Vector2(cos(f.a) * r.size.x * 0.48, sin(f.a) * r.size.y * 0.5)
+				var e: Vector2 = o + f.pos + Vector2(randf_range(-3, 3), randf_range(-3, 3))   # the sprung tip, with its jitter
 				var p := r.get_center()
 				for k in range(1, 6):
 					var u := k / 5.0
@@ -264,16 +329,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				else:
 					n.draw_rect(Rect2(o + p.pos, Vector2(2, 2)), Color(0.7, 0.94, 1.0, p.life))
 		"vandegraaff":
-			ElemKit.face(n, r, Color(0.094, 0.078, 0.125, 0.95), Color(0.78, 0.75, 1.0, 0.5))
+			var charge: float = b.charge
+			ElemKit.face(n, r, Color(0.094, 0.078, 0.125, 0.95), Color(0.78, 0.75, 1.0, 0.3 + charge * 0.3))
 			ElemKit.label(n, r, "HAIR-RAISER", Color(0.89, 0.87, 1.0))
 			for hair in b.hairs:
-				var sway: float = randf_range(-10, 10) if pv > 0.0 else sin(t * 2.0 + hair.ph) * 5.0
+				var seg: float = hair.len / 2.0                  # walk the chain: base → joint → tip
 				var base := o + Vector2(hair.x, 1.0)
-				ElemKit.qcurve(n, base, base + Vector2(sway * 0.5, -hair.len * 0.6),
-					base + Vector2(sway, -hair.len * (1.5 if pv > 0.0 else 1.0)),
-					Color(0.82, 0.78, 1.0, 0.9 if pv > 0.0 else 0.45), 1.0)
-				if pv > 0.0 and randf() < 0.2:
-					n.draw_rect(Rect2(base + Vector2(sway - 1, -hair.len - randf_range(0, 8)), Vector2(2, 2)),
+				var joint: Vector2 = base + Vector2(sin(hair.th0), -cos(hair.th0)) * seg
+				var tip: Vector2 = joint + Vector2(sin(hair.th1), -cos(hair.th1)) * seg
+				ElemKit.qcurve(n, base, joint, tip, Color(0.82, 0.78, 1.0, 0.35 + charge * 0.3 + pv * 0.3), 1.0)
+				if pv > 0.0 and randf() < 0.2:                   # sparks off the tips as the charge leaves
+					n.draw_rect(Rect2(tip + Vector2(randf_range(-4, 2), -randf_range(1, 7)), Vector2(2, 2)),
 						Color(1, 1, 1, pv))
 
 static func _tesla_arc(n: CanvasItem, b: Dictionary, theta: float, bright: float) -> void:

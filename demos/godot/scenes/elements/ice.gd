@@ -9,7 +9,7 @@ const DEFS := [
 	{ "id": "frostbite", "name": "Frostbite", "hint": "frost fingers creep in from the border; press to shatter them" },
 	{ "id": "snowdrift", "name": "Snowdrift", "hint": "snow settles on the top edge; press to shake it off" },
 	{ "id": "ice_cracks", "name": "Ice cracks", "hint": "clear ice, quiet glints; press and cracks race out, then refreeze" },
-	{ "id": "glacier", "name": "Glacier", "hint": "the shelf calves small bergs; press for a big one" },
+	{ "id": "glacier", "name": "Glacier", "hint": "bergs calve, drop in, bob on a buoyancy spring, roll with each heave, and drift on the current; press for a big one" },
 	{ "id": "aurora", "name": "Aurora", "hint": "curtains of light ripple overhead; press to set the sky alight" },
 	{ "id": "hailstorm", "name": "Hailstorm", "hint": "hail bounces off the button; press for a violent burst" },
 	{ "id": "frozen_core", "name": "Frozen core", "hint": "a cold heart pulses inside; press for a ring of frost spikes" },
@@ -47,6 +47,20 @@ static func init(b: Dictionary) -> void:
 			b.cracks = []
 			b.freeze = 0.0
 		"glacier":
+			# a berg is a body with velocity, heave, and roll. it breaks off above the
+			# waterline (a displacement — it's put where it isn't supported), falls,
+			# and once under the line buoyancy takes over: a damped spring pushing it
+			# up, under critical, so it bobs. the roll is its own righting spring fed
+			# by the heave rate; the current is a drag toward a speed, not a set velocity
+			b.grav = 120.0                 # gravity on a berg, px/s²
+			b.kb = 30.0                    # buoyancy: px/s² per px under the line
+			b.db = 0.35                    # its damping as a fraction of critical (2√kb): under 1, so it bobs
+			b.kr = 20.0                    # the roll's righting spring, rad/s² per rad
+			b.dr = 0.3                     # its damping as a fraction of critical
+			b.roll = 0.06                  # heave-to-roll coupling: rad/s² per px/s of vertical motion
+			b.drop = 12.0                  # the calving: how far above the waterline a berg breaks off, px
+			b.current = 22.0               # the current carrying bergs out, px/s
+			b.yw = r.size.y - 5.0          # the waterline, in the button's frame
 			b.timer = 3.0
 		"blizzard":
 			b.streaks = []
@@ -95,13 +109,15 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 
 static func _calve(b: Dictionary, count: int) -> void:
 	var r: Rect2 = b.rect
+	for i in count:                       # a berg breaks off above the line, at rest: the fall is the kick
+		b.parts.append({ "kind": "berg", "pos": Vector2(r.size.x - 4 + randf_range(0, 6), float(b.yw) - float(b.drop) - randf_range(0, 6)),
+			"vel": Vector2.ZERO, "rot": randf_range(-0.3, 0.3), "vr": randf_range(-1.5, 1.5),
+			"r": randf_range(3, 7 if count == 1 else 8), "wet": false, "life": 1.0 })
+
+static func _splash(b: Dictionary, x: float, count: int) -> void:
 	for i in count:
-		b.parts.append({ "kind": "berg", "pos": Vector2(r.size.x - 4, randf_range(4, r.size.y - 6)),
-			"vel": Vector2(randf_range(14, 30), randf_range(4, 14)), "rot": 0.0,
-			"vr": randf_range(-1.5, 1.5), "r": randf_range(3, 7), "life": 1.0 })
-	for i in 5 * count:
-		b.parts.append({ "kind": "splash", "pos": Vector2(r.size.x + randf_range(0, 8), r.size.y - 4),
-			"vel": Vector2(randf_range(0, 40), randf_range(-40, -8)), "life": 1.0 })
+		b.parts.append({ "kind": "splash", "pos": Vector2(x + randf_range(-4, 4), b.yw),
+			"vel": Vector2(randf_range(-20, 40), randf_range(-50, -10)), "life": 1.0 })
 
 static func _hail(b: Dictionary) -> void:
 	var r: Rect2 = b.rect
@@ -141,12 +157,34 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			if b.timer <= 0.0:
 				_calve(b, 1)
 				b.timer = randf_range(2.5, 5.0)
+			var grav: float = b.grav
+			var kb: float = b.kb
+			var db: float = b.db * 2.0 * sqrt(kb)
+			var kr: float = b.kr
+			var dr: float = b.dr * 2.0 * sqrt(kr)
+			var roll: float = b.roll
+			var current: float = b.current
+			var yw: float = b.yw
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			for p in b.parts:
-				p.pos += p.vel * dt
-				if p.kind == "berg":
-					p.rot += p.vr * dt
+				if p.kind == "berg":       # fall, splash, bob, roll, drift, fade
+					for _s in sub:
+						var under: float = p.pos.y - yw   # how far below the waterline (positive = submerged)
+						if under > 0.0:        # afloat: buoyancy, water damping, the current's drag, the righting roll
+							p.vel.y += (grav - kb * under - db * p.vel.y) * h
+							p.vel.x += (current - p.vel.x) * 1.5 * h
+							p.vr += (kr * (0.0 - p.rot) - dr * p.vr + roll * p.vel.y) * h
+						else:                  # in the air: just falling
+							p.vel.y += grav * h
+						p.pos += p.vel * h
+						p.rot += p.vr * h
+					if not p.wet and p.pos.y > yw:   # the splash happens when it HITS
+						p.wet = true
+						_splash(b, p.pos.x, 5)
 					p.life -= dt * 0.4
 				else:
+					p.pos += p.vel * dt
 					p.vel.y += 110.0 * dt
 					p.life -= dt * 1.6
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
@@ -220,6 +258,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.face(n, r, Color(0.73, 0.85, 0.93), Color(0.9, 0.96, 1.0, 0.8))
 			n.draw_rect(Rect2(o, Vector2(r.size.x, 8)), Color(0.91, 0.96, 0.99))
 			ElemKit.label(n, r, "CALVE", Color(0.078, 0.176, 0.27, 0.85))
+			n.draw_line(o + Vector2(r.size.x, b.yw), o + Vector2(r.size.x + 60, b.yw), Color(0.47, 0.67, 0.86, 0.35), 1.0)   # the waterline
 			for p in b.parts:
 				if p.kind == "berg":
 					n.draw_set_transform(o + p.pos, p.rot, Vector2.ONE)

@@ -9,10 +9,10 @@ const RHYMES := {
 	"tesla_ring": { "name": "Halo arcs", "hint": "warmed to gold, slowed to a waltz" },
 	"storm_cloud": { "name": "Snow cloud", "hint": "the strike dial swapped for a flurry — recoil kick 60 → 12" },
 	"circuit": { "name": "Ink trace", "hint": "wet ink on pale paper, pulses ÷2" },
-	"plasma_globe": { "name": "Sun globe", "hint": "amber filaments, wander ×2" },
+	"plasma_globe": { "name": "Sun globe", "hint": "amber filaments, wander ×2, spring looser (wider swings)" },
 	"neon": { "name": "Steady cyan", "hint": "hue rotated, hum ÷4, dropouts rare" },
 	"emp": { "name": "Pond rings", "hint": "jitter dialled to zero, water palette" },
-	"vandegraaff": { "name": "Seagrass", "hint": "rooted to the BOTTOM edge, green, sway ÷2" },
+	"vandegraaff": { "name": "Seagrass", "hint": "rooted to the BOTTOM edge, green, spring ÷3, charge → a slow current, press = a surge" },
 }
 
 static func init(b: Dictionary) -> void:
@@ -23,6 +23,21 @@ static func init(b: Dictionary) -> void:
 	if b.id == "circuit":
 		for p in b.paths:                  # the ÷2 pulse dial lives here
 			p.v *= 0.5
+	if b.id == "plasma_globe":
+		b.damp = 0.2                       # looser than the plasma, so the flares swing wider
+		for f in b.fils:                   # the ×2 wander dial
+			f.va *= 2.0
+	if b.id == "vandegraaff":
+		b.k = 14.0                         # soft: it's grass in water
+		b.damp = 0.3
+		b.flop = 0.0                       # no charge to stand up from, no flop to fall to…
+		b.spread = 0.0
+		b.charge_rate = 0.0
+		b.crackle = 0.0
+		b.lean = 0.45                      # …just a slow current leaning the strands
+		for hair in b.hairs:
+			hair.th0 = 0.0
+			hair.th1 = 0.0
 
 ## Turn dials the original already has — a rhyme never invents a key.
 static func _turn(b: Dictionary, dials: Dictionary) -> void:
@@ -31,7 +46,13 @@ static func _turn(b: Dictionary, dials: Dictionary) -> void:
 		b.D[k] = dials[k]
 
 static func press(b: Dictionary, pos: Vector2) -> void:
-	Base.press(b, pos)
+	match b.id:
+		"vandegraaff":
+			# dial: discharge → a passing surge: angular velocity in, no teleport
+			for hair in b.hairs:
+				hair.om0 += 5.0 * (0.6 + 0.4 * sin(hair.x * 0.1))
+		_:
+			Base.press(b, pos)
 
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	match b.id:
@@ -109,11 +130,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.glow(n, r.get_center(), 14.0, Color(1, 0.92, 0.71, 0.7), 3)
 			var chasing: bool = b.hold > 0.0
 			for f in b.fils:
-				var e: Vector2
-				if chasing:
-					e = o + b.target + Vector2(randf_range(-4, 4), randf_range(-4, 4))
-				else:
-					e = r.get_center() + Vector2(cos(f.a * 2.0) * r.size.x * 0.48, sin(f.a * 2.0) * r.size.y * 0.5)
+				var e: Vector2 = o + f.pos + Vector2(randf_range(-3, 3), randf_range(-3, 3))
 				var p := r.get_center()
 				for k in range(1, 6):
 					var q: Vector2 = r.get_center().lerp(e, k / 5.0) + Vector2(randf_range(-4, 4), randf_range(-4, 4)) * sin(k / 5.0 * PI)
@@ -137,14 +154,16 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				else:
 					n.draw_rect(Rect2(o + p.pos, Vector2(2, 2)), Color(0.7, 0.88, 0.96, p.life))
 		"vandegraaff":
-			# dials: root edge top→bottom · palette→kelp · sway ÷2
+			# dials: root edge top→bottom (the chain walks DOWN) · palette→kelp · the spring dials in init
 			ElemKit.face(n, r, Color(0.047, 0.086, 0.078, 0.92), Color(0.47, 0.78, 0.63, 0.5))
 			ElemKit.label(n, r, "KELP", Color(0.82, 0.93, 0.87))
 			for hair in b.hairs:
-				var sway: float = sin(t * 1.0 + hair.ph) * 5.0 + pv * sin(t * 4.0 + hair.x * 0.1) * 8.0
+				var seg: float = hair.len / 2.0
 				var base := o + Vector2(hair.x, r.size.y - 1.0)
-				ElemKit.qcurve(n, base, base + Vector2(sway * 0.5, hair.len * 0.6),
-					base + Vector2(sway, hair.len), Color(0.55, 0.86, 0.67, 0.45 + pv * 0.3), 1.0)
+				var joint: Vector2 = base + Vector2(sin(hair.th0), cos(hair.th0)) * seg
+				var tip: Vector2 = joint + Vector2(sin(hair.th1), cos(hair.th1)) * seg
+				ElemKit.qcurve(n, base, joint, tip,
+					Color(0.55, 0.86, 0.67, 0.45 + minf(0.3, absf(hair.om0) * 0.06)), 1.0)
 		_:
 			Base.draw(n, b, t)
 

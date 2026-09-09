@@ -13,7 +13,7 @@ const DEFS := [
 	{ "id": "forge", "name": "Forge", "hint": "the steel breathes from black to orange heat; press to hammer it" },
 	{ "id": "rivet", "name": "Rivet gleam", "hint": "corner rivets glint in turn; press and all four fire" },
 	{ "id": "liquid_chrome", "name": "Liquid chrome", "hint": "the mirror surface undulates; press to send it wobbling" },
-	{ "id": "magnetite", "name": "Magnetite", "hint": "iron filings comb themselves along a turning field; press to flip the poles" },
+	{ "id": "magnetite", "name": "Magnetite", "hint": "filings comb along a turning field, each a sprung needle with its own lag and jitter; press to flip the poles and they swing round" },
 ]
 
 static func init(b: Dictionary) -> void:
@@ -38,9 +38,28 @@ static func init(b: Dictionary) -> void:
 			b.wob = 0.0
 			b.wob_v = 0.0
 		"magnetite":
+			# each filing is an ANGLE with angular velocity on a damped spring toward
+			# the field line through it. a filing is a line, aligned every half turn,
+			# so the misalignment is wrapped into ±90°; when the poles flip the rest
+			# jumps by that and every needle swings through, each on its own k
+			b.k = 140.0                    # a filing's torque per radian of misalignment, s⁻²
+			b.damp = 0.45                  # its damping as a fraction of critical (2√k): under 1, so it overshoots the line
+			b.spread = 0.5                 # per-filing spread of k (±), so the comb ripples instead of snapping as one
+			b.jitter = 4.0                 # random torque, rad/s² — grains never sit quite still
+			b.shake = 12.0                 # the press: extra random torque, rad/s², as the field flips
+			b.rate = 0.5                   # the field's rotation, radians/s
 			b.filings = []
+			var fa := PackedFloat32Array()   # angle, angular velocity, stiffness per filing
+			var fw := PackedFloat32Array()
+			var fk := PackedFloat32Array()
 			for i in 70:
 				b.filings.append(Vector2(randf_range(4, r.size.x - 4), randf_range(4, r.size.y - 4)))
+				fa.append(randf_range(0, PI))
+				fw.append(0.0)
+				fk.append(b.k * (1.0 + randf_range(-b.spread, b.spread)))
+			b.fa = fa
+			b.fw = fw
+			b.fk = fk
 			b.flip = 0.0
 
 static func press(b: Dictionary, _pos: Vector2) -> void:
@@ -120,6 +139,38 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			b.wob_v += -b.wob * 30.0 * dt
 			b.wob_v *= pow(0.25, dt)
 			b.wob += b.wob_v * dt
+		"magnetite":
+			_magnet_step(b, dt, t)
+
+## The needles' springs: each filing turns toward the dipole field line through
+## it (wrapped into ±90°, a needle has no head). The compass-grass rhyme runs
+## the same step with its softer dials.
+static func _magnet_step(b: Dictionary, dt: float, t: float) -> void:
+	var r: Rect2 = b.rect
+	var fa_field: float = t * float(b.rate) + b.flip   # the field's slow rotation (+ press flips)
+	var pp := r.size / 2.0 + Vector2(cos(fa_field) * r.size.x * 0.4, sin(fa_field) * r.size.y * 0.35)   # north
+	var qq := r.size / 2.0 - Vector2(cos(fa_field) * r.size.x * 0.4, sin(fa_field) * r.size.y * 0.35)   # south
+	var fa: PackedFloat32Array = b.fa
+	var fw: PackedFloat32Array = b.fw
+	var fk: PackedFloat32Array = b.fk
+	var damp: float = b.damp
+	var jitter: float = b.jitter + b.press_v * float(b.shake)
+	var filings: Array = b.filings
+	var sub := maxi(1, ceili(dt * 50.0))   # substep: √k·h must stay under 2
+	var h := dt / float(sub)
+	for i in filings.size():
+		var f: Vector2 = filings[i]
+		var a1: float = (f - pp).angle()
+		var a2: float = (qq - f).angle()
+		var rest := atan2(sin(a1) + sin(a2), cos(a1) + cos(a2))   # the field line through this filing
+		var d := damp * 2.0 * sqrt(fk[i])
+		fw[i] += randf_range(-1, 1) * jitter * dt
+		for _s in sub:
+			var e := rest - fa[i]
+			e -= PI * roundf(e / PI)                     # misalignment lives in ±90°
+			fw[i] += (fk[i] * e - d * fw[i]) * h
+			fa[i] += fw[i] * h
+		fa[i] = fposmod(fa[i], PI)                       # keep the angle in [0, π) so it never drifts off
 
 static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 	var r: Rect2 = b.rect
@@ -211,13 +262,11 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.label(n, r, "MELT", Color(0.078, 0.094, 0.118, 0.85))
 		"magnetite":
 			ElemKit.face(n, r, Color(0.078, 0.078, 0.1, 0.97), Color(0.67, 0.7, 0.76, 0.5))
-			var fa: float = t * 0.5 + b.flip
-			var pp := r.size / 2.0 + Vector2(cos(fa) * r.size.x * 0.4, sin(fa) * r.size.y * 0.35)
-			var qq := r.size / 2.0 - Vector2(cos(fa) * r.size.x * 0.4, sin(fa) * r.size.y * 0.35)
-			for f in b.filings:              # each filing aligns to the dipole sum
-				var a1: float = (f - pp).angle()
-				var a2: float = (qq - f).angle()
-				var a := atan2(sin(a1) + sin(a2), cos(a1) + cos(a2))
+			var fa: PackedFloat32Array = b.fa
+			var filings: Array = b.filings
+			for i in filings.size():         # each filing drawn at ITS angle — the spring's answer, not the field's
+				var f: Vector2 = filings[i]
+				var a: float = fa[i]
 				var L := 2.6 + pv * 1.4
 				n.draw_line(o + f - Vector2(cos(a), sin(a)) * L, o + f + Vector2(cos(a), sin(a)) * L,
 					Color(0.78, 0.8, 0.84, 0.5 + pv * 0.4), 1.0)

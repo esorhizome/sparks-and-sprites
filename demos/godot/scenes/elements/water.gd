@@ -13,7 +13,7 @@ const DEFS := [
 	{ "id": "waterline", "name": "Waterline", "hint": "half-full of sloshing liquid; press to slosh it hard" },
 	{ "id": "whirlpool", "name": "Whirlpool", "hint": "a slow spiral current; press to tighten the drain" },
 	{ "id": "spring_tide", "name": "Spring tide", "hint": "the sea is a row of masses on springs, each tied to its neighbours and pushed by a travelling wind; press and a crest heaves up over the button, crashes, and rebounds" },
-	{ "id": "deep_sea", "name": "Deep sea", "hint": "marine snow drifts past a jellyfish; press for a biolume flash" },
+	{ "id": "deep_sea", "name": "Deep sea", "hint": "a jellyfish swims by pulsing — a sprung bell shoving the body, tentacles that whip; press for a flash and a startled pulse" },
 	{ "id": "waterfall", "name": "Waterfall", "hint": "a sheet of water pours down the face; press to splash the base" },
 	{ "id": "squirt", "name": "Squirt", "hint": "a drip forms at the corner; press to fire the water jet" },
 ]
@@ -51,6 +51,37 @@ static func init(b: Dictionary) -> void:
 			b.snow = []
 			for i in 16:
 				b.snow.append({ "pos": Vector2(randf_range(0, r.size.x), randf_range(0, r.size.y)), "v": randf_range(3, 9) })
+			# the jelly is three simulations stacked: the BELL is one number, its
+			# contraction, on a damped spring kicked each beat; the BODY has velocity
+			# and drag and is shoved along its heading by how fast the bell squeezes;
+			# each TENTACLE is a chain of joints, each chasing the one above on its
+			# own under-damped spring, so a jerk forward leaves them lagging and whipping
+			b.kb = 40.0                    # the bell's spring: how hard it relaxes after a contraction
+			b.db = 0.5                     # its damping as a fraction of critical (2√kb): under 1, a small rebound
+			b.kick = 4.0                   # the pulse: contraction velocity injected each beat
+			b.beat_every = 1.6             # seconds between pulses
+			b.thrust = 60.0                # body acceleration per unit of contraction RATE, px/s²
+			b.coast = 0.0                  # a steady push along the heading, px/s² (the comet rhyme's dial)
+			b.drag = 1.2                   # the body's drag, per second
+			b.sink = 6.0                   # the body's sinking, px/s² — a jelly is a little heavier than water
+			b.tents = 5                    # tentacles (0 for the comet)
+			b.tj = 3                       # joints per tentacle
+			b.kt = 60.0                    # the first joint's spring toward its hanging place under the bell
+			b.tip = 1.3                    # each joint's k as a multiple of the one above: lighter further down, so quicker
+			b.tipdamp = 0.25               # a joint's damping as a fraction of ITS OWN critical — under 1, so the tips whip
+			b.seg = 6.0                    # rest length between joints, px
+			b.jelly = { "pos": Vector2(r.size.x * 0.5, r.size.y * 0.3), "vel": Vector2.ZERO,
+				"head": randf_range(-0.6, 0.6), "c": 0.0, "cv": 0.0 }
+			b.beat = 0.8
+			var tpos := PackedVector2Array()   # joints, tentacle-major: [k * tj + j]
+			var tvel := PackedVector2Array()
+			tpos.resize(b.tents * b.tj)
+			tvel.resize(b.tents * b.tj)
+			for k in b.tents:
+				for j in b.tj:
+					tpos[k * b.tj + j] = b.jelly.pos + Vector2((k - 2) * 3.0, 5.0 + (j + 1) * b.seg)
+			b.tpos = tpos
+			b.tvel = tvel
 		"rain_glass":
 			b.D = { "g": 60.0,          # the pull per px of radius, px/s² — heavier drops run harder
 				"stop": 1.0,            # the radius below which the glass wins and a runner stalls, px
@@ -124,6 +155,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 					"vel": Vector2(randf_range(-30, 30), randf_range(-70, -20)), "r": 1.8, "life": 1.0 })
 		"deep_sea":
 			b.press_v = 1.0
+			b.jelly.cv += float(b.kick)    # startled: an extra pulse, as a kick to the bell's velocity
 		"waterfall":
 			for i in 14:
 				b.parts.append({ "kind": "splash", "pos": Vector2(randf_range(0, r.size.x), r.size.y),
@@ -256,6 +288,59 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 			s.pos.x += sin(t + s.pos.y * 0.05) * 2.0 * dt
 			if s.pos.y > r.size.y:
 				s.pos = Vector2(randf_range(0, r.size.x), -2.0)
+		_jelly_step(b, dt)
+
+## The jellyfish: bell spring, body under thrust + drag + sink, tentacle
+## chains. The comet rhyme runs the same step with kick 0, coast > 0, tents 0.
+static func _jelly_step(b: Dictionary, dt: float) -> void:
+	var r: Rect2 = b.rect
+	var J: Dictionary = b.jelly
+	var kb: float = b.kb
+	var db: float = b.db * 2.0 * sqrt(kb)
+	var thrust: float = b.thrust
+	var coast: float = b.coast
+	var drag: float = b.drag
+	var sink: float = b.sink
+	var tents: int = b.tents
+	var tj: int = b.tj
+	var kt: float = b.kt
+	var tip: float = b.tip
+	var tipdamp: float = b.tipdamp
+	var seg: float = b.seg
+	var tpos: PackedVector2Array = b.tpos
+	var tvel: PackedVector2Array = b.tvel
+	b.beat -= dt
+	if b.beat <= 0.0:                     # the beat: a kick, and a new whim of heading
+		J.cv += float(b.kick)
+		b.beat = float(b.beat_every)
+		J.head += randf_range(-0.6, 0.6)
+	if J.pos.x < r.size.x * 0.15:         # turn back from the edges
+		J.head = absf(J.head)
+	elif J.pos.x > r.size.x * 0.85:
+		J.head = -absf(J.head)
+	var sub := maxi(1, ceili(dt * 50.0))
+	var h := dt / float(sub)
+	for _s in sub:
+		J.cv += (kb * (0.0 - J.c) - db * J.cv) * h
+		J.c = clampf(J.c + J.cv * h, -0.2, 1.0)
+		var push: float = thrust * maxf(0.0, J.cv) + coast   # only the squeeze pushes; the refill does not
+		var dir := Vector2(sin(J.head), -cos(J.head))
+		J.vel += (dir * push - drag * J.vel + Vector2(0, sink)) * h
+		if J.pos.y < r.size.y * 0.1:      # soft ceiling and floor
+			J.vel.y += (r.size.y * 0.1 - J.pos.y) * 4.0 * h
+		if J.pos.y > r.size.y * 0.55:
+			J.vel.y += (r.size.y * 0.55 - J.pos.y) * 4.0 * h
+		J.pos += J.vel * h
+		for k in tents:                   # the chain: each joint hangs from the one above
+			var anchor: Vector2 = J.pos + Vector2((k - 2) * 3.0, 5.0)
+			var kj := kt / tip
+			for j in tj:
+				kj *= tip
+				var dj := tipdamp * 2.0 * sqrt(kj)
+				var idx := k * tj + j
+				tvel[idx] += (kj * (anchor + Vector2(0, seg) - tpos[idx]) - dj * tvel[idx]) * h
+				tpos[idx] += tvel[idx] * h
+				anchor = tpos[idx]
 
 ## A bubble born at (x, y): it remembers the line it rose from and leaves the
 ## glass with a random sideways kick — the seed of its wobble.
@@ -409,14 +494,20 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			ElemKit.face(n, r, Color(0.031, 0.063, 0.118, 0.97), Color(0.47, 0.78, 1.0, 0.4 + pv * 0.6))
 			for s in b.snow:
 				n.draw_rect(Rect2(o + s.pos, Vector2(1.2, 1.2)), Color(0.7, 0.78, 0.86, 0.25 + pv * 0.5))
-			var jx := o.x + r.size.x * 0.5 + sin(t * 0.4) * r.size.x * 0.3
-			var jy := o.y + r.size.y * 0.3 + sin(t * 0.9) * 6.0
-			ElemKit.glow(n, Vector2(jx, jy), 12.0 + pv * 8.0, Color(0.55, 0.9, 1.0, 0.5 + pv * 0.5), 3)
-			for k in range(-2, 3):
-				ElemKit.qcurve(n, Vector2(jx + k * 3, jy + 5),
-					Vector2(jx + k * 5 + sin(t * 3.0 + k) * 4.0, jy + 13),
-					Vector2(jx + k * 6 + sin(t * 2.0 + k * 2) * 6.0, jy + 20),
-					Color(0.55, 0.86, 1.0, 0.35 + pv * 0.5), 1.0)
+			var J: Dictionary = b.jelly
+			var jp: Vector2 = o + J.pos
+			var c: float = J.c
+			n.draw_set_transform(jp, 0.0, Vector2(1.0 - c * 0.3, 1.0 + c * 0.25))   # the squeeze: narrower, taller
+			ElemKit.glow(n, Vector2.ZERO, 12.0 + pv * 8.0, Color(0.55, 0.9, 1.0, 0.5 + pv * 0.5), 3)
+			n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			var tpos: PackedVector2Array = b.tpos
+			var tj: int = b.tj
+			for k in b.tents:                # tentacles: the chain, drawn as it lies
+				var line := PackedVector2Array()
+				line.append(jp + Vector2((k - 2) * 3.0, 5.0))
+				for j in tj:
+					line.append(o + tpos[k * tj + j])
+				n.draw_polyline(line, Color(0.55, 0.86, 1.0, 0.35 + pv * 0.5), 1.0)
 			ElemKit.label(n, r, "ABYSS", Color(0.78, 0.92, 1.0, 0.8 + pv * 0.2))
 		"waterfall":
 			ElemKit.face(n, r, Color(0.055, 0.094, 0.133, 0.96), Color(0.59, 0.82, 0.92, 0.5))

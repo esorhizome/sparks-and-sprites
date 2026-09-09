@@ -6,13 +6,19 @@ const Base := preload("res://scenes/elements/crystal.gd")
 
 const RHYMES := {
 	"facet": { "name": "Obsidian sheen", "hint": "near-black — glints rare, white, and sudden" },
-	"resonance": { "name": "Deep gong", "hint": "half tempo, twice the swing" },
+	"resonance": { "name": "Deep gong", "hint": "an octave down, half the damping, half tempo — rings for many seconds" },
 	"stalactite": { "name": "Stalagmites", "hint": "grown from the FLOOR — one direction flip" },
 	"opal": { "name": "Deep opal", "hint": "dropped an octave — darker, slower, richer" },
 }
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
+	if b.id == "resonance":
+		b.pitch = 110.0                    # an octave down
+		b.zeta = 0.015                     # half the damping: a gong lingers
+		b.hum_rate = 2.0                   # the hum at half tempo
+		b.strike = 8.0                     # a lighter strike (swing = strike / ω, so it goes further down here)
+		b.run = 4.0                        # the strike runs at half speed
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	match b.id:
@@ -28,12 +34,6 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 static func tick(b: Dictionary, dt: float, t: float) -> void:
 	var r: Rect2 = b.rect
 	match b.id:
-		"resonance":
-			# dial: wave travel 8 → 4 (the gong dial)
-			if b.ring_wave >= 0.0:
-				b.ring_wave += dt * 4.0
-				if b.ring_wave > 24.0:
-					b.ring_wave = -1.0
 		"stalactite":
 			# dial: everything measured from the floor; loose spars fly up, glitter falls back
 			for s in b.spikes:
@@ -81,19 +81,17 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 					Color(0.96, 0.96, 1.0, minf(1.0, 0.03 + glint)))
 			ElemKit.label(n, r, "OBSIDIAN", Color(0.75, 0.74, 0.82))
 		"resonance":
-			# dials: hum 4.0 → 2.0 · swing amplitude ×2 (travel dial in tick)
+			# dials: pitch, damping, tempo, strike in init — the same oscillators, drawn bronze
 			ElemKit.face(n, r, Color(0.078, 0.063, 0.094, 0.92), Color(0.75, 0.63, 0.78, 0.5))
 			ElemKit.label(n, r, "GONG", Color(0.93, 0.87, 0.94))
-			var count := 12
+			var sx: PackedFloat32Array = b.sx
+			var slen: PackedFloat32Array = b.slen
+			var count := sx.size()
 			for i in count:
 				var a := i / float(count) * TAU
-				var hum := sin(t * 2.0 - i * 0.8) * 0.12
-				var excite := 0.0
-				if b.ring_wave >= 0.0:
-					var d: float = absf(i - fmod(b.ring_wave, count))
-					excite = maxf(0.0, 1.0 - minf(d, count - d) * 0.6)
-				var scale := 1.0 + hum + excite * 0.9
-				var len := 9.0
+				var excite := minf(1.0, absf(sx[i]) * 1.5)
+				var scale := 1.0 + sx[i]
+				var len: float = slen[i]
 				var pos := c + Vector2(cos(a) * r.size.x * 0.56, sin(a) * r.size.y * 0.78)
 				n.draw_set_transform(pos, a + PI / 2.0, Vector2(1.0, scale))
 				n.draw_colored_polygon(PackedVector2Array([
