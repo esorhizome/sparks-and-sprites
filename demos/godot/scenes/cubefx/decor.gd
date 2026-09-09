@@ -44,10 +44,33 @@ static func init(b: Dictionary) -> void:
 			for i in 4:
 				b.parts.append({ "pos": Vector2(randf_range(r.position.x + 14, r.position.x + r.size.x - 14),
 					b.G - randf_range(0, 24)), "ph": randf_range(0, 9), "life": 1.0 })
+		"petals":
+			b.D = {
+				"g": 60.0,        # gravity, px/s² — light, because a petal is mostly air
+				"drag": 2.7,      # air drag, per second: terminal speed is g/drag ≈ 22 px/s
+				"wind": 14.0,     # the breeze the petals ride, px/s, left to right
+				"lift": 0.5,      # a tilted petal slips sideways: lateral push per radian of tilt per px/s of fall
+				"kt": 12.0,       # the tilt spring: the air rights a petal toward flat (stiffness per unit inertia)
+				"kd": 0.6,        # the tilt's damping — low, so the rocking rings for a few swings
+				"couple": 0.25,   # sideways motion tips a petal into it (the see-saw's other half), rad/s² per px/s
+				"gust": 90.0,     # turbulence: random sideways kicks, px/s² — what keeps the rocking alive
+				"swirl": 200.0,   # the press: tangential push round the hero, px/s²
+				"pull": 120.0,    # the press: the whirl's inward push, px/s²
+				"born": 0.15,     # petals per frame, idle…
+				"burst": 0.5 }    # …and extra during the flurry
 		"fireflies":
+			b.D = {
+				"wander": 60.0,   # the wandering push, px/s² — always on, in a direction that random-walks
+				"jitter": 4.0,    # how fast that heading wanders, rad/√s
+				"attract": 1.0,   # the pull home, sideways: px/s² per px of offset — weak, so home is a neighbourhood, not a point
+				"attractY": 1.0,  # the pull home, vertically — the same, unless the air is rising
+				"rise": 0.0,      # buoyancy, px/s² upward — none for a firefly
+				"drag": 1.5,      # air drag, per second: cruising speed is wander/drag = 40 px/s
+				"fire": false }   # home is the hero (false) or a campfire on the floor (true)
 			b.flies = []
 			for i in 8:
 				b.flies.append({ "pos": r.position + Vector2(randf_range(0, r.size.x), randf_range(14, 70)),
+					"vel": Vector2.ZERO, "wa": randf_range(0, TAU),
 					"ph": randf_range(0, TAU), "sp": randf_range(0.6, 1.3), "wx": randf_range(0, 9) })
 		"cape":
 			# this is the stagecraft Grass blade, hung from a shoulder instead of
@@ -148,23 +171,73 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 					p.life -= dt
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"petals":
-			if randf() < 0.15 + (0.5 if b.press_v > 0.0 else 0.0):
+			# a petal falls at terminal speed because drag balances gravity, and it
+			# ROCKS because of a two-way coupling: a tilted petal slips sideways
+			# through the air (lift · θ · fall speed) and slipping sideways tips it
+			# the other way (couple · vx) while the air flattens it (kt) — a lightly
+			# damped oscillator, kept ringing by turbulence. the flurry is two
+			# forces, one tangential and one inward, bounded by the same drag; when
+			# the press dies gravity has the petals again, mid-swing
+			var D: Dictionary = b.D
+			if randf() < float(D.born) + (float(D.burst) if b.press_v > 0.0 else 0.0):
 				b.parts.append({ "pos": Vector2(randf_range(r.position.x - 10, r.position.x + r.size.x), r.position.y),
-					"ph": randf_range(0, 9), "rot": randf_range(0, TAU) })
+					"vel": Vector2(float(D.wind), 0.0), "th": randf_range(-0.4, 0.4), "om": 0.0 })   # tilt θ and its rate
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var ctr := Vector2(c.x, c.y - c.s)             # the whirl's eye: the hero's head
 			for p in b.parts:
-				if b.press_v > 0.0:
-					var ctr := Vector2(c.x, c.y - c.s)
-					var d: Vector2 = p.pos - ctr
-					var a: float = d.angle() + dt * 4.0
-					p.pos = ctr + Vector2(cos(a), sin(a)) * d.length() * (1.0 - dt * 0.3)
-				else:
-					p.pos += Vector2(14.0 + sin(t * 2.0 + p.ph) * 10.0, 22.0) * dt
-				p.rot += dt * 2.0
-			b.parts = b.parts.filter(func(p): return p.pos.y < b.G and p.pos.x < r.position.x + r.size.x + 14.0)
+				var gx: float = randf_range(-1.0, 1.0) * float(D.gust)   # this frame's turbulence
+				var pos: Vector2 = p.pos
+				var vel: Vector2 = p.vel
+				var th: float = p.th
+				var om: float = p.om
+				for _q in sub:
+					var acc := Vector2(-float(D.drag) * (vel.x - float(D.wind)) - float(D.lift) * th * vel.y + gx,   # drag toward the breeze, the tilt's slip, the gust
+						float(D.g) - float(D.drag) * vel.y)
+					if b.press_v > 0.0:                    # the whirl: tangential + inward, both bounded by the drag
+						var d: Vector2 = pos - ctr
+						var dl: float = maxf(4.0, d.length())
+						acc += Vector2(-d.y, d.x) / dl * float(D.swirl) - d / dl * float(D.pull)
+					om += (-float(D.kt) * th - float(D.kd) * om + float(D.couple) * vel.x) * h   # the tilt: righted by the air, tipped by the slip
+					th = clampf(th + om * h, -2.0, 2.0)
+					vel += acc * h
+					pos += vel * h
+				p.pos = pos
+				p.vel = vel
+				p.th = th
+				p.om = om
+			b.parts = b.parts.filter(func(p): return p.pos.y < b.G and p.pos.x < r.position.x + r.size.x + 14.0 and p.pos.x > r.position.x - 20.0)
 		"fireflies":
+			# a firefly is a velocity under three forces: a constant-size WANDER whose
+			# direction random-walks (so it meanders rather than jitters), a weak
+			# spring toward its home spot, and drag. wander against drag sets the
+			# cruise; wander against attract sets how far it strays. no lerp: when
+			# the hero moves, the homes move, and the flies bank round after them
+			var D: Dictionary = b.D
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
+			var fire: bool = D.fire
+			var anchor := Vector2(r.get_center().x, b.G - 4.0) if fire else Vector2(c.x, c.y - c.s)   # home: the hero, or the campfire
 			for f in b.flies:
-				f.pos.x += (c.x + sin(f.wx * 3.0) * c.s * 2.0 - f.pos.x) * dt * 0.4 + sin(t + f.wx) * 10.0 * dt
-				f.pos.y += (c.y - c.s + cos(f.wx * 2.0) * c.s - f.pos.y) * dt * 0.4 + cos(t * 1.3 + f.wx) * 8.0 * dt
+				var home: Vector2 = anchor + Vector2(sin(f.wx * 3.0) * c.s * 2.0, 0.0 if fire else cos(f.wx * 2.0) * c.s)
+				var pos: Vector2 = f.pos
+				var vel: Vector2 = f.vel
+				var wa: float = f.wa
+				for _q in sub:
+					wa += randf_range(-1.0, 1.0) * float(D.jitter) * sqrt(h)   # the heading random-walks
+					vel.x += (cos(wa) * float(D.wander) + (home.x - pos.x) * float(D.attract) - float(D.drag) * vel.x) * h
+					vel.y += (sin(wa) * float(D.wander) + (home.y - pos.y) * float(D.attractY) - float(D.rise) - float(D.drag) * vel.y) * h
+					pos += vel * h
+				if pos.y > b.G - 4.0:                     # the floor: it pulls up
+					pos.y = b.G - 4.0
+					vel.y = -absf(vel.y) * 0.5
+				if float(D.rise) > 0.0 and pos.y < r.position.y + 10.0:   # off the top: born again at the fire
+					pos = anchor + Vector2(randf_range(-8, 8), randf_range(-4, 0))
+					vel = Vector2.ZERO
+				pos.x = clampf(pos.x, r.position.x + 4.0, r.position.x + r.size.x - 4.0)
+				f.pos = pos
+				f.vel = vel
+				f.wa = wa
 		"cape":
 			var D: Dictionary = b.D
 			var J: int = D.joints
@@ -240,7 +313,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"petals":
 			CubeKit.draw_cube(n, b)
 			for p in b.parts:
-				n.draw_set_transform(p.pos, p.rot, Vector2(1.0, 0.6))
+				n.draw_set_transform(p.pos, p.th, Vector2(1.0, 0.6))   # the rocking IS the drawn tilt
 				n.draw_circle(Vector2.ZERO, 2.6, Color(1, 0.75, 0.82, 0.85))
 				n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		"fireflies":

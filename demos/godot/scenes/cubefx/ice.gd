@@ -22,6 +22,15 @@ static func init(b: Dictionary) -> void:
 			b.breath = 0.0
 		"armor":
 			b.on = false
+		"snow_aura":
+			b.D = {
+				"g": 90.0,        # gravity, px/s²
+				"dragMin": 2.2,   # the least air drag a flake can have, per second — its terminal speed is g/drag: 41 px/s
+				"dragMax": 3.8,   # …and the most: 24 px/s. every flake draws its own between them
+				"follow": 0.5,    # the wind wants to carry a flake toward the cube at this fraction of the offset per second
+				"lag": 2.5,       # how fast the wind catches up with what it wants, per second — the laggy part
+				"turb": 60.0,     # turbulence: random sideways kicks, px/s²
+				"flurry": 1.4 }   # the press: seconds of thickened snowfall
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -36,7 +45,7 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 		"freeze_stomp":
 			b.parts.append({ "kind": "sheet", "x": c.x, "spread": 4.0, "life": 1.0 })
 		"snow_aura":
-			b.press_v = 1.4
+			b.press_v = b.D.flurry
 		"icicle":
 			for i in 3:
 				b.parts.append({ "kind": "icicle", "pos": Vector2(clampf(pos.x, r.position.x + 8, r.position.x + r.size.x - 8) + (i - 1) * 12.0,
@@ -65,12 +74,32 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 0.35
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"snow_aura":
+			# a flake's fall is gravity against drag: they balance at g/drag, and
+			# every flake draws its own drag, so the snowfall has fast heavy flakes
+			# and slow light ones. sideways it is carried by AIR, not by a rule: its
+			# wind is a first-order lag toward "drift to the cube", so when the hero
+			# turns the snow keeps going the old way for a moment, then bends.
+			# turbulence is random kicks the drag soon forgets
+			var D: Dictionary = b.D
 			if randf() < 0.25 + (0.6 if b.press_v > 0.0 else 0.0):
 				b.parts.append({ "kind": "flake", "pos": Vector2(c.x + randf_range(-c.s * 1.4, c.s * 1.4), c.y - c.s * 2.0),
-					"ph": randf_range(0, 9), "life": 1.0 })
+					"vel": Vector2.ZERO, "w": 0.0, "drag": randf_range(float(D.dragMin), float(D.dragMax)), "life": 1.0 })   # its own wind, its own drag
+			var sub := maxi(1, ceili(dt * 50.0))
+			var h := dt / float(sub)
 			for p in b.parts:
-				p.pos.y += 32.0 * dt
-				p.pos.x += sin(t * 2.0 + p.ph) * 10.0 * dt + (c.x - p.pos.x) * dt * 0.4
+				var kick: float = randf_range(-1.0, 1.0) * float(D.turb)   # this frame's turbulence
+				var drag: float = p.drag
+				var w: float = p.w
+				var vel: Vector2 = p.vel
+				var pos: Vector2 = p.pos
+				for _q in sub:
+					w += ((c.x - pos.x) * float(D.follow) - w) * float(D.lag) * h   # the wind: lags toward carrying the flake to the cube
+					vel.x += (drag * (w - vel.x) + kick) * h                          # the flake is dragged along by its wind
+					vel.y += (float(D.g) - drag * vel.y) * h                          # and falls until drag balances gravity
+					pos += vel * h
+				p.w = w
+				p.vel = vel
+				p.pos = pos
 				p.life -= dt * 0.5
 			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.pos.y < b.G)
 		"icicle":

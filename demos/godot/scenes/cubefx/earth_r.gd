@@ -17,14 +17,21 @@ const RHYMES := {
 
 static func init(b: Dictionary) -> void:
 	Base.init(b)
-	if b.id == "leaf_whirl":
-		for l in b.leaves:          # heavier, lower, slower
-			l.v *= 0.5
-	if b.id == "rock_throw":
-		b.marks = []
-	if b.id == "vine_snare":
-		# dials: damp 0.45 → 1 and tipdamp 0.4 → 1 (critical: no overshoot, no sway) · k 60 → 90 (rise faster) · life 1.6 → 1.4
-		b.D.merge({ "damp": 1.0, "tipdamp": 1.0, "k": 90.0, "life": 1.4 }, true)
+	match b.id:
+		"leaf_whirl":
+			# dials: k 30 → 18 (heavier: the same pull moves more mass) · kick 8 → 5 · orbit speed ÷2 · belt flattened and lowered
+			b.D.merge({ "k": 18.0, "kick": 5.0, "flat": 0.35, "lift": 0.25 }, true)
+			for l in b.leaves:
+				l.w *= 0.5
+				l.v *= 0.5
+		"rock_throw":
+			b.marks = []
+		"quake_slam":
+			# dials: amp 12 → 19 · speed 120 → 100 · fade 0.8 → 0.7 · k 900 → 500 (softer: the hero is lifted, not thrown)
+			b.D.merge({ "amp": 19.0, "speed": 100.0, "fade": 0.7, "k": 500.0 }, true)
+		"vine_snare":
+			# dials: damp 0.45 → 1 and tipdamp 0.4 → 1 (critical: no overshoot, no sway) · k 60 → 90 (rise faster) · life 1.6 → 1.4
+			b.D.merge({ "damp": 1.0, "tipdamp": 1.0, "k": 90.0, "life": 1.4 }, true)
 
 static func press(b: Dictionary, pos: Vector2) -> void:
 	var c: Dictionary = b.cub
@@ -71,18 +78,6 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.pos.y = minf(p.pos.y, b.G)
 				p.life -= dt * 0.7
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
-		"quake_slam":
-			# dials: hump speed ÷2 · lift ×1.6 (taller, softer)
-			b.press_v = maxf(0.0, b.press_v - dt * 1.6)
-			var r: Rect2 = b.rect
-			for p in b.parts:
-				p.x += p.dir * 70.0 * dt
-				p.life -= dt * 0.6
-			b.parts = b.parts.filter(func(p): return p.life > 0.0 and p.x > r.position.x - 20 and p.x < r.position.x + r.size.x + 20)
-			var lift := 0.0
-			for p in b.parts:
-				lift = maxf(lift, maxf(0.0, 16.0 - absf(c.x - p.x) * 0.4) * p.life)
-			c.y = b.G - lift
 		_:
 			Base.tick(b, dt, t)
 
@@ -129,10 +124,12 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 		"leaf_whirl":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)
+			var D: Dictionary = b.D
 			for l in b.leaves:
-				var rr: float = c.s * l.r * (0.85 + l.burst * 1.0)
-				var pos := Vector2(c.x + cos(l.a) * rr, c.y - c.s * 0.25 + sin(l.a) * rr * 0.4)
-				n.draw_set_transform(pos, l.a, Vector2.ONE)
+				var p: Vector2 = l.p
+				var v: Vector2 = l.v
+				var pos := Vector2(c.x + p.x, c.y - c.s * float(D.lift) + p.y * float(D.flat))
+				n.draw_set_transform(pos, atan2(v.y * float(D.flat), v.x), Vector2.ONE)
 				n.draw_colored_polygon(PackedVector2Array([
 					Vector2(-3, -2), Vector2(2.5, -3), Vector2(3.5, 2), Vector2(-2, 3)]),
 					Color(0.48, 0.45, 0.42, 0.9))
@@ -171,17 +168,14 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 			var pts := PackedVector2Array()
 			var x: float = r.position.x
 			while x <= r.position.x + r.size.x:
-				var y: float = b.G
-				for p in b.parts:
-					y -= maxf(0.0, 16.0 - absf(x - p.x) * 0.4) * p.life
-				pts.append(Vector2(x, y))
+				pts.append(Vector2(x, Base._ground_at(b, x)))
 				x += 4.0
 			n.draw_polyline(pts, Color(0.55, 0.8, 0.96, 0.6), 1.6)
 			for p in b.parts:              # spray off the crest
 				if randf() < 0.4:
-					n.draw_circle(Vector2(p.x + randf_range(-4, 4), b.G - 16.0 * p.life - randf_range(0, 6)),
+					n.draw_circle(Vector2(p.x + randf_range(-4, 4), Base._ground_at(b, p.x) - randf_range(0, 6)),
 						1.2, Color(0.78, 0.92, 1.0, p.life * 0.8))
-			CubeKit.draw_cube(n, b)
+			Base._draw_cube_squashed(n, b, b.sq)
 		"thorn_wall":
 			CubeKit.stage(n, b)
 			CubeKit.draw_cube(n, b)

@@ -11,7 +11,7 @@ const DEFS := [
 	{ "id": "shockwave", "name": "Shockwave punch", "hint": "press: a lunge and a ring of force rolls out ahead" },
 	{ "id": "block", "name": "Block clang", "hint": "press: guard up — the CLANG says the block held" },
 	{ "id": "parry", "name": "Parry flash", "hint": "press: the one-frame white flash every fighting game player knows" },
-	{ "id": "knockback", "name": "Knockback", "hint": "press: something hits IT — tumble, skid, proud recovery" },
+	{ "id": "knockback", "name": "Knockback", "hint": "press: something hits IT — flung, one bounce, a skid, a squash, a wobbling recovery" },
 	{ "id": "ground_crack", "name": "Ground crack", "hint": "press: one punch down — the floor remembers it a while" },
 	{ "id": "stomp", "name": "Stomp quake", "hint": "press: a short ballistic hop — the landing squashes it and sends dust waves both ways" },
 ]
@@ -26,7 +26,26 @@ static func init(b: Dictionary) -> void:
 		"shockwave":
 			b.shake = 0.0
 		"knockback":
-			b.tumble = -1.0
+			b.hit = false         # struck, and not yet recovered
+			b.air = false         # off its feet
+			b.vy = 0.0            # vertical speed, px/s (down is +)
+			b.om = 0.0            # angular speed, rad/s
+			b.sq = 0.0            # the squash: the body's aspect, + wide, − tall
+			b.sqv = 0.0
+			b.age = 0.0
+			b.land_v = 0.0        # this tick's landing speed, if it met the floor (px/s)
+			b.D = {
+				"vx": 220.0,      # the hit: speed away from where it was looking, px/s
+				"vy": 180.0,      # the hit: upward speed, px/s — it leaves its feet
+				"spin": 14.0,     # the hit: angular speed, rad/s — set once by the blow, then only ever damped
+				"g": 620.0,       # gravity, px/s²
+				"bounce": 0.35,   # restitution: the fraction of the landing speed that comes back up
+				"skid": 0.1,      # ground friction: the fraction of horizontal speed left after one second on the floor
+				"airSpin": 0.6,   # the fraction of spin left after a second in the air (nothing up there to stop it)
+				"floorSpin": 0.02,   # …and after a second on the floor (the floor stops it)
+				"kUp": 80.0,      # the recovery: a spring that rights it to the nearest upright, rad/s² per radian
+				"kSq": 400.0,     # the landing squash: a stiff, under-damped spring on the body's aspect
+				"sqHit": 0.03 }   # squash injected per px/s of landing speed
 		"stomp":
 			# Double jump's integrator again: the press injects an upward velocity,
 			# gravity brings it back, and the floor is a contact — the waves leave at
@@ -67,10 +86,15 @@ static func press(b: Dictionary, pos: Vector2) -> void:
 		"parry":
 			b.press_v = 1.0
 		"knockback":
-			if b.tumble < 0.0:
-				b.tumble = 0.0
+			if not b.hit:
+				var D: Dictionary = b.D
+				b.hit = true
+				b.air = true
+				b.age = 0.0
 				c.pace = false
-				c.vx = -c.face * 220.0
+				c.vx = -c.face * float(D.vx)      # knocked the way it wasn't looking…
+				b.vy = -float(D.vy)               # …and up, and over
+				b.om = -c.face * float(D.spin)
 				for i in 5:
 					b.parts.append({ "kind": "dizzy", "a": randf_range(0, TAU), "life": 1.4 })
 		"ground_crack":
@@ -131,15 +155,52 @@ static func tick(b: Dictionary, dt: float, t: float) -> void:
 				p.life -= dt * 2.0
 			b.parts = b.parts.filter(func(p): return p.life > 0.0)
 		"knockback":
+			# the hit sets two velocities — one linear, one angular — never a
+			# position. in the air the cube is ballistic and keeps most of its spin;
+			# meeting the floor fast it BOUNCES (restitution), the spin halves, and
+			# the impact speed goes into a squash spring drawn as a scale about its
+			# feet. on the floor the skid is friction, and a righting spring pulls
+			# the spin to the nearest full turn — under-damped: a wobble, not a snap
 			var r: Rect2 = b.rect
-			if b.tumble >= 0.0:
-				b.tumble += dt
-				c.vx *= pow(0.1, dt)
-				c.spin = -c.face * minf(1.0, b.tumble * 2.0) * TAU
+			var D: Dictionary = b.D
+			b.land_v = 0.0
+			if b.hit:
+				var sub := maxi(1, ceili(dt * 50.0))   # the squash spring is stiff: substep coarse frames
+				var h := dt / float(sub)
+				var d_up: float = 0.4 * 2.0 * sqrt(float(D.kUp))
+				var d_sq: float = 0.3 * 2.0 * sqrt(float(D.kSq))
+				b.age += dt
+				for _q in sub:
+					if b.air:                         # ballistic, spinning freely
+						b.vy += float(D.g) * h
+						c.y += b.vy * h
+						b.om *= pow(float(D.airSpin), h)
+						c.spin += b.om * h
+						if c.y >= b.G:                # the floor
+							c.y = b.G
+							b.land_v = b.vy
+							b.sqv += b.vy * float(D.sqHit)   # the landing: impact speed into the squash spring
+							if b.vy > 90.0:           # fast enough to bounce
+								b.vy = -b.vy * float(D.bounce)
+								b.om *= 0.5
+							else:
+								b.vy = 0.0
+								b.air = false
+					else:                             # on the floor: friction, and a spring to the nearest way up
+						c.vx *= pow(float(D.skid), h)
+						b.om *= pow(float(D.floorSpin), h)
+						var upright: float = roundf(c.spin / TAU) * TAU
+						b.om += (float(D.kUp) * (upright - c.spin) - d_up * b.om) * h
+						c.spin += b.om * h
+					b.sqv += (-float(D.kSq) * b.sq - d_sq * b.sqv) * h   # the squash rings and settles
+					b.sq = clampf(b.sq + b.sqv * h, -0.5, 0.5)
 				c.x = clampf(c.x, r.position.x + c.s, r.position.x + r.size.x - c.s)
-				if b.tumble > 1.1:
-					b.tumble = -1.0
+				var off: float = c.spin - roundf(c.spin / TAU) * TAU
+				if b.age > 3.0 or (not b.air and absf(c.vx) < 4.0 and absf(b.om) < 0.3 and absf(off) < 0.03):
+					b.hit = false                     # the proud recovery
 					c.spin = 0.0
+					c.vx = 0.0
+					c.y = b.G
 					c.pace = true
 			for p in b.parts:
 				p.a += 5.0 * dt
@@ -233,7 +294,7 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				CubeKit.ellipse(n, Vector2(c.x + c.face * c.s * 0.6, c.y - c.s * 0.55),
 					rr, rr * 1.2, Color(0.75, 0.84, 1.0, pv), 2.5)
 		"knockback":
-			CubeKit.draw_cube(n, b)
+			_draw_cube_squashed(n, b, b.sq)
 			for p in b.parts:
 				CubeKit.twinkle(n, Vector2(c.x + cos(p.a) * c.s * 0.7, c.y - c.s * 1.25 + sin(p.a) * 4.0),
 					3.0, Color(1, 0.92, 0.59, minf(1.0, p.life)))
@@ -254,3 +315,25 @@ static func draw(n: CanvasItem, b: Dictionary, t: float) -> void:
 				for k in 3:
 					n.draw_circle(Vector2(p.x - p.dir * k * 6.0, b.G - 3.0 - k),
 						5.0 + k * 2.0, Color(0.63, 0.59, 0.73, p.life * (0.35 - k * 0.09)))
+
+## The kit's draw_cube has no scale — the landing squash is the same shadow,
+## body, and eyes under a (1 + q, 1 − q) transform about the feet.
+static func _draw_cube_squashed(n: CanvasItem, b: Dictionary, q: float) -> void:
+	var c: Dictionary = b.cub
+	if absf(q) < 0.005:
+		CubeKit.draw_cube(n, b)
+		return
+	if c.alpha <= 0.01:
+		return
+	var s: float = c.s
+	n.draw_set_transform(Vector2(c.x, b.G + 2.0), 0.0, Vector2(1.0 + q, 0.28))
+	n.draw_circle(Vector2.ZERO, s * 0.5, Color(0, 0, 0, 0.35 * c.alpha))
+	n.draw_set_transform(Vector2(c.x, c.y - c.hop), c.lean + c.spin, Vector2(1.0 + q, 1.0 - q))
+	var body: Color = c.tint if c.tint != null else Color(0.29, 0.263, 0.44)
+	body.a *= c.alpha
+	n.draw_rect(Rect2(-s / 2.0, -s, s, s), body)
+	n.draw_rect(Rect2(-s / 2.0, -s, s, s), Color(0.75, 0.73, 0.88, 0.7 * c.alpha), false, 1.5)
+	var ex: float = c.face * s * 0.13
+	n.draw_rect(Rect2(ex - s * 0.17 - 1.2, -s * 0.68, 2.4, 4.0), Color(0.94, 0.93, 1.0, c.alpha))
+	n.draw_rect(Rect2(ex + s * 0.17 - 1.2, -s * 0.68, 2.4, 4.0), Color(0.94, 0.93, 1.0, c.alpha))
+	n.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
