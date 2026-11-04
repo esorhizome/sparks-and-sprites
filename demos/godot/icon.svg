@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!-- Sparks & Sprites — Godot project icon.
+       Background (big, thin, faint): one ring with 20 dots, one per chapter 00–19.
+       Foreground (bold, simple): one sprite, floating, eyes calmly closed, one spark. -->
+
+  <!-- tile: corner radius 26 -->
+  <rect width="128" height="128" rx="26" fill="#191527"/>
+
+  <!-- BACKGROUND: the chapter ring -->
+  <circle cx="64" cy="64" r="46" fill="none" stroke="#9BA3F0" stroke-opacity="0.22" stroke-width="0.6"/>
+  <g stroke="#9BA3F0" stroke-opacity="0.16" stroke-width="0.6" stroke-linecap="round">
+    <path d="M64 29L64 23M74.82 30.71L76.67 25.01M84.57 35.68L88.1 30.83M92.32 43.43L97.17 39.9M97.29 53.18L102.99 51.33M99 64L105 64M97.29 74.82L102.99 76.67M92.32 84.57L97.17 88.1M84.57 92.32L88.1 97.17M74.82 97.29L76.67 102.99M64 99L64 105M53.18 97.29L51.33 102.99M43.43 92.32L39.9 97.17M35.68 84.57L30.83 88.1M30.71 74.82L25.01 76.67M29 64L23 64M30.71 53.18L25.01 51.33M35.68 43.43L30.83 39.9M43.43 35.68L39.9 30.83M53.18 30.71L51.33 25.01"/>
+  </g>
+  <g fill="#9BA3F0" fill-opacity="0.55">
+    <circle cx="78.21" cy="20.25" r="1.5"/><circle cx="91.04" cy="26.79" r="1.5"/>
+    <circle cx="101.21" cy="36.96" r="1.5"/><circle cx="107.75" cy="49.79" r="1.5"/>
+    <circle cx="110" cy="64" r="1.5"/><circle cx="107.75" cy="78.21" r="1.5"/>
+    <circle cx="101.21" cy="91.04" r="1.5"/><circle cx="91.04" cy="101.21" r="1.5"/>
+    <circle cx="78.21" cy="107.75" r="1.5"/><circle cx="64" cy="110" r="1.5"/>
+    <circle cx="49.79" cy="107.75" r="1.5"/><circle cx="36.96" cy="101.21" r="1.5"/>
+    <circle cx="26.79" cy="91.04" r="1.5"/><circle cx="20.25" cy="78.21" r="1.5"/>
+    <circle cx="18" cy="64" r="1.5"/><circle cx="20.25" cy="49.79" r="1.5"/>
+    <circle cx="26.79" cy="36.96" r="1.5"/><circle cx="36.96" cy="26.79" r="1.5"/>
+    <circle cx="49.79" cy="20.25" r="1.5"/>
+  </g>
+  <!-- chapter 00 (where it starts) is a touch brighter -->
+  <circle cx="64" cy="18" r="1.9" fill="#E6E3F2"/>
+
+  <!-- FOREGROUND: the floating sprite -->
+  <!-- shadow on the ground, with a gap = floating -->
+  <ellipse cx="64" cy="92" rx="11" ry="1.8" fill="#9BA3F0" fill-opacity="0.22"/>
+  <!-- body -->
+  <path d="M44 72C44 58 52 50 64 50C76 50 84 58 84 72C84 79 78 82 64 82C50 82 44 79 44 72Z"
+        fill="#2A2440" stroke="#E6E3F2" stroke-width="2.2" stroke-linejoin="round"/>
+  <!-- roundness highlight -->
+  <path d="M50 63Q51 56.5 56.5 54.5" fill="none" stroke="#E6E3F2" stroke-opacity="0.45" stroke-width="1.4" stroke-linecap="round"/>
+  <!-- calm closed eyes + small smile -->
+  <g fill="none" stroke="#E6E3F2" stroke-width="1.8" stroke-linecap="round">
+    <path d="M53.5 65.5Q56.5 68.5 59.5 65.5"/>
+    <path d="M68.5 65.5Q71.5 68.5 74.5 65.5"/>
+    <path d="M61.2 72.2Q64 74.6 66.8 72.2"/>
+  </g>
+  <!-- soft cheeks -->
+  <circle cx="51" cy="71" r="2.1" fill="#9BA3F0" fill-opacity="0.35"/>
+  <circle cx="77" cy="71" r="2.1" fill="#9BA3F0" fill-opacity="0.35"/>
+
+  <!-- the one warm spark -->
+  <path d="M64 35.5Q64.9 40.1 69.5 41Q64.9 41.9 64 46.5Q63.1 41.9 58.5 41Q63.1 40.1 64 35.5Z" fill="#E8C98A"/>
+</svg>
