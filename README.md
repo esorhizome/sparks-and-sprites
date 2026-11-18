@@ -14,7 +14,9 @@ All external links in this book were last checked on **26 August 2026** (UTC+7).
 
 1. **No chapter assumes you remember any other chapter.** Every technical word is re-explained, in place, every time it matters. Re-reading a definition you've seen before is a feature of this book, not an insult to you.
 2. **Nothing here can break anything.** This is a map, not a machine. Skimming, forgetting, and returning months later are all correct ways to use it.
-3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing, and to [animate.style](https://animate.style/), which proved a catalogue you *recognise things in* beats documentation you search — skim until you spot the effect you were imagining, then take its code.)
+3. **Show first, then tell.** Wherever a thing can be *seen*, there's a live demo where the code and its visual result sit side by side — and you can edit the code right there. (The style owes a debt to [saint11's pixel-art tutorials](https://saint11.art/blog/pixel-art-tutorials/), which teach by showing, and to [animate.style](https://animate.style/), which proved a catalogue you *recognise things in* beats documentation you search — So, for this repo: just skim until you spot the effect you were imagining, then take its code.)
+
+***IMPORTANT NOTE: both animate.style and Saint11's tutorials have NOT been folded into this repo aside from this mention. I only shared them with Claude one time and said: "See, here's what I mean. Don't copy any of it, but use it understand what I want for someone trying to learn. Show, then tell". A reverent photo of a gallery piece does not claim to be the gallery piece's creator. That's all this mention is.***
 
 [![The Waterdrops demo mid-rain: falling streaks, splash droplets, and overlapping ripple rings on the water line](docs/assets/waterdrops-demo.png)](https://esorhizome.github.io/sparks-and-sprites/waterdrops.html)
 
